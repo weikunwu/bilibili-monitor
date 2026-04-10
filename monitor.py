@@ -857,7 +857,13 @@ class BiliLiveClient:
         try:
             async with aiohttp.ClientSession(headers=self._make_cookie_header()) as session:
                 async with session.post(SEND_GIFT_API, data=payload) as resp:
-                    data = await resp.json(content_type=None)
+                    text = await resp.text()
+                    log.info(f"[自动送礼] HTTP {resp.status}, body: {text[:500]}")
+                    try:
+                        data = json.loads(text)
+                    except Exception:
+                        log.warning(f"[自动送礼] 非JSON响应: {text[:500]}")
+                        return
                     if data.get("code") == 0:
                         log.info(f"[自动送礼] 房间 {self.room_id} 送出礼物 gift_id={gift_id} x{gift_num}")
                     else:
