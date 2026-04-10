@@ -405,28 +405,35 @@ async function fetchStats() {
 }
 
 let currentRoomId = null;
+let roomsData = [];
+
+function updateRoomInfo() {
+  const room = roomsData.find(r => r.room_id === currentRoomId);
+  const info = room ? `${room.streamer_name || room.room_id} (${room.room_id})` : '';
+  document.getElementById('roomInfo').textContent = info;
+}
 
 async function fetchRooms() {
   try {
     const res = await fetch('/api/rooms');
-    const rooms = await res.json();
+    roomsData = await res.json();
     const sel = document.getElementById('roomSelect');
-    sel.innerHTML = rooms.map(r => `<option value="${r.room_id}">${r.room_id}</option>`).join('');
+    sel.innerHTML = roomsData.map(r => `<option value="${r.room_id}">${r.streamer_name || r.room_id}</option>`).join('');
     // Default to first available room
-    if (!currentRoomId || !rooms.find(r => r.room_id === currentRoomId)) {
-      currentRoomId = rooms.length ? rooms[0].room_id : null;
+    if (!currentRoomId || !roomsData.find(r => r.room_id === currentRoomId)) {
+      currentRoomId = roomsData.length ? roomsData[0].room_id : null;
     }
     sel.value = currentRoomId || '';
-    document.getElementById('roomInfo').textContent = currentRoomId ? `房间号: ${currentRoomId}` : '';
+    updateRoomInfo();
     // Hide dropdown if only one room
-    sel.style.display = rooms.length <= 1 ? 'none' : '';
+    sel.style.display = roomsData.length <= 1 ? 'none' : '';
   } catch(e) {}
 }
 
 function switchRoom() {
   const val = document.getElementById('roomSelect').value;
   currentRoomId = val ? parseInt(val) : null;
-  document.getElementById('roomInfo').textContent = currentRoomId ? `房间号: ${currentRoomId}` : '';
+  updateRoomInfo();
   events = [];
   renderEvents();
   setPreset('live');
