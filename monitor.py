@@ -442,18 +442,21 @@ def handle_message(msg: dict) -> Optional[dict]:
         gift_name = data.get("giftName", "")
         if blind_name:
             action = f"{blind_name} 爆出"
+        num = data.get("num", 1)
+        real_price = gift_price_cache.get(gift_id, 0)
+        real_total_coin = real_price * num if real_price else data.get("total_coin", 0)
         event = {
             "timestamp": now,
             "event_type": "gift",
             "user_name": data.get("uname", ""),
             "user_id": data.get("uid", 0),
-            "content": f"{gift_name} x{data.get('num', 1)}",
+            "content": f"{gift_name} x{num}",
             "extra": {
                 "gift_name": gift_name,
                 "gift_id": gift_id,
-                "num": data.get("num", 1),
+                "num": num,
                 "coin_type": data.get("coin_type", ""),
-                "total_coin": data.get("total_coin", 0),
+                "total_coin": real_total_coin,
                 "price": data.get("price", 0),
                 "action": action,
                 "blind_name": blind_name,
@@ -469,18 +472,22 @@ def handle_message(msg: dict) -> Optional[dict]:
 
     elif base_cmd == "COMBO_SEND":
         data = msg.get("data", {})
-        gift_img = gift_img_cache.get(data.get("gift_id", 0), "")
+        combo_gift_id = data.get("gift_id", 0)
+        gift_img = gift_img_cache.get(combo_gift_id, "")
+        combo_num = data.get("combo_num", 1)
+        combo_real_price = gift_price_cache.get(combo_gift_id, 0)
+        combo_total = combo_real_price * combo_num if combo_real_price else data.get("combo_total_coin", 0)
         event = {
             "timestamp": now,
             "event_type": "gift",
             "user_name": data.get("uname", ""),
             "user_id": data.get("uid", 0),
-            "content": f"{data.get('gift_name', '')} x{data.get('combo_num', 1)} (连击)",
+            "content": f"{data.get('gift_name', '')} x{combo_num} (连击)",
             "extra": {
                 "gift_name": data.get("gift_name", ""),
-                "gift_id": data.get("gift_id", 0),
-                "num": data.get("combo_num", 1),
-                "total_coin": data.get("combo_total_coin", 0),
+                "gift_id": combo_gift_id,
+                "num": combo_num,
+                "total_coin": combo_total,
                 "combo": True,
                 "face": data.get("uface", ""),
                 "gift_img": gift_img,
