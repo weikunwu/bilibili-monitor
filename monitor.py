@@ -728,9 +728,14 @@ class BiliLiveClient:
 
 app = FastAPI(title="B站直播监控")
 
-# ── 简单密码认证 ──
-AUTH_PASSWORD = os.environ.get("AUTH_PASSWORD", "")
-AUTH_TOKEN = secrets.token_hex(32)  # 每次启动生成新 token
+# ── 简单密码认证（多密码，不同房间权限） ──
+# AUTH_PASSWORD_ALL: 可以看所有房间
+# AUTH_PASSWORD_LIMITED: 只能看 LIMITED_ROOMS 指定的房间
+AUTH_PASSWORD_ALL = os.environ.get("AUTH_PASSWORD_ALL", os.environ.get("AUTH_PASSWORD", ""))
+AUTH_PASSWORD_LIMITED = os.environ.get("AUTH_PASSWORD_LIMITED", "")
+LIMITED_ROOMS = [int(r.strip()) for r in os.environ.get("LIMITED_ROOMS", "32365569").split(",") if r.strip()]
+# token -> allowed_rooms (None = all rooms)
+auth_tokens: dict[str, Optional[list[int]]] = {}
 
 LOGIN_HTML = """<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -753,7 +758,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         # 不需要密码时跳过
-        if not AUTH_PASSWORD:
+        if not AUTH_PASSWORD_ALL and not AUTH_PASSWORD_LIMITED:
             return await call_next(request)
         # 放行登录相关路径
         path = request.url.path
@@ -761,7 +766,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
         # 检查 cookie
         token = request.cookies.get("auth_token")
-        if token == AUTH_TOKEN:
+        if token in auth_tokens:
+            request.state.allowed_rooms = auth_tokens[token]
             return await call_next(request)
         # 未认证：页面请求返回登录页，API 返回 401
         if path.startswith("/api/") or path == "/ws":
@@ -774,11 +780,19 @@ app.add_middleware(AuthMiddleware)
 @app.post("/api/auth")
 async def auth_login(request: Request):
     body = await request.json()
-    if body.get("password") == AUTH_PASSWORD:
-        resp = HTMLResponse('{"ok":true}')
-        resp.set_cookie("auth_token", AUTH_TOKEN, httponly=True, max_age=86400 * 30)
-        return resp
-    return HTMLResponse('{"ok":false}', status_code=403)
+    pw = body.get("password", "")
+    allowed_rooms = None  # None = all rooms
+    if AUTH_PASSWORD_ALL and pw == AUTH_PASSWORD_ALL:
+        allowed_rooms = None  # all rooms
+    elif AUTH_PASSWORD_LIMITED and pw == AUTH_PASSWORD_LIMITED:
+        allowed_rooms = LIMITED_ROOMS
+    else:
+        return HTMLResponse('{"ok":false}', status_code=403)
+    token = secrets.token_hex(32)
+    auth_tokens[token] = allowed_rooms
+    resp = HTMLResponse(json.dumps({"ok": True, "allowed_rooms": allowed_rooms}))
+    resp.set_cookie("auth_token", token, httponly=True, max_age=86400 * 30)
+    return resp
 
 
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
@@ -1161,7 +1175,8 @@ async def gift_gif_card(
 
 
 @app.get("/api/rooms")
-async def get_rooms():
+async def get_rooms(request: Request):
+    allowed = getattr(request.state, "allowed_rooms", None)
     return [
         {
             "room_id": c.room_id,
@@ -1169,6 +1184,7 @@ async def get_rooms():
             "popularity": c.popularity,
         }
         for c in bili_clients.values()
+        if allowed is None or c.room_id in allowed
     ]
 
 

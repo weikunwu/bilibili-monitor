@@ -6,6 +6,7 @@ primary_region = 'nrt'  # Tokyo, closest to China
 [env]
   ROOMS = '1920456329,32365569'
   DATA_DIR = '/app/data'
+  LIMITED_ROOMS = '32365569'
 
 [http_service]
   internal_port = 8080

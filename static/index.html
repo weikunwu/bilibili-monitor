@@ -372,24 +372,29 @@ async function fetchStats() {
   } catch(e) {}
 }
 
-let currentRoomId = 1920456329;
+let currentRoomId = null;
 
 async function fetchRooms() {
   try {
     const res = await fetch('/api/rooms');
     const rooms = await res.json();
     const sel = document.getElementById('roomSelect');
-    sel.innerHTML = '<option value="">全部房间</option>' +
-      rooms.map(r => `<option value="${r.room_id}">${r.room_id}</option>`).join('');
+    sel.innerHTML = rooms.map(r => `<option value="${r.room_id}">${r.room_id}</option>`).join('');
+    // Default to first available room
+    if (!currentRoomId || !rooms.find(r => r.room_id === currentRoomId)) {
+      currentRoomId = rooms.length ? rooms[0].room_id : null;
+    }
     sel.value = currentRoomId || '';
-    document.getElementById('roomInfo').textContent = currentRoomId ? `房间号: ${currentRoomId}` : '全部房间';
+    document.getElementById('roomInfo').textContent = currentRoomId ? `房间号: ${currentRoomId}` : '';
+    // Hide dropdown if only one room
+    sel.style.display = rooms.length <= 1 ? 'none' : '';
   } catch(e) {}
 }
 
 function switchRoom() {
   const val = document.getElementById('roomSelect').value;
   currentRoomId = val ? parseInt(val) : null;
-  document.getElementById('roomInfo').textContent = currentRoomId ? `房间号: ${currentRoomId}` : '全部房间';
+  document.getElementById('roomInfo').textContent = currentRoomId ? `房间号: ${currentRoomId}` : '';
   events = [];
   renderEvents();
   setPreset('live');
@@ -714,7 +719,7 @@ async function generateUserGiftImage(userName) {
       drawX += ctx.measureText(' 爆出 ').width;
     } else {
       // "投喂 " 白色半透明
-      ctx.fillStyle = 'rgba(255,255,255,0.6)';
+      ctx.fillStyle = '#ffffff';
       ctx.font = '15px -apple-system, "PingFang SC", sans-serif';
       ctx.fillText(action + ' ', drawX, y + 52);
       drawX += ctx.measureText(action + ' ').width;
@@ -726,8 +731,8 @@ async function generateUserGiftImage(userName) {
 
     // ── 5. 右侧: 礼物图片(左) + "x N"(右) ──
     ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
-    const gSize = 54;
-    const rightStart = W * 0.65;
+    const gSize = 72;
+    const rightStart = W * 0.6;
 
     // 礼物图片左对齐
     if (giftImgObjs[i]) {
