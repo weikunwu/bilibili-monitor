@@ -1003,13 +1003,15 @@ async def gift_summary(
         if gl and (not users[key]["guard_level"] or gl < users[key]["guard_level"]):
             users[key]["guard_level"] = gl  # 1=总督 > 2=提督 > 3=舰长, keep highest
 
-    # Recalculate gift_coins using real prices from gift config
+    # Recalculate gift_coins and total_coin using real prices from gift config
     for u in users.values():
+        u["total_coin"] = 0
         for gift_name, num in u["gifts"].items():
             gid = u["gift_ids"].get(gift_name, 0)
             real_price = gift_price_cache.get(gid, 0)
             if real_price:
                 u["gift_coins"][gift_name] = real_price * num
+            u["total_coin"] += u["gift_coins"].get(gift_name, 0)
 
     # Fallback: look up guard_level from guard_cache if not in event data
     for u in users.values():
@@ -1085,11 +1087,13 @@ async def gift_gif_card(
             users[key]["guard_level"] = gl
     # Recalculate with real prices
     for uu in users.values():
+        uu["total_coin"] = 0
         for gn2, n2 in uu["gifts"].items():
             gid2 = uu["gift_ids"].get(gn2, 0)
             rp = gift_price_cache.get(gid2, 0)
             if rp:
                 uu["gift_coins"][gn2] = rp * n2
+            uu["total_coin"] += uu["gift_coins"].get(gn2, 0)
     # Guard fallback
     for uu in users.values():
         if not uu["guard_level"]:
