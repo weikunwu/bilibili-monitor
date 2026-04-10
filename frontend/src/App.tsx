@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import type { LiveEvent, TabType, Room, Stats } from './types'
-import { fetchRooms, fetchStats, fetchEvents, fetchBotStatus, botLogout, authLogout } from './api/client'
+import { fetchRooms, fetchStats, fetchEvents, fetchBotStatus, botLogout, authLogout, fetchMe, type CurrentUser } from './api/client'
 import { useWebSocket } from './hooks/useWebSocket'
 import { useLocalStorage } from './hooks/useLocalStorage'
 import { localToUTC, fmtDate, pad } from './lib/formatters'
@@ -11,10 +11,12 @@ import { TabBar } from './components/TabBar'
 import { Controls } from './components/Controls'
 import { EventList } from './components/EventList'
 import { ToolsPanel } from './components/ToolsPanel'
+import { AdminPanel } from './components/AdminPanel'
 import { QrLoginModal } from './components/QrLoginModal'
 import { GiftImageModal, type GiftImageModalRef } from './components/GiftImageModal'
 
 export default function App() {
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null)
   const [rooms, setRooms] = useState<Room[]>([])
   const [currentRoomId, setCurrentRoomId] = useState<number | null>(null)
   const [stats, setStats] = useState<Stats | null>(null)
@@ -48,6 +50,7 @@ export default function App() {
   const connectionStatus = useWebSocket(onWsEvent)
 
   useEffect(() => {
+    fetchMe().then(setCurrentUser)
     fetchRooms().then((r) => {
       setRooms(r)
       if (r.length > 0) setCurrentRoomId(r[0].room_id)
@@ -128,6 +131,40 @@ export default function App() {
     }
   }
 
+  const isAdmin = currentUser?.role === 'admin'
+
+  function renderContent() {
+    if (activeTab === 'admin' && isAdmin) {
+      return <AdminPanel rooms={rooms} />
+    }
+    if (activeTab === 'tools') {
+      return <ToolsPanel roomId={currentRoomId} />
+    }
+    return (
+      <>
+        <Controls
+          autoScroll={autoScroll}
+          showEnter={showEnter}
+          showLike={showLike}
+          activePreset={activePreset}
+          onAutoScrollChange={setAutoScroll}
+          onShowEnterChange={setShowEnter}
+          onShowLikeChange={setShowLike}
+          onPresetChange={handlePresetChange}
+          onQueryRange={handleQueryRange}
+        />
+        <EventList
+          events={events}
+          activeTab={activeTab}
+          showEnter={showEnter}
+          showLike={showLike}
+          autoScroll={autoScroll}
+          onGenerateGiftImage={(userName) => giftModalRef.current?.showGiftImage(userName)}
+        />
+      </>
+    )
+  }
+
   return (
     <>
       <Header
@@ -138,36 +175,13 @@ export default function App() {
         botUid={botUid}
         onBotClick={handleBotClick}
         onLogout={() => authLogout().then(() => location.reload())}
+        currentUser={currentUser}
       />
 
       <StatsGrid stats={stats} />
-      <TabBar active={activeTab} onChange={setActiveTab} />
+      <TabBar active={activeTab} onChange={setActiveTab} isAdmin={isAdmin} />
 
-      {activeTab === 'tools' ? (
-        <ToolsPanel roomId={currentRoomId} />
-      ) : (
-        <>
-          <Controls
-            autoScroll={autoScroll}
-            showEnter={showEnter}
-            showLike={showLike}
-            activePreset={activePreset}
-            onAutoScrollChange={setAutoScroll}
-            onShowEnterChange={setShowEnter}
-            onShowLikeChange={setShowLike}
-            onPresetChange={handlePresetChange}
-            onQueryRange={handleQueryRange}
-          />
-          <EventList
-            events={events}
-            activeTab={activeTab}
-            showEnter={showEnter}
-            showLike={showLike}
-            autoScroll={autoScroll}
-            onGenerateGiftImage={(userName) => giftModalRef.current?.showGiftImage(userName)}
-          />
-        </>
-      )}
+      {renderContent()}
 
       <QrLoginModal
         isOpen={qrModalOpen}

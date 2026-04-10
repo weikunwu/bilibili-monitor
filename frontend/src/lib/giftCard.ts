@@ -125,7 +125,7 @@ export async function generateGiftCard(canvas: HTMLCanvasElement, u: GiftUser) {
     ctx.shadowOffsetX = 0
     ctx.shadowOffsetY = 0
 
-    const gSize = 80
+    const gSize = 72
     const rightStart = W * 0.6
     if (giftImgObjs[i]) {
       ctx.drawImage(giftImgObjs[i]!, rightStart, y + (CARD_H - gSize) / 2, gSize, gSize)

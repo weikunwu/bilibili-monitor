@@ -49,17 +49,67 @@ export async function pollQrLogin(qrcodeKey: string): Promise<{ code: number; me
   return res.json()
 }
 
-export async function authLogin(password: string): Promise<{ ok: boolean }> {
+export async function authLogin(email: string, password: string): Promise<{ ok: boolean; role?: string; error?: string }> {
   const res = await fetch('/api/auth', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ password }),
+    body: JSON.stringify({ email, password }),
   })
   return res.json()
 }
 
 export async function authLogout(): Promise<void> {
   await fetch('/api/logout', { method: 'POST' })
+}
+
+export interface CurrentUser {
+  user_id: number
+  email: string
+  role: 'admin' | 'user'
+}
+
+export async function fetchMe(): Promise<CurrentUser | null> {
+  const res = await fetch('/api/me')
+  if (!res.ok) return null
+  return res.json()
+}
+
+export interface UserInfo {
+  id: number
+  email: string
+  role: string
+  created_at: string
+  rooms: number[]
+}
+
+export async function fetchUsers(): Promise<UserInfo[]> {
+  const res = await fetch('/api/admin/users')
+  return res.json()
+}
+
+export async function createUser(email: string, password: string, role: string): Promise<{ id: number; email: string; role: string }> {
+  const res = await fetch('/api/admin/users', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password, role }),
+  })
+  if (!res.ok) {
+    const d = await res.json()
+    throw new Error(d.detail || '创建失败')
+  }
+  return res.json()
+}
+
+export async function deleteUser(userId: number): Promise<void> {
+  await fetch(`/api/admin/users/${userId}`, { method: 'DELETE' })
+}
+
+export async function assignUserRooms(userId: number, roomIds: number[]): Promise<void> {
+  await fetch(`/api/admin/users/${userId}/rooms`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ room_ids: roomIds }),
+  })
 }
 
 export async function fetchCommands(roomId: number): Promise<Command[]> {

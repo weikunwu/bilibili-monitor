@@ -21,6 +21,7 @@ from collections import defaultdict
 from urllib.parse import urlencode
 from cryptography.fernet import Fernet
 
+import secrets
 import aiohttp
 import qrcode
 import requests
@@ -190,9 +191,20 @@ HEADERS = {
 
 
 def _get_fernet() -> Fernet:
-    key_src = os.environ.get("COOKIE_SECRET", os.environ.get("AUTH_PASSWORD_ALL", os.environ.get("AUTH_PASSWORD", "bilibili-monitor-default")))
+    key_src = os.environ.get("COOKIE_SECRET", os.environ.get("ADMIN_PASSWORD", "bilibili-monitor-default"))
     key = base64.urlsafe_b64encode(hashlib.sha256(key_src.encode()).digest())
     return Fernet(key)
+
+
+def hash_password(password: str) -> str:
+    salt = secrets.token_hex(16)
+    h = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), 100_000)
+    return f"{salt}${h.hex()}"
+
+
+def verify_password(password: str, stored: str) -> bool:
+    salt, h = stored.split('$', 1)
+    return hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), 100_000).hex() == h
 
 
 def save_cookies(cookies: dict, room_id: int = 0):
@@ -402,6 +414,44 @@ def init_db():
                 "INSERT OR IGNORE INTO commands (id, name, type, description, config_json) VALUES (?,?,?,?,?)",
                 (cmd["id"], cmd["name"], cmd["type"], cmd["description"], json.dumps(cmd["config"], ensure_ascii=False)),
             )
+    # ── 用户系统 ──
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'user' CHECK(role IN ('admin','user')),
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS user_rooms (
+            user_id INTEGER NOT NULL,
+            room_id INTEGER NOT NULL,
+            PRIMARY KEY (user_id, room_id),
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS sessions (
+            token TEXT PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            expires_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+    """)
+    # Seed admin user if users table is empty
+    admin_email = os.environ.get("ADMIN_EMAIL", "admin@bilibili-monitor.local")
+    admin_password = os.environ.get("ADMIN_PASSWORD", "")
+    if admin_password:
+        user_count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+        if user_count == 0:
+            conn.execute(
+                "INSERT INTO users (email, password_hash, role) VALUES (?,?,?)",
+                (admin_email, hash_password(admin_password), "admin"),
+            )
+            log.info(f"创建管理员账号: {admin_email}")
     conn.commit()
     conn.close()
 
@@ -933,15 +983,7 @@ class BiliLiveClient:
 
 app = FastAPI(title="B站直播监控")
 
-# ── 简单密码认证（多密码，不同房间权限） ──
-# AUTH_PASSWORD_ALL: 可以看所有房间
-# AUTH_PASSWORD_LIMITED: 只能看 LIMITED_ROOMS 指定的房间
-AUTH_PASSWORD_ALL = os.environ.get("AUTH_PASSWORD_ALL", os.environ.get("AUTH_PASSWORD", ""))
-AUTH_PASSWORD_LIMITED = os.environ.get("AUTH_PASSWORD_LIMITED", "")
-LIMITED_ROOMS = [int(r.strip()) for r in os.environ.get("LIMITED_ROOMS", "32365569").split(",") if r.strip()]
-# 从密码派生固定 token，重启后 cookie 仍然有效
-AUTH_TOKEN_ALL = hashlib.sha256(f"auth_all:{AUTH_PASSWORD_ALL}".encode()).hexdigest() if AUTH_PASSWORD_ALL else ""
-AUTH_TOKEN_LIMITED = hashlib.sha256(f"auth_limited:{AUTH_PASSWORD_LIMITED}".encode()).hexdigest() if AUTH_PASSWORD_LIMITED else ""
+# ── 用户认证系统 ──
 
 LOGIN_HTML = """<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -952,33 +994,60 @@ h2{color:#fb7299;margin-bottom:20px}input{background:#0f0f1a;border:1px solid #2
 input:focus{border-color:#fb7299;outline:none}button{background:#fb7299;color:#fff;border:none;padding:10px 24px;border-radius:8px;font-size:16px;cursor:pointer;width:100%}
 button:hover{background:#e0607e}.err{color:#ef5350;font-size:13px;margin-bottom:12px}</style></head>
 <body><div class="box"><h2>B站直播监控</h2><div class="err" id="err"></div>
-<form onsubmit="return doLogin()"><input type="password" id="pw" placeholder="请输入密码" autofocus>
+<form onsubmit="return doLogin()"><input type="email" id="em" placeholder="邮箱" autofocus>
+<input type="password" id="pw" placeholder="密码">
 <button type="submit">登录</button></form></div>
-<script>function doLogin(){const pw=document.getElementById('pw').value;
-fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})})
-.then(r=>r.json()).then(d=>{if(d.ok){location.reload()}else{document.getElementById('err').textContent='密码错误'}});return false}</script></body></html>"""
+<script>function doLogin(){const em=document.getElementById('em').value,pw=document.getElementById('pw').value;
+fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:em,password:pw})})
+.then(r=>r.json()).then(d=>{if(d.ok){location.reload()}else{document.getElementById('err').textContent=d.error||'登录失败'}});return false}</script></body></html>"""
+
+
+def _get_session_user(token: str) -> Optional[dict]:
+    """从 session token 获取用户信息，返回 {user_id, email, role} 或 None"""
+    if not token:
+        return None
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.row_factory = sqlite3.Row
+    row = conn.execute("""
+        SELECT s.user_id, u.email, u.role
+        FROM sessions s JOIN users u ON s.user_id = u.id
+        WHERE s.token = ? AND s.expires_at > datetime('now')
+    """, (token,)).fetchone()
+    conn.close()
+    if not row:
+        return None
+    return {"user_id": row["user_id"], "email": row["email"], "role": row["role"]}
+
+
+def _get_user_allowed_rooms(user_id: int, role: str) -> Optional[list[int]]:
+    """返回用户可访问的房间列表，admin 返回 None（全部）"""
+    if role == "admin":
+        return None
+    conn = sqlite3.connect(str(DB_PATH))
+    rooms = [r[0] for r in conn.execute(
+        "SELECT room_id FROM user_rooms WHERE user_id = ?", (user_id,)
+    ).fetchall()]
+    conn.close()
+    return rooms
 
 
 from starlette.middleware.base import BaseHTTPMiddleware
 
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
-        # 不需要密码时跳过
-        if not AUTH_PASSWORD_ALL and not AUTH_PASSWORD_LIMITED:
-            return await call_next(request)
-        # 放行登录相关路径
         path = request.url.path
-        if path in ("/api/auth", "/api/logout") or path.startswith("/static/"):
+        if path in ("/api/auth",) or path.startswith("/static/") or path.startswith("/assets/"):
             return await call_next(request)
-        # 检查 cookie
+
         token = request.cookies.get("auth_token")
-        if token and token == AUTH_TOKEN_ALL:
-            request.state.allowed_rooms = None
+        user = _get_session_user(token)
+        if user:
+            request.state.user_id = user["user_id"]
+            request.state.user_email = user["email"]
+            request.state.user_role = user["role"]
+            request.state.allowed_rooms = _get_user_allowed_rooms(user["user_id"], user["role"])
             return await call_next(request)
-        if token and token == AUTH_TOKEN_LIMITED:
-            request.state.allowed_rooms = LIMITED_ROOMS
-            return await call_next(request)
-        # 未认证：页面请求返回登录页，API 返回 401
+
         if path.startswith("/api/") or path == "/ws":
             return HTMLResponse('{"error":"unauthorized"}', status_code=401)
         return HTMLResponse(LOGIN_HTML)
@@ -986,46 +1055,137 @@ class AuthMiddleware(BaseHTTPMiddleware):
 app.add_middleware(AuthMiddleware)
 
 
-# 登录失败次数限制：IP -> (fail_count, first_fail_time)
+# 登录失败次数限制
 _login_attempts: dict[str, tuple[int, float]] = defaultdict(lambda: (0, 0.0))
 _MAX_LOGIN_ATTEMPTS = 5
-_LOGIN_LOCKOUT_SECONDS = 300  # 5分钟
+_LOGIN_LOCKOUT_SECONDS = 300
 
 
 @app.post("/api/auth")
 async def auth_login(request: Request):
     ip = request.client.host if request.client else "unknown"
     fails, first_time = _login_attempts[ip]
-    # 超过锁定时间则重置
     if fails >= _MAX_LOGIN_ATTEMPTS and time.time() - first_time < _LOGIN_LOCKOUT_SECONDS:
-        return HTMLResponse('{"ok":false,"error":"too_many_attempts"}', status_code=429)
+        return HTMLResponse('{"ok":false,"error":"请求过于频繁，请5分钟后再试"}', status_code=429)
     if fails >= _MAX_LOGIN_ATTEMPTS:
         _login_attempts[ip] = (0, 0.0)
 
     body = await request.json()
+    email = body.get("email", "").strip().lower()
     pw = body.get("password", "")
-    allowed_rooms = None  # None = all rooms
-    if AUTH_PASSWORD_ALL and pw == AUTH_PASSWORD_ALL:
-        allowed_rooms = None  # all rooms
-    elif AUTH_PASSWORD_LIMITED and pw == AUTH_PASSWORD_LIMITED:
-        allowed_rooms = LIMITED_ROOMS
-    else:
+
+    conn = sqlite3.connect(str(DB_PATH))
+    row = conn.execute("SELECT id, password_hash, role FROM users WHERE email = ?", (email,)).fetchone()
+    if not row or not verify_password(pw, row[1]):
+        conn.close()
         fails, first_time = _login_attempts[ip]
         _login_attempts[ip] = (fails + 1, first_time or time.time())
-        return HTMLResponse('{"ok":false}', status_code=403)
+        return HTMLResponse('{"ok":false,"error":"邮箱或密码错误"}', status_code=403)
+
+    user_id, _, role = row
+    token = secrets.token_urlsafe(32)
+    expires = (datetime.now(timezone.utc) + timedelta(days=3)).strftime("%Y-%m-%d %H:%M:%S")
+    conn.execute("INSERT INTO sessions (token, user_id, expires_at) VALUES (?,?,?)", (token, user_id, expires))
+    conn.commit()
+    conn.close()
 
     _login_attempts.pop(ip, None)
-    token = AUTH_TOKEN_ALL if allowed_rooms is None else AUTH_TOKEN_LIMITED
-    resp = HTMLResponse(json.dumps({"ok": True, "allowed_rooms": allowed_rooms}))
+    resp = HTMLResponse(json.dumps({"ok": True, "role": role}))
     resp.set_cookie("auth_token", token, httponly=True, max_age=86400 * 3)
     return resp
 
 
 @app.post("/api/logout")
-async def auth_logout():
+async def auth_logout(request: Request):
+    token = request.cookies.get("auth_token")
+    if token:
+        conn = sqlite3.connect(str(DB_PATH))
+        conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
+        conn.commit()
+        conn.close()
     resp = HTMLResponse('{"ok":true}')
     resp.delete_cookie("auth_token")
     return resp
+
+
+@app.get("/api/me")
+async def get_me(request: Request):
+    return {
+        "user_id": getattr(request.state, "user_id", None),
+        "email": getattr(request.state, "user_email", None),
+        "role": getattr(request.state, "user_role", None),
+    }
+
+
+# ── Admin API ──
+
+def _require_admin(request: Request):
+    if getattr(request.state, "user_role", None) != "admin":
+        raise HTTPException(status_code=403, detail="需要管理员权限")
+
+
+@app.get("/api/admin/users")
+async def list_users(request: Request):
+    _require_admin(request)
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute("SELECT id, email, role, created_at FROM users").fetchall()
+    result = []
+    for r in rows:
+        rooms = [x[0] for x in conn.execute(
+            "SELECT room_id FROM user_rooms WHERE user_id = ?", (r["id"],)
+        ).fetchall()]
+        result.append({**dict(r), "rooms": rooms})
+    conn.close()
+    return result
+
+
+@app.post("/api/admin/users")
+async def create_user(request: Request):
+    _require_admin(request)
+    body = await request.json()
+    email = body["email"].strip().lower()
+    password = body["password"]
+    role = body.get("role", "user")
+    conn = sqlite3.connect(str(DB_PATH))
+    try:
+        conn.execute(
+            "INSERT INTO users (email, password_hash, role) VALUES (?,?,?)",
+            (email, hash_password(password), role),
+        )
+        conn.commit()
+        user_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    except sqlite3.IntegrityError:
+        conn.close()
+        raise HTTPException(400, "该邮箱已存在")
+    conn.close()
+    return {"id": user_id, "email": email, "role": role}
+
+
+@app.delete("/api/admin/users/{user_id}")
+async def delete_user(user_id: int, request: Request):
+    _require_admin(request)
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+    conn.execute("DELETE FROM user_rooms WHERE user_id = ?", (user_id,))
+    conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+    conn.commit()
+    conn.close()
+    return {"ok": True}
+
+
+@app.post("/api/admin/users/{user_id}/rooms")
+async def assign_rooms(user_id: int, request: Request):
+    _require_admin(request)
+    body = await request.json()
+    room_ids = body["room_ids"]
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.execute("DELETE FROM user_rooms WHERE user_id = ?", (user_id,))
+    for rid in room_ids:
+        conn.execute("INSERT INTO user_rooms (user_id, room_id) VALUES (?,?)", (user_id, rid))
+    conn.commit()
+    conn.close()
+    return {"ok": True, "room_ids": room_ids}
 
 
 @app.get("/api/commands")
@@ -1472,17 +1632,12 @@ async def get_rooms(request: Request):
 
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
-    # 从 cookie 检查权限
     token = ws.cookies.get("auth_token")
-    allowed_rooms = None
-    if AUTH_PASSWORD_ALL or AUTH_PASSWORD_LIMITED:
-        if token == AUTH_TOKEN_ALL:
-            allowed_rooms = None
-        elif token == AUTH_TOKEN_LIMITED:
-            allowed_rooms = LIMITED_ROOMS
-        else:
-            await ws.close(code=1008)
-            return
+    user = _get_session_user(token)
+    if not user:
+        await ws.close(code=1008)
+        return
+    allowed_rooms = _get_user_allowed_rooms(user["user_id"], user["role"])
     await ws.accept()
     ws_clients[ws] = allowed_rooms
     try:

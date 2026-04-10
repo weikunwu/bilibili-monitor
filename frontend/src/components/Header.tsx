@@ -1,4 +1,5 @@
 import type { Room, ConnectionStatus as Status } from '../types'
+import type { CurrentUser } from '../api/client'
 import { RoomSelector } from './RoomSelector'
 import { ConnectionStatus } from './ConnectionStatus'
 
@@ -10,11 +11,12 @@ interface Props {
   botUid: number | null
   onBotClick: () => void
   onLogout: () => void
+  currentUser: CurrentUser | null
 }
 
 export function Header({
   rooms, currentRoomId, onRoomChange, connectionStatus,
-  botUid, onBotClick, onLogout,
+  botUid, onBotClick, onLogout, currentUser,
 }: Props) {
   const room = rooms.find((r) => r.room_id === currentRoomId)
   const roomInfo = room ? `${room.streamer_name || room.room_id} (${room.room_id})` : ''
@@ -32,9 +34,14 @@ export function Header({
       </button>
       <ConnectionStatus status={connectionStatus} />
       <span style={{ flex: 1 }} />
+      {currentUser && (
+        <span style={{ fontSize: 12, color: '#888' }}>
+          {currentUser.email}
+        </span>
+      )}
       <button
         className="login-btn"
-        style={{ background: '#555', marginLeft: 'auto' }}
+        style={{ background: '#555' }}
         onClick={onLogout}
       >
         退出登录
