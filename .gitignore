@@ -1,0 +1,19 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Runtime data
+gifts.db
+cookies.json
+
+# Claude Code
+.claude/
+
+# OS
+.DS_Store
+
+# Screenshots / temp images
+*.gif
+kylewu55_*.png
