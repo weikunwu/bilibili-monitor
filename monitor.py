@@ -79,10 +79,6 @@ COMMAND_TEMPLATES = [
     },
 ]
 
-# room_id -> [command dicts with enabled state]
-room_commands: dict[int, list[dict]] = {}
-
-
 def get_room_settings(room_id: int) -> dict:
     try:
         conn = sqlite3.connect(str(DB_PATH))
@@ -106,15 +102,13 @@ def save_room_settings(room_id: int, settings: dict):
 
 
 def get_room_commands(room_id: int) -> list[dict]:
-    if room_id not in room_commands:
-        import copy
-        cmds = [copy.deepcopy(t) for t in COMMAND_TEMPLATES]
-        settings = get_room_settings(room_id)
-        cmd_states = settings.get("commands", {})
-        for c in cmds:
-            c["enabled"] = cmd_states.get(c["id"], False)
-        room_commands[room_id] = cmds
-    return room_commands[room_id]
+    import copy
+    cmds = [copy.deepcopy(t) for t in COMMAND_TEMPLATES]
+    settings = get_room_settings(room_id)
+    cmd_states = settings.get("commands", {})
+    for c in cmds:
+        c["enabled"] = cmd_states.get(c["id"], False)
+    return cmds
 
 
 def save_command_state(room_id: int, cmd_id: str, enabled: bool):
