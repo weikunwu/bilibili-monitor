@@ -723,12 +723,12 @@ class BiliLiveClient:
                     if self.ruid:
                         try:
                             async with session.get(
-                                "https://api.bilibili.com/x/space/acc/info",
-                                params={"mid": self.ruid}
+                                "https://api.live.bilibili.com/live_user/v1/Master/info",
+                                params={"uid": self.ruid}
                             ) as name_resp:
                                 name_data = await name_resp.json(content_type=None)
                                 if name_data.get("code") == 0:
-                                    self.streamer_name = name_data["data"].get("name", "")
+                                    self.streamer_name = name_data["data"].get("info", {}).get("uname", "")
                                     log.info(f"主播名字: {self.streamer_name}")
                         except Exception:
                             pass
