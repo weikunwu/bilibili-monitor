@@ -25,7 +25,6 @@ import aiohttp
 import qrcode
 import requests
 import os
-import secrets
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, Request, HTTPException, Depends
 from fastapi.responses import FileResponse, StreamingResponse, RedirectResponse, HTMLResponse
@@ -758,9 +757,9 @@ app = FastAPI(title="B站直播监控")
 AUTH_PASSWORD_ALL = os.environ.get("AUTH_PASSWORD_ALL", os.environ.get("AUTH_PASSWORD", ""))
 AUTH_PASSWORD_LIMITED = os.environ.get("AUTH_PASSWORD_LIMITED", "")
 LIMITED_ROOMS = [int(r.strip()) for r in os.environ.get("LIMITED_ROOMS", "32365569").split(",") if r.strip()]
-# token -> (allowed_rooms, created_time)  allowed_rooms=None means all rooms
-auth_tokens: dict[str, tuple[Optional[list[int]], float]] = {}
-AUTH_TOKEN_TTL = 86400 * 3  # 3 days
+# 从密码派生固定 token，重启后 cookie 仍然有效
+AUTH_TOKEN_ALL = hashlib.sha256(f"auth_all:{AUTH_PASSWORD_ALL}".encode()).hexdigest() if AUTH_PASSWORD_ALL else ""
+AUTH_TOKEN_LIMITED = hashlib.sha256(f"auth_limited:{AUTH_PASSWORD_LIMITED}".encode()).hexdigest() if AUTH_PASSWORD_LIMITED else ""
 
 LOGIN_HTML = """<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -791,13 +790,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
         # 检查 cookie
         token = request.cookies.get("auth_token")
-        if token in auth_tokens:
-            allowed_rooms, created = auth_tokens[token]
-            if time.time() - created < AUTH_TOKEN_TTL:
-                request.state.allowed_rooms = allowed_rooms
-                return await call_next(request)
-            else:
-                del auth_tokens[token]
+        if token and token == AUTH_TOKEN_ALL:
+            request.state.allowed_rooms = None
+            return await call_next(request)
+        if token and token == AUTH_TOKEN_LIMITED:
+            request.state.allowed_rooms = LIMITED_ROOMS
+            return await call_next(request)
         # 未认证：页面请求返回登录页，API 返回 401
         if path.startswith("/api/") or path == "/ws":
             return HTMLResponse('{"error":"unauthorized"}', status_code=401)
@@ -835,8 +833,7 @@ async def auth_login(request: Request):
         return HTMLResponse('{"ok":false}', status_code=403)
 
     _login_attempts.pop(ip, None)
-    token = secrets.token_hex(32)
-    auth_tokens[token] = (allowed_rooms, time.time())
+    token = AUTH_TOKEN_ALL if allowed_rooms is None else AUTH_TOKEN_LIMITED
     resp = HTMLResponse(json.dumps({"ok": True, "allowed_rooms": allowed_rooms}))
     resp.set_cookie("auth_token", token, httponly=True, max_age=86400 * 3)
     return resp
