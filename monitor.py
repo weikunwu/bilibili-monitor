@@ -64,14 +64,12 @@ COOKIE_FILE = DATA_DIR / "cookies.json"
 GIFT_CONFIG_API = "https://api.live.bilibili.com/xlive/web-room/v1/giftPanel/giftConfig"
 SEND_GIFT_API = "https://api.live.bilibili.com/xlive/revenue/v1/gift/sendGift"
 
-# ── 指令系统 ──
-# 每个指令: { id, name, description, enabled, config }
-bot_commands = [
+# ── 指令系统（per-room） ──
+COMMAND_TEMPLATES = [
     {
         "id": "auto_gift",
         "name": "打个有效",
         "description": "主播发送\"打个有效\"时自动送小花花 x1 (10电池)",
-        "enabled": False,
         "config": {
             "trigger": "打个有效",
             "gift_id": 31036,  # 小花花
@@ -81,8 +79,21 @@ bot_commands = [
     },
 ]
 
-def get_command(cmd_id: str) -> Optional[dict]:
-    return next((c for c in bot_commands if c["id"] == cmd_id), None)
+# room_id -> [command dicts with enabled state]
+room_commands: dict[int, list[dict]] = {}
+
+
+def get_room_commands(room_id: int) -> list[dict]:
+    if room_id not in room_commands:
+        import copy
+        room_commands[room_id] = [
+            {**copy.deepcopy(t), "enabled": False} for t in COMMAND_TEMPLATES
+        ]
+    return room_commands[room_id]
+
+
+def get_command(room_id: int, cmd_id: str) -> Optional[dict]:
+    return next((c for c in get_room_commands(room_id) if c["id"] == cmd_id), None)
 
 # gift_id -> img_url cache, gift_id -> price cache, gift_id -> gif_url cache
 gift_img_cache: dict[int, str] = {}
@@ -769,7 +780,7 @@ class BiliLiveClient:
                                     if (event.get("event_type") == "danmaku"
                                             and event.get("user_id") == self.ruid):
                                         content = (event.get("content") or "").strip()
-                                        cmd = get_command("auto_gift")
+                                        cmd = get_command(self.real_room_id, "auto_gift")
                                         if cmd and cmd["enabled"] and content == cmd["config"]["trigger"]:
                                             asyncio.create_task(self.send_gift(cmd["config"]))
                         elif raw_msg.type in (
@@ -918,18 +929,18 @@ async def auth_logout():
 
 
 @app.get("/api/commands")
-async def list_commands():
-    return bot_commands
+async def list_commands(room_id: int = Query(...)):
+    return get_room_commands(room_id)
 
 
 @app.post("/api/commands/{cmd_id}/toggle")
-async def toggle_command(cmd_id: str):
-    cmd = get_command(cmd_id)
+async def toggle_command(cmd_id: str, room_id: int = Query(...)):
+    cmd = get_command(room_id, cmd_id)
     if not cmd:
         return HTMLResponse('{"error":"not found"}', status_code=404)
     cmd["enabled"] = not cmd["enabled"]
-    log.info(f"[指令] {cmd['name']} {'开启' if cmd['enabled'] else '关闭'}")
-    return {"id": cmd_id, "enabled": cmd["enabled"]}
+    log.info(f"[指令] 房间 {room_id} {cmd['name']} {'开启' if cmd['enabled'] else '关闭'}")
+    return {"id": cmd_id, "room_id": room_id, "enabled": cmd["enabled"]}
 
 
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")

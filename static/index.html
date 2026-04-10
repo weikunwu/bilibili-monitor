@@ -902,7 +902,8 @@ addEvent = function(ev) { origAdd(ev); setTimeout(checkGiftGifs, 100); };
 // ── 工具/指令 ──
 async function loadCommands() {
   try {
-    const res = await fetch('/api/commands');
+    if (!currentRoomId) return;
+    const res = await fetch(`/api/commands?room_id=${currentRoomId}`);
     const cmds = await res.json();
     const container = document.getElementById('commandsList');
     container.innerHTML = cmds.map(cmd => `
@@ -922,7 +923,7 @@ async function loadCommands() {
 
 async function toggleCommand(cmdId) {
   try {
-    await fetch(`/api/commands/${cmdId}/toggle`, {method: 'POST'});
+    await fetch(`/api/commands/${cmdId}/toggle?room_id=${currentRoomId}`, {method: 'POST'});
   } catch(e) {}
 }
 
