@@ -65,19 +65,32 @@ GIFT_CONFIG_API = "https://api.live.bilibili.com/xlive/web-room/v1/giftPanel/gif
 SEND_GIFT_API = "https://api.live.bilibili.com/gift/v2/Live/send"
 
 # ── 指令系统（per-room） ──
-COMMAND_TEMPLATES = [
+# 默认指令，首次 init_db 时写入 commands 表
+DEFAULT_COMMANDS = [
     {
         "id": "auto_gift",
         "name": "打个有效",
+        "type": "streamer_danmaku",
         "description": "主播发送\"打个有效\"时自动送小花花 x10 (10电池)",
         "config": {
             "trigger": "打个有效",
-            "gift_id": 31036,  # 小花花
-            "gift_price": 100,  # 100 金瓜子 = 1 电池/个
+            "gift_id": 31036,
+            "gift_price": 100,
             "gift_num": 10,
         },
     },
 ]
+
+
+def get_all_commands() -> list[dict]:
+    conn = sqlite3.connect(str(DB_PATH))
+    rows = conn.execute("SELECT id, name, type, description, config_json FROM commands").fetchall()
+    conn.close()
+    return [
+        {"id": r[0], "name": r[1], "type": r[2], "description": r[3], "config": json.loads(r[4])}
+        for r in rows
+    ]
+
 
 def get_room_settings(room_id: int) -> dict:
     try:
@@ -102,8 +115,7 @@ def save_room_settings(room_id: int, settings: dict):
 
 
 def get_room_commands(room_id: int) -> list[dict]:
-    import copy
-    cmds = [copy.deepcopy(t) for t in COMMAND_TEMPLATES]
+    cmds = get_all_commands()
     settings = get_room_settings(room_id)
     cmd_states = settings.get("commands", {})
     for c in cmds:
@@ -358,6 +370,23 @@ def init_db():
             settings_json TEXT NOT NULL DEFAULT '{}'
         )
     """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS commands (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            type TEXT NOT NULL DEFAULT 'streamer_danmaku',
+            description TEXT NOT NULL DEFAULT '',
+            config_json TEXT NOT NULL DEFAULT '{}'
+        )
+    """)
+    # Seed default commands if empty
+    existing = conn.execute("SELECT COUNT(*) FROM commands").fetchone()[0]
+    if existing == 0:
+        for cmd in DEFAULT_COMMANDS:
+            conn.execute(
+                "INSERT OR IGNORE INTO commands (id, name, type, description, config_json) VALUES (?,?,?,?,?)",
+                (cmd["id"], cmd["name"], cmd["type"], cmd["description"], json.dumps(cmd["config"], ensure_ascii=False)),
+            )
     conn.commit()
     conn.close()
 
