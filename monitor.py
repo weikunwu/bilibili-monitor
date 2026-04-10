@@ -1347,7 +1347,7 @@ async def websocket_endpoint(ws: WebSocket):
 qr_session: Optional[requests.Session] = None
 
 
-@app.get("/api/login/status")
+@app.get("/api/bot/status")
 async def login_status():
     first = next(iter(bili_clients.values()), None)
     logged_in = bool(first and first.cookies.get("SESSDATA"))
@@ -1355,7 +1355,7 @@ async def login_status():
     return {"logged_in": logged_in, "uid": uid}
 
 
-@app.post("/api/login/logout")
+@app.post("/api/bot/logout")
 async def bili_logout():
     """退出B站登录，清除 cookies 并重连"""
     if COOKIE_FILE.exists():
@@ -1367,7 +1367,7 @@ async def bili_logout():
     return {"ok": True}
 
 
-@app.get("/api/login/qrcode")
+@app.get("/api/bot/qrcode")
 async def login_qrcode():
     global qr_session
     qr_session = requests.Session()
@@ -1381,7 +1381,7 @@ async def login_qrcode():
     }
 
 
-@app.get("/api/login/poll")
+@app.get("/api/bot/poll")
 async def login_poll(qrcode_key: str):
     global qr_session, bili_clients
     if not qr_session:
