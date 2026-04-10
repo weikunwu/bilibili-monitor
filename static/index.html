@@ -127,6 +127,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
     <select id="roomSelect" onchange="switchRoom()"></select>
   </div>
   <button class="login-btn" id="loginBtn" onclick="openLogin()">扫码登录</button>
+  <button class="login-btn" id="logoutBtn" onclick="doLogout()" style="display:none;background:#555">登出</button>
   <span class="status">
     <span class="dot connecting" id="statusDot"></span>
     <span id="statusText">连接中</span>
@@ -524,6 +525,12 @@ async function checkLoginStatus() {
       loginBtn.classList.add('logged-in');
     }
   } catch(e) {}
+  document.getElementById('logoutBtn').style.display = '';
+}
+
+function doLogout() {
+  document.cookie = 'auth_token=; Max-Age=0; path=/';
+  location.reload();
 }
 
 async function openLogin() {
