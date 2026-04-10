@@ -62,7 +62,7 @@ ROOM_INFO_API = "https://api.live.bilibili.com/room/v1/Room/get_info"
 
 COOKIE_FILE = DATA_DIR / "cookies.json"
 GIFT_CONFIG_API = "https://api.live.bilibili.com/xlive/web-room/v1/giftPanel/giftConfig"
-SEND_GIFT_API = "https://api.live.bilibili.com/xlive/revenue/v1/gift/sendGift"
+SEND_GIFT_API = "https://api.live.bilibili.com/gift/v2/Live/send"
 
 # ── 指令系统（per-room） ──
 COMMAND_TEMPLATES = [
