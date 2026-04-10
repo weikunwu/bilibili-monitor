@@ -10,7 +10,7 @@ import sqlite3
 import struct
 import time
 import zlib
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -360,7 +360,7 @@ def handle_message(msg: dict) -> Optional[dict]:
     cmd = msg.get("cmd", "")
     # Some cmds have version suffixes like DANMU_MSG:4:0:2:2:2:0
     base_cmd = cmd.split(":")[0]
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
     if base_cmd == "DANMU_MSG":
         info = msg.get("info", [])
@@ -932,25 +932,41 @@ async def get_stats(room_id: Optional[int] = Query(None)):
     }
 
 
+def _today_utc_range(tz_offset: Optional[int] = None) -> tuple[str, str]:
+    """根据用户时区偏移(分钟)，返回用户"今天"对应的 UTC 时间范围"""
+    if tz_offset is not None:
+        user_tz = timezone(timedelta(minutes=-tz_offset))  # JS getTimezoneOffset: UTC-8 = 480
+    else:
+        user_tz = timezone.utc
+    user_now = datetime.now(user_tz)
+    user_today_start = user_now.replace(hour=0, minute=0, second=0, microsecond=0)
+    user_today_end = user_today_start + timedelta(days=1)
+    utc_start = user_today_start.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    utc_end = user_today_end.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    return utc_start, utc_end
+
+
 @app.get("/api/gift-summary")
 async def gift_summary(
     date: Optional[str] = Query(None),
     user_name: Optional[str] = Query(None),
+    tz_offset: Optional[int] = Query(None),
 ):
     """汇总指定日期的礼物，按用户分组。可按 user_name 筛选单用户"""
-    if not date:
-        date = datetime.now().strftime("%Y-%m-%d")
     conn = sqlite3.connect(str(DB_PATH))
-    if user_name:
-        rows = conn.execute(
-            "SELECT user_name, user_id, extra_json FROM events WHERE event_type='gift' AND timestamp LIKE ? AND user_name=?",
-            (date + "%", user_name),
-        ).fetchall()
+    if date:
+        # 指定日期：直接 LIKE 匹配（兼容旧逻辑）
+        where = "event_type='gift' AND timestamp LIKE ?"
+        params = [date + "%"]
     else:
-        rows = conn.execute(
-            "SELECT user_name, user_id, extra_json FROM events WHERE event_type='gift' AND timestamp LIKE ?",
-            (date + "%",),
-        ).fetchall()
+        # 今日：按用户时区计算 UTC 范围
+        utc_start, utc_end = _today_utc_range(tz_offset)
+        where = "event_type='gift' AND timestamp >= ? AND timestamp < ?"
+        params = [utc_start, utc_end]
+    if user_name:
+        where += " AND user_name=?"
+        params.append(user_name)
+    rows = conn.execute(f"SELECT user_name, user_id, extra_json FROM events WHERE {where}", params).fetchall()
     conn.close()
 
     users = {}
@@ -1012,7 +1028,8 @@ async def gift_summary(
                         break
 
     result = sorted(users.values(), key=lambda x: x["total_coin"], reverse=True)
-    return {"date": date, "users": result}
+    display_date = date if date else datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    return {"date": display_date, "users": result}
 
 
 @app.get("/api/gift-gif")
@@ -1026,16 +1043,17 @@ async def get_gift_gif(gift_id: int = Query(...)):
 async def gift_gif_card(
     user_name: str = Query(...),
     gift_name: str = Query(...),
+    tz_offset: Optional[int] = Query(None),
 ):
     """生成带动态礼物的 GIF 卡片"""
     from PIL import Image as PILImage, ImageDraw, ImageFont, ImageSequence
 
     # 1. 获取用户礼物数据 (直接调用内部逻辑而非endpoint)
-    date = datetime.now().strftime("%Y-%m-%d")
+    utc_start, utc_end = _today_utc_range(tz_offset)
     conn = sqlite3.connect(str(DB_PATH))
     rows = conn.execute(
-        "SELECT user_name, user_id, extra_json FROM events WHERE event_type='gift' AND timestamp LIKE ? AND user_name=?",
-        (date + "%", user_name),
+        "SELECT user_name, user_id, extra_json FROM events WHERE event_type='gift' AND timestamp >= ? AND timestamp < ? AND user_name=?",
+        (utc_start, utc_end, user_name),
     ).fetchall()
     conn.close()
     users = {}

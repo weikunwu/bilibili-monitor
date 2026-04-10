@@ -222,8 +222,9 @@ const badgeNames = { danmaku: '弹幕', gift: '礼物', superchat: 'SC', guard: 
 
 function formatTime(ts) {
   if (!ts) return '';
-  const parts = ts.split(' ');
-  return parts.length > 1 ? parts[1] : ts;
+  // ts is UTC from server, convert to local
+  const d = new Date(ts + 'Z');
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
 function formatCoin(coin, coinType) {
@@ -411,8 +412,8 @@ let isLiveMode = true;
 async function loadHistory(timeFrom, timeTo) {
   try {
     let url = '/api/events?limit=2000' + roomParam();
-    if (timeFrom) url += `&time_from=${encodeURIComponent(timeFrom)}`;
-    if (timeTo) url += `&time_to=${encodeURIComponent(timeTo)}`;
+    if (timeFrom) url += `&time_from=${encodeURIComponent(localToUTC(timeFrom))}`;
+    if (timeTo) url += `&time_to=${encodeURIComponent(localToUTC(timeTo))}`;
     const res = await fetch(url);
     const data = await res.json();
     events = data.reverse().map(e => {
@@ -434,6 +435,8 @@ const fpTo = flatpickr('#timeTo', { ...fpOpts, defaultHour: 23, defaultMinute: 5
 
 function pad(n) { return String(n).padStart(2, '0'); }
 function fmtDate(d) { return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
+function fmtUTC(d) { return `${d.getUTCFullYear()}-${pad(d.getUTCMonth()+1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`; }
+function localToUTC(s) { return fmtUTC(new Date(s)); }
 
 function setPreset(range) {
   document.querySelectorAll('.time-range .preset').forEach(b => b.classList.remove('active'));
@@ -612,7 +615,8 @@ function formatGold(coin) {
 async function generateUserGiftImage(userName) {
   // 确保 Baloo 2 字体已加载
   try { await document.fonts.load('italic 800 30px "Baloo 2"'); } catch(e) {}
-  const res = await fetch(`/api/gift-summary?user_name=${encodeURIComponent(userName)}`);
+  const tz = new Date().getTimezoneOffset();
+  const res = await fetch(`/api/gift-summary?user_name=${encodeURIComponent(userName)}&tz_offset=${tz}`);
   const data = await res.json();
   const u = (data.users || [])[0];
   if (!u) { alert('该用户今日暂无礼物记录'); return; }
@@ -833,7 +837,8 @@ async function showGiftGif(giftId, userName, giftName) {
   document.getElementById('imgTitle').textContent = '生成中...';
   document.getElementById('imgModal').classList.add('show');
 
-  const url = `/api/gift-gif-card?user_name=${encodeURIComponent(userName)}&gift_name=${encodeURIComponent(giftName)}`;
+  const tz = new Date().getTimezoneOffset();
+  const url = `/api/gift-gif-card?user_name=${encodeURIComponent(userName)}&gift_name=${encodeURIComponent(giftName)}&tz_offset=${tz}`;
   try {
     const res = await fetch(url);
     if (!res.ok || res.headers.get('content-type')?.includes('json')) {
