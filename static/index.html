@@ -853,11 +853,12 @@ addEvent = function(ev) { origAdd(ev); setTimeout(checkGiftGifs, 100); };
 
 // Init
 checkLoginStatus();
-setPreset('live');
-fetchRooms();
-fetchStats();
-connectWS();
-statsInterval = setInterval(fetchStats, 10000);
+fetchRooms().then(() => {
+  setPreset('live');
+  fetchStats();
+  connectWS();
+  statsInterval = setInterval(fetchStats, 10000);
+});
 </script>
 </body>
 </html>
