@@ -537,7 +537,14 @@ async function doLogout() {
 }
 
 async function openLogin() {
-  if (loginBtn.classList.contains('logged-in')) return;
+  // 已登录时点击退出B站登录
+  if (loginBtn.classList.contains('logged-in')) {
+    if (!confirm('确定退出B站登录？退出后将无法显示完整用户名')) return;
+    await fetch('/api/login/logout', {method: 'POST'});
+    loginBtn.textContent = '扫码登录';
+    loginBtn.classList.remove('logged-in');
+    return;
+  }
   loginModal.classList.add('show');
   qrStatus.textContent = '加载中...';
   qrStatus.className = 'qr-status';

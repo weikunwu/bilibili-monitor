@@ -1355,6 +1355,18 @@ async def login_status():
     return {"logged_in": logged_in, "uid": uid}
 
 
+@app.post("/api/login/logout")
+async def bili_logout():
+    """退出B站登录，清除 cookies 并重连"""
+    if COOKIE_FILE.exists():
+        COOKIE_FILE.unlink()
+    for client in bili_clients.values():
+        client.cookies = {}
+        client.uid = 0
+        client.request_reconnect()
+    return {"ok": True}
+
+
 @app.get("/api/login/qrcode")
 async def login_qrcode():
     global qr_session
