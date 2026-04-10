@@ -1,0 +1,19 @@
+app = 'bilibili-monitor'
+primary_region = 'nrt'  # Tokyo, closest to China
+
+[build]
+
+[env]
+  ROOMS = '1920456329,32365569'
+  DATA_DIR = '/app/data'
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = 'off'
+  auto_start_machines = true
+  min_machines_running = 1
+
+[mounts]
+  source = 'data'
+  destination = '/app/data'

@@ -21,8 +21,11 @@ from urllib.parse import urlencode
 import aiohttp
 import qrcode
 import requests
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
-from fastapi.responses import FileResponse, StreamingResponse
+import os
+import secrets
+
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, Request, HTTPException, Depends
+from fastapi.responses import FileResponse, StreamingResponse, RedirectResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 import uvicorn
 
@@ -33,7 +36,9 @@ logging.basicConfig(
 log = logging.getLogger("bilibili-monitor")
 
 BASE_DIR = Path(__file__).parent
-DB_PATH = BASE_DIR / "gifts.db"
+DATA_DIR = Path(os.environ.get("DATA_DIR", str(BASE_DIR)))
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+DB_PATH = DATA_DIR / "gifts.db"
 
 # ── Protocol constants ──────────────────────────────────────────────
 
@@ -53,7 +58,7 @@ DANMU_CONF_API = "https://api.live.bilibili.com/room/v1/Danmu/getConf"
 DANMU_INFO_API = "https://api.live.bilibili.com/xlive/web-room/v1/index/getDanmuInfo"
 ROOM_INFO_API = "https://api.live.bilibili.com/room/v1/Room/get_info"
 
-COOKIE_FILE = BASE_DIR / "cookies.json"
+COOKIE_FILE = DATA_DIR / "cookies.json"
 GIFT_CONFIG_API = "https://api.live.bilibili.com/xlive/web-room/v1/giftPanel/giftConfig"
 
 # gift_id -> img_url cache, gift_id -> price cache, gift_id -> gif_url cache
@@ -722,6 +727,60 @@ class BiliLiveClient:
 # ── FastAPI web server ──────────────────────────────────────────────
 
 app = FastAPI(title="B站直播监控")
+
+# ── 简单密码认证 ──
+AUTH_PASSWORD = os.environ.get("AUTH_PASSWORD", "")
+AUTH_TOKEN = secrets.token_hex(32)  # 每次启动生成新 token
+
+LOGIN_HTML = """<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>登录 - B站直播监控</title>
+<style>body{background:#0f0f1a;color:#e0e0e0;font-family:-apple-system,sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0}
+.box{background:#1a1a2e;padding:40px;border-radius:16px;border:1px solid #2a2a4a;text-align:center;min-width:300px}
+h2{color:#fb7299;margin-bottom:20px}input{background:#0f0f1a;border:1px solid #2a2a4a;color:#ccc;padding:10px 16px;border-radius:8px;font-size:16px;width:100%;margin-bottom:16px;box-sizing:border-box}
+input:focus{border-color:#fb7299;outline:none}button{background:#fb7299;color:#fff;border:none;padding:10px 24px;border-radius:8px;font-size:16px;cursor:pointer;width:100%}
+button:hover{background:#e0607e}.err{color:#ef5350;font-size:13px;margin-bottom:12px}</style></head>
+<body><div class="box"><h2>B站直播监控</h2><div class="err" id="err"></div>
+<form onsubmit="return doLogin()"><input type="password" id="pw" placeholder="请输入密码" autofocus>
+<button type="submit">登录</button></form></div>
+<script>function doLogin(){const pw=document.getElementById('pw').value;
+fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})})
+.then(r=>r.json()).then(d=>{if(d.ok){location.reload()}else{document.getElementById('err').textContent='密码错误'}});return false}</script></body></html>"""
+
+
+from starlette.middleware.base import BaseHTTPMiddleware
+
+class AuthMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        # 不需要密码时跳过
+        if not AUTH_PASSWORD:
+            return await call_next(request)
+        # 放行登录相关路径
+        path = request.url.path
+        if path == "/api/auth" or path.startswith("/static/"):
+            return await call_next(request)
+        # 检查 cookie
+        token = request.cookies.get("auth_token")
+        if token == AUTH_TOKEN:
+            return await call_next(request)
+        # 未认证：页面请求返回登录页，API 返回 401
+        if path.startswith("/api/") or path == "/ws":
+            return HTMLResponse('{"error":"unauthorized"}', status_code=401)
+        return HTMLResponse(LOGIN_HTML)
+
+app.add_middleware(AuthMiddleware)
+
+
+@app.post("/api/auth")
+async def auth_login(request: Request):
+    body = await request.json()
+    if body.get("password") == AUTH_PASSWORD:
+        resp = HTMLResponse('{"ok":true}')
+        resp.set_cookie("auth_token", AUTH_TOKEN, httponly=True, max_age=86400 * 30)
+        return resp
+    return HTMLResponse('{"ok":false}', status_code=403)
+
+
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 ws_clients: set[WebSocket] = set()
 bili_client: Optional[BiliLiveClient] = None
