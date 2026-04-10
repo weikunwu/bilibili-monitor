@@ -278,10 +278,11 @@ function createEventEl(ev) {
   if (ev.event_type === 'gift' && ev.user_name) {
     const safeUser = escapeHtml(ev.user_name).replace(/'/g, "\\'");
     const giftId = extra.gift_id || 0;
-    let btns = `<span class="gen-img-btn" onclick="generateUserGiftImage('${safeUser}')">今日礼物</span>`;
+    let btns = '';
     if (giftId) {
       btns += `<span class="gen-img-btn gen-gif-btn" data-gift-id="${giftId}" onclick="showGiftGif(${giftId},'${safeUser}','${escapeHtml(ev.content.split(' x')[0]).replace(/'/g, "\\'")}')" style="display:none">动态图片</span>`;
     }
+    btns += `<span class="gen-img-btn" onclick="generateUserGiftImage('${safeUser}')">今日礼物</span>`;
     giftBtn = `<div class="gift-btns">${btns}</div>`;
   }
 
