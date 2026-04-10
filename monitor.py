@@ -60,7 +60,7 @@ DANMU_CONF_API = "https://api.live.bilibili.com/room/v1/Danmu/getConf"
 DANMU_INFO_API = "https://api.live.bilibili.com/xlive/web-room/v1/index/getDanmuInfo"
 ROOM_INFO_API = "https://api.live.bilibili.com/room/v1/Room/get_info"
 
-COOKIE_FILE = DATA_DIR / "cookies.json"
+COOKIE_FILE = DATA_DIR / "cookies.json"  # legacy fallback
 GIFT_CONFIG_API = "https://api.live.bilibili.com/xlive/web-room/v1/giftPanel/giftConfig"
 SEND_GIFT_API = "https://api.live.bilibili.com/gift/v2/Live/send"
 
@@ -195,34 +195,43 @@ def _get_fernet() -> Fernet:
     return Fernet(key)
 
 
-def save_cookies(cookies: dict):
-    data = json.dumps(cookies, ensure_ascii=False).encode()
-    encrypted = _get_fernet().encrypt(data)
-    with open(COOKIE_FILE, "wb") as f:
-        f.write(encrypted)
-    log.info("Cookie 已加密保存到 cookies.json")
+def save_cookies(cookies: dict, room_id: int = 0):
+    """加密保存 cookies 到 rooms 表"""
+    encrypted = _get_fernet().encrypt(json.dumps(cookies, ensure_ascii=False).encode()).decode()
+    conn = sqlite3.connect(str(DB_PATH))
+    # 确保 rooms 行存在
+    conn.execute("INSERT OR IGNORE INTO rooms (room_id, settings_json) VALUES (?, '{}')", (room_id,))
+    conn.execute("UPDATE rooms SET bot_cookie=? WHERE room_id=?", (encrypted, room_id))
+    conn.commit()
+    conn.close()
+    log.info(f"Cookie 已加密保存到数据库 (房间 {room_id})")
 
 
-def load_cookies() -> dict:
-    if COOKIE_FILE.exists():
+def load_cookies(room_id: int = 0) -> dict:
+    """从 rooms 表加载加密的 cookies"""
+    try:
+        conn = sqlite3.connect(str(DB_PATH))
+        row = conn.execute("SELECT bot_cookie FROM rooms WHERE room_id=?", (room_id,)).fetchone()
+        conn.close()
+        if row and row[0]:
+            cookies = json.loads(_get_fernet().decrypt(row[0].encode()))
+            if cookies.get("SESSDATA"):
+                log.info(f"从数据库加载登录信息 (房间 {room_id}, UID: {cookies.get('DedeUserID', '?')})")
+                return cookies
+    except Exception:
+        log.warning(f"无法读取 cookies (房间 {room_id})")
+    # 兼容：首次迁移，从旧的 cookies.json 文件加载
+    if room_id and COOKIE_FILE.exists():
         try:
             with open(COOKIE_FILE, "rb") as f:
                 encrypted = f.read()
             cookies = json.loads(_get_fernet().decrypt(encrypted))
             if cookies.get("SESSDATA"):
-                log.info(f"从 cookies.json 加载登录信息 (UID: {cookies.get('DedeUserID', '?')})")
+                log.info(f"从 cookies.json 迁移到数据库 (房间 {room_id})")
+                save_cookies(cookies, room_id)
                 return cookies
         except Exception:
-            # 兼容旧的明文格式，读取后重新加密保存
-            try:
-                with open(COOKIE_FILE, "r") as f:
-                    cookies = json.load(f)
-                if cookies.get("SESSDATA"):
-                    log.info("迁移明文 cookies.json 为加密格式")
-                    save_cookies(cookies)
-                    return cookies
-            except Exception:
-                log.warning("无法读取 cookies.json，将重新登录")
+            pass
     return {}
 
 
@@ -367,9 +376,15 @@ def init_db():
     conn.execute("""
         CREATE TABLE IF NOT EXISTS rooms (
             room_id INTEGER PRIMARY KEY,
-            settings_json TEXT NOT NULL DEFAULT '{}'
+            settings_json TEXT NOT NULL DEFAULT '{}',
+            bot_cookie TEXT DEFAULT NULL
         )
     """)
+    # Add bot_cookie column if upgrading
+    try:
+        conn.execute("ALTER TABLE rooms ADD COLUMN bot_cookie TEXT DEFAULT NULL")
+    except Exception:
+        pass
     conn.execute("""
         CREATE TABLE IF NOT EXISTS commands (
             id TEXT PRIMARY KEY,
@@ -1481,19 +1496,23 @@ qr_session: Optional[requests.Session] = None
 
 
 @app.get("/api/bot/status")
-async def login_status():
-    first = next(iter(bili_clients.values()), None)
-    logged_in = bool(first and first.cookies.get("SESSDATA"))
-    uid = first.uid if first else 0
-    return {"logged_in": logged_in, "uid": uid}
+async def login_status(room_id: int = Query(...)):
+    client = bili_clients.get(room_id)
+    if not client:
+        return {"logged_in": False, "uid": 0}
+    logged_in = bool(client.cookies.get("SESSDATA"))
+    return {"logged_in": logged_in, "uid": client.uid}
 
 
 @app.post("/api/bot/logout")
-async def bili_logout():
-    """退出B站登录，清除 cookies 并重连"""
-    if COOKIE_FILE.exists():
-        COOKIE_FILE.unlink()
-    for client in bili_clients.values():
+async def bili_logout(room_id: int = Query(...)):
+    """退出指定房间的B站登录"""
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.execute("UPDATE rooms SET bot_cookie=NULL WHERE room_id=?", (room_id,))
+    conn.commit()
+    conn.close()
+    client = bili_clients.get(room_id)
+    if client:
         client.cookies = {}
         client.uid = 0
         client.request_reconnect()
@@ -1501,9 +1520,10 @@ async def bili_logout():
 
 
 @app.get("/api/bot/qrcode")
-async def login_qrcode():
+async def login_qrcode(room_id: int = Query(...)):
     global qr_session
     qr_session = requests.Session()
+    qr_session._target_room_id = room_id  # 记录目标房间
     resp = qr_session.get(QR_GENERATE_API, headers=HEADERS)
     data = resp.json()
     if data.get("code") != 0:
@@ -1516,9 +1536,10 @@ async def login_qrcode():
 
 @app.get("/api/bot/poll")
 async def login_poll(qrcode_key: str):
-    global qr_session, bili_clients
+    global qr_session
     if not qr_session:
         return {"code": -1, "message": "请先获取二维码"}
+    target_room_id = getattr(qr_session, "_target_room_id", 0)
     resp = qr_session.get(QR_POLL_API, params={"qrcode_key": qrcode_key}, headers=HEADERS)
     poll_data = resp.json().get("data", {})
     code = poll_data.get("code", -1)
@@ -1532,15 +1553,16 @@ async def login_poll(qrcode_key: str):
         url_str = poll_data.get("url", "")
         if "refresh_token=" in url_str:
             cookies["refresh_token"] = url_str.split("refresh_token=")[-1].split("&")[0]
-        save_cookies(cookies)
-        # Update all running clients with new cookies and reconnect
+        save_cookies(cookies, target_room_id)
+        # Update target room client
         uid = int(cookies.get("DedeUserID", 0))
-        for client in bili_clients.values():
+        client = bili_clients.get(target_room_id)
+        if client:
             client.cookies = cookies
             client.uid = uid
             client.request_reconnect()
-        log.info(f"网页扫码登录成功 (UID: {uid})，所有房间重连中...")
-        return {"code": 0, "message": "登录成功", "uid": uid}
+        log.info(f"房间 {target_room_id} 扫码绑定成功 (UID: {uid})")
+        return {"code": 0, "message": "绑定成功", "uid": uid}
     elif code == 86101:
         return {"code": 86101, "message": "等待扫码"}
     elif code == 86090:
@@ -1554,7 +1576,7 @@ async def login_poll(qrcode_key: str):
 # ── Main ────────────────────────────────────────────────────────────
 
 
-async def main(room_ids: list[int], port: int, cookies: dict = None):
+async def main(room_ids: list[int], port: int):
     global bili_clients
     init_db()
     # 清理超过3个月的事件数据
@@ -1572,6 +1594,7 @@ async def main(room_ids: list[int], port: int, cookies: dict = None):
         await load_guard_list(rid, HEADERS)
 
     for rid in room_ids:
+        cookies = load_cookies(rid)
         client = BiliLiveClient(rid, on_event=broadcast_event, cookies=cookies)
         bili_clients[rid] = client
 
@@ -1593,5 +1616,4 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     room_ids = [int(r.strip()) for r in args.rooms.split(",") if r.strip()]
-    cookies = load_cookies()
-    asyncio.run(main(room_ids, args.port, cookies))
+    asyncio.run(main(room_ids, args.port))

@@ -438,6 +438,7 @@ function switchRoom() {
   renderEvents();
   setPreset('live');
   fetchStats();
+  checkLoginStatus();
   if (activeTab === 'tools') loadCommands();
 }
 
@@ -558,7 +559,8 @@ let currentQrKey = null;
 
 async function checkLoginStatus() {
   try {
-    const res = await fetch('/api/bot/status');
+    if (!currentRoomId) return;
+    const res = await fetch(`/api/bot/status?room_id=${currentRoomId}`);
     const d = await res.json();
     if (d.logged_in) {
       loginBtn.textContent = `机器人已绑定 (${d.uid})`;
@@ -577,7 +579,7 @@ async function openLogin() {
   // 已绑定时点击解绑
   if (loginBtn.classList.contains('logged-in')) {
     if (!confirm('确定解绑机器人？解绑后将无法显示完整用户名和自动送礼')) return;
-    await fetch('/api/bot/logout', {method: 'POST'});
+    await fetch(`/api/bot/logout?room_id=${currentRoomId}`, {method: 'POST'});
     loginBtn.textContent = '绑定机器人';
     loginBtn.classList.remove('logged-in');
     return;
@@ -588,7 +590,7 @@ async function openLogin() {
   qrImage.src = '';
 
   try {
-    const res = await fetch('/api/bot/qrcode');
+    const res = await fetch(`/api/bot/qrcode?room_id=${currentRoomId}`);
     const d = await res.json();
     if (d.error) { qrStatus.textContent = d.error; qrStatus.className = 'qr-status error'; return; }
 
