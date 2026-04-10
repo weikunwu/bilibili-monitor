@@ -62,6 +62,13 @@ ROOM_INFO_API = "https://api.live.bilibili.com/room/v1/Room/get_info"
 
 COOKIE_FILE = DATA_DIR / "cookies.json"
 GIFT_CONFIG_API = "https://api.live.bilibili.com/xlive/web-room/v1/giftPanel/giftConfig"
+SEND_GIFT_API = "https://api.live.bilibili.com/xlive/revenue/v1/gift/sendGift"
+
+# 自动送礼配置
+AUTO_GIFT_TRIGGER = "打个有效"  # 主播弹幕触发词
+AUTO_GIFT_ID = 31036  # 小花花
+AUTO_GIFT_PRICE = 100  # 100 金瓜子 = 10 电池
+AUTO_GIFT_NUM = 1
 
 # gift_id -> img_url cache, gift_id -> price cache, gift_id -> gif_url cache
 gift_img_cache: dict[int, str] = {}
@@ -580,6 +587,7 @@ class BiliLiveClient:
         self.on_event = on_event
         self.cookies = cookies or {}
         self.uid = int(self.cookies.get("DedeUserID", 0))
+        self.ruid = 0  # 主播 uid
         self.popularity = 0
         self.buvid = ""
         self._running = False
@@ -618,8 +626,9 @@ class BiliLiveClient:
                 if data.get("code") == 0:
                     info = data["data"]
                     self.real_room_id = info.get("room_id", self.room_id)
+                    self.ruid = info.get("uid", 0)
                     log.info(
-                        f"房间信息: {info.get('title', '')} (真实ID: {self.real_room_id})"
+                        f"房间信息: {info.get('title', '')} (真实ID: {self.real_room_id}, 主播UID: {self.ruid})"
                     )
                     return info
         return {}
@@ -742,6 +751,11 @@ class BiliLiveClient:
                                     event["room_id"] = self.real_room_id
                                     save_event(event)
                                     await self.on_event(event)
+                                    # 自动送礼：主播弹幕包含触发词
+                                    if (event.get("event_type") == "danmaku"
+                                            and event.get("user_id") == self.ruid
+                                            and AUTO_GIFT_TRIGGER in (event.get("content") or "")):
+                                        asyncio.create_task(self.send_gift())
                         elif raw_msg.type in (
                             aiohttp.WSMsgType.CLOSED,
                             aiohttp.WSMsgType.ERROR,
@@ -749,6 +763,37 @@ class BiliLiveClient:
                             break
                 finally:
                     hb_task.cancel()
+
+    async def send_gift(self):
+        """自动送礼：小花花 x1 (10电池)"""
+        if not self.cookies.get("SESSDATA") or not self.ruid:
+            log.warning("未登录或无主播信息，无法自动送礼")
+            return
+        csrf = self.cookies.get("bili_jct", "")
+        payload = {
+            "uid": self.uid,
+            "gift_id": AUTO_GIFT_ID,
+            "ruid": self.ruid,
+            "gift_num": AUTO_GIFT_NUM,
+            "coin_type": "gold",
+            "platform": "pc",
+            "biz_code": "Live",
+            "biz_id": self.real_room_id,
+            "rnd": int(time.time()),
+            "price": AUTO_GIFT_PRICE,
+            "csrf_token": csrf,
+            "csrf": csrf,
+        }
+        try:
+            async with aiohttp.ClientSession(headers=self._make_cookie_header()) as session:
+                async with session.post(SEND_GIFT_API, data=payload) as resp:
+                    data = await resp.json(content_type=None)
+                    if data.get("code") == 0:
+                        log.info(f"[自动送礼] 房间 {self.room_id} 送出小花花 x{AUTO_GIFT_NUM}")
+                    else:
+                        log.warning(f"[自动送礼] 失败: {data}")
+        except Exception as e:
+            log.warning(f"[自动送礼] 异常: {e}")
 
     def stop(self):
         self._running = False
