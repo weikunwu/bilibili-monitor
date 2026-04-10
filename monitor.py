@@ -1539,6 +1539,14 @@ async def login_poll(qrcode_key: str):
 async def main(room_ids: list[int], port: int, cookies: dict = None):
     global bili_clients
     init_db()
+    # 清理超过3个月的事件数据
+    conn = sqlite3.connect(str(DB_PATH))
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=90)).strftime("%Y-%m-%d %H:%M:%S")
+    deleted = conn.execute("DELETE FROM events WHERE timestamp < ?", (cutoff,)).rowcount
+    conn.commit()
+    conn.close()
+    if deleted:
+        log.info(f"清理过期事件: 删除 {deleted} 条 (早于 {cutoff})")
 
     # Load gift image config & guard lists
     await load_gift_config(HEADERS)
