@@ -83,33 +83,45 @@ COMMAND_TEMPLATES = [
 room_commands: dict[int, list[dict]] = {}
 
 
+def get_room_settings(room_id: int) -> dict:
+    try:
+        conn = sqlite3.connect(str(DB_PATH))
+        row = conn.execute("SELECT settings_json FROM rooms WHERE room_id=?", (room_id,)).fetchone()
+        conn.close()
+        if row:
+            return json.loads(row[0])
+    except Exception:
+        pass
+    return {}
+
+
+def save_room_settings(room_id: int, settings: dict):
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.execute(
+        "INSERT OR REPLACE INTO rooms (room_id, settings_json) VALUES (?,?)",
+        (room_id, json.dumps(settings, ensure_ascii=False)),
+    )
+    conn.commit()
+    conn.close()
+
+
 def get_room_commands(room_id: int) -> list[dict]:
     if room_id not in room_commands:
         import copy
         cmds = [copy.deepcopy(t) for t in COMMAND_TEMPLATES]
-        # Load enabled states from DB
-        try:
-            conn = sqlite3.connect(str(DB_PATH))
-            rows = conn.execute("SELECT cmd_id, enabled FROM command_states WHERE room_id=?", (room_id,)).fetchall()
-            conn.close()
-            states = {r[0]: bool(r[1]) for r in rows}
-            for c in cmds:
-                c["enabled"] = states.get(c["id"], False)
-        except Exception:
-            for c in cmds:
-                c["enabled"] = False
+        settings = get_room_settings(room_id)
+        cmd_states = settings.get("commands", {})
+        for c in cmds:
+            c["enabled"] = cmd_states.get(c["id"], False)
         room_commands[room_id] = cmds
     return room_commands[room_id]
 
 
 def save_command_state(room_id: int, cmd_id: str, enabled: bool):
-    conn = sqlite3.connect(str(DB_PATH))
-    conn.execute(
-        "INSERT OR REPLACE INTO command_states (room_id, cmd_id, enabled) VALUES (?,?,?)",
-        (room_id, cmd_id, int(enabled)),
-    )
-    conn.commit()
-    conn.close()
+    settings = get_room_settings(room_id)
+    commands = settings.setdefault("commands", {})
+    commands[cmd_id] = enabled
+    save_room_settings(room_id, settings)
 
 
 def get_command(room_id: int, cmd_id: str) -> Optional[dict]:
@@ -347,11 +359,9 @@ def init_db():
     conn.execute("CREATE INDEX IF NOT EXISTS idx_events_ts ON events(timestamp DESC)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_events_room ON events(room_id)")
     conn.execute("""
-        CREATE TABLE IF NOT EXISTS command_states (
-            room_id INTEGER NOT NULL,
-            cmd_id TEXT NOT NULL,
-            enabled INTEGER NOT NULL DEFAULT 0,
-            PRIMARY KEY (room_id, cmd_id)
+        CREATE TABLE IF NOT EXISTS rooms (
+            room_id INTEGER PRIMARY KEY,
+            settings_json TEXT NOT NULL DEFAULT '{}'
         )
     """)
     conn.commit()
