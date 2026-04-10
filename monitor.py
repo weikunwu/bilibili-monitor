@@ -69,12 +69,12 @@ COMMAND_TEMPLATES = [
     {
         "id": "auto_gift",
         "name": "打个有效",
-        "description": "主播发送\"打个有效\"时自动送小花花 x1 (10电池)",
+        "description": "主播发送\"打个有效\"时自动送小花花 x10 (10电池)",
         "config": {
             "trigger": "打个有效",
             "gift_id": 31036,  # 小花花
-            "gift_price": 100,  # 100 金瓜子 = 10 电池
-            "gift_num": 1,
+            "gift_price": 100,  # 100 金瓜子 = 1 电池/个
+            "gift_num": 10,
         },
     },
 ]
