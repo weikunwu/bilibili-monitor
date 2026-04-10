@@ -431,6 +431,7 @@ function switchRoom() {
   renderEvents();
   setPreset('live');
   fetchStats();
+  if (activeTab === 'tools') loadCommands();
 }
 
 function roomParam() { return currentRoomId ? `&room_id=${currentRoomId}` : ''; }
