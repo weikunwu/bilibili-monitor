@@ -117,6 +117,16 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 .modal .qr-status.success { color: #00c853; }
 .modal .close-btn { background: none; border: 1px solid #444; color: #888; padding: 6px 20px; border-radius: 6px; cursor: pointer; margin-top: 12px; font-size: 13px; }
 .modal .close-btn:hover { border-color: #888; color: #ccc; }
+.cmd-item { display: flex; align-items: center; gap: 16px; padding: 12px 16px; background: #1a1a2e; border: 1px solid #2a2a4a; border-radius: 10px; margin-bottom: 8px; }
+.cmd-item .cmd-info { flex: 1; }
+.cmd-item .cmd-name { font-size: 15px; font-weight: 600; color: #e0e0e0; }
+.cmd-item .cmd-desc { font-size: 12px; color: #888; margin-top: 2px; }
+.cmd-toggle { position: relative; width: 44px; height: 24px; flex-shrink: 0; }
+.cmd-toggle input { opacity: 0; width: 0; height: 0; }
+.cmd-toggle .slider { position: absolute; inset: 0; background: #444; border-radius: 12px; cursor: pointer; transition: 0.2s; }
+.cmd-toggle .slider::before { content: ''; position: absolute; width: 18px; height: 18px; left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: 0.2s; }
+.cmd-toggle input:checked + .slider { background: #fb7299; }
+.cmd-toggle input:checked + .slider::before { transform: translateX(20px); }
 </style>
 </head>
 <body>
@@ -177,6 +187,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
   <div class="tab" data-type="superchat">醒目留言</div>
   <div class="tab" data-type="guard">上舰</div>
   <div class="tab" data-type="enter">进场</div>
+  <div class="tab" data-type="tools" onclick="showTools()">工具</div>
+</div>
+
+<div id="toolsPanel" style="display:none;padding:16px 24px;">
+  <div id="commandsList"></div>
 </div>
 
 <div class="controls">
@@ -355,7 +370,19 @@ document.querySelectorAll('.tab').forEach(tab => {
     document.querySelector('.tab.active').classList.remove('active');
     tab.classList.add('active');
     activeTab = tab.dataset.type;
-    renderEvents();
+    const toolsPanel = document.getElementById('toolsPanel');
+    const controls = document.querySelector('.controls');
+    if (activeTab === 'tools') {
+      eventsContainer.style.display = 'none';
+      controls.style.display = 'none';
+      toolsPanel.style.display = '';
+      loadCommands();
+    } else {
+      eventsContainer.style.display = '';
+      controls.style.display = '';
+      toolsPanel.style.display = 'none';
+      renderEvents();
+    }
   });
 });
 
@@ -871,6 +898,35 @@ const origRender = renderEvents;
 renderEvents = function() { origRender(); setTimeout(checkGiftGifs, 100); };
 const origAdd = addEvent;
 addEvent = function(ev) { origAdd(ev); setTimeout(checkGiftGifs, 100); };
+
+// ── 工具/指令 ──
+async function loadCommands() {
+  try {
+    const res = await fetch('/api/commands');
+    const cmds = await res.json();
+    const container = document.getElementById('commandsList');
+    container.innerHTML = cmds.map(cmd => `
+      <div class="cmd-item">
+        <div class="cmd-info">
+          <div class="cmd-name">${cmd.name}</div>
+          <div class="cmd-desc">${cmd.description}</div>
+        </div>
+        <label class="cmd-toggle">
+          <input type="checkbox" ${cmd.enabled ? 'checked' : ''} onchange="toggleCommand('${cmd.id}')">
+          <span class="slider"></span>
+        </label>
+      </div>
+    `).join('');
+  } catch(e) {}
+}
+
+async function toggleCommand(cmdId) {
+  try {
+    await fetch(`/api/commands/${cmdId}/toggle`, {method: 'POST'});
+  } catch(e) {}
+}
+
+function showTools() {} // handled by tab click
 
 // Init
 checkLoginStatus();

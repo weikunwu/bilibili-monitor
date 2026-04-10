@@ -64,11 +64,25 @@ COOKIE_FILE = DATA_DIR / "cookies.json"
 GIFT_CONFIG_API = "https://api.live.bilibili.com/xlive/web-room/v1/giftPanel/giftConfig"
 SEND_GIFT_API = "https://api.live.bilibili.com/xlive/revenue/v1/gift/sendGift"
 
-# 自动送礼配置
-AUTO_GIFT_TRIGGER = "打个有效"  # 主播弹幕触发词
-AUTO_GIFT_ID = 31036  # 小花花
-AUTO_GIFT_PRICE = 100  # 100 金瓜子 = 10 电池
-AUTO_GIFT_NUM = 1
+# ── 指令系统 ──
+# 每个指令: { id, name, description, enabled, config }
+bot_commands = [
+    {
+        "id": "auto_gift",
+        "name": "打个有效",
+        "description": "主播发送\"打个有效\"时自动送小花花 x1 (10电池)",
+        "enabled": False,
+        "config": {
+            "trigger": "打个有效",
+            "gift_id": 31036,  # 小花花
+            "gift_price": 100,  # 100 金瓜子 = 10 电池
+            "gift_num": 1,
+        },
+    },
+]
+
+def get_command(cmd_id: str) -> Optional[dict]:
+    return next((c for c in bot_commands if c["id"] == cmd_id), None)
 
 # gift_id -> img_url cache, gift_id -> price cache, gift_id -> gif_url cache
 gift_img_cache: dict[int, str] = {}
@@ -751,11 +765,13 @@ class BiliLiveClient:
                                     event["room_id"] = self.real_room_id
                                     save_event(event)
                                     await self.on_event(event)
-                                    # 自动送礼：主播弹幕包含触发词
+                                    # 指令系统：检查主播弹幕触发
                                     if (event.get("event_type") == "danmaku"
-                                            and event.get("user_id") == self.ruid
-                                            and (event.get("content") or "").strip() == AUTO_GIFT_TRIGGER):
-                                        asyncio.create_task(self.send_gift())
+                                            and event.get("user_id") == self.ruid):
+                                        content = (event.get("content") or "").strip()
+                                        cmd = get_command("auto_gift")
+                                        if cmd and cmd["enabled"] and content == cmd["config"]["trigger"]:
+                                            asyncio.create_task(self.send_gift(cmd["config"]))
                         elif raw_msg.type in (
                             aiohttp.WSMsgType.CLOSED,
                             aiohttp.WSMsgType.ERROR,
@@ -764,23 +780,26 @@ class BiliLiveClient:
                 finally:
                     hb_task.cancel()
 
-    async def send_gift(self):
-        """自动送礼：小花花 x1 (10电池)"""
+    async def send_gift(self, config: dict):
+        """自动送礼"""
         if not self.cookies.get("SESSDATA") or not self.ruid:
-            log.warning("未登录或无主播信息，无法自动送礼")
+            log.warning("未绑定机器人或无主播信息，无法自动送礼")
             return
+        gift_id = config.get("gift_id", 31036)
+        gift_num = config.get("gift_num", 1)
+        gift_price = config.get("gift_price", 100)
         csrf = self.cookies.get("bili_jct", "")
         payload = {
             "uid": self.uid,
-            "gift_id": AUTO_GIFT_ID,
+            "gift_id": gift_id,
             "ruid": self.ruid,
-            "gift_num": AUTO_GIFT_NUM,
+            "gift_num": gift_num,
             "coin_type": "gold",
             "platform": "pc",
             "biz_code": "Live",
             "biz_id": self.real_room_id,
             "rnd": int(time.time()),
-            "price": AUTO_GIFT_PRICE,
+            "price": gift_price,
             "csrf_token": csrf,
             "csrf": csrf,
         }
@@ -789,7 +808,7 @@ class BiliLiveClient:
                 async with session.post(SEND_GIFT_API, data=payload) as resp:
                     data = await resp.json(content_type=None)
                     if data.get("code") == 0:
-                        log.info(f"[自动送礼] 房间 {self.room_id} 送出小花花 x{AUTO_GIFT_NUM}")
+                        log.info(f"[自动送礼] 房间 {self.room_id} 送出礼物 gift_id={gift_id} x{gift_num}")
                     else:
                         log.warning(f"[自动送礼] 失败: {data}")
         except Exception as e:
@@ -896,6 +915,21 @@ async def auth_logout():
     resp = HTMLResponse('{"ok":true}')
     resp.delete_cookie("auth_token")
     return resp
+
+
+@app.get("/api/commands")
+async def list_commands():
+    return bot_commands
+
+
+@app.post("/api/commands/{cmd_id}/toggle")
+async def toggle_command(cmd_id: str):
+    cmd = get_command(cmd_id)
+    if not cmd:
+        return HTMLResponse('{"error":"not found"}', status_code=404)
+    cmd["enabled"] = not cmd["enabled"]
+    log.info(f"[指令] {cmd['name']} {'开启' if cmd['enabled'] else '关闭'}")
+    return {"id": cmd_id, "enabled": cmd["enabled"]}
 
 
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
