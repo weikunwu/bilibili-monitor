@@ -1071,11 +1071,7 @@ async def broadcast_event(event: dict):
 
 @app.get("/")
 async def index():
-    # Serve React frontend if built, otherwise fallback to static/index.html
-    react_index = BASE_DIR / "frontend" / "dist" / "index.html"
-    if react_index.exists():
-        return FileResponse(react_index)
-    return FileResponse(BASE_DIR / "static" / "index.html")
+    return FileResponse(BASE_DIR / "frontend" / "dist" / "index.html")
 
 
 @app.get("/api/events")
