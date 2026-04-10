@@ -854,19 +854,24 @@ async def auth_logout():
 
 
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
-ws_clients: set[WebSocket] = set()
+# ws -> allowed_rooms (None = all)
+ws_clients: dict[WebSocket, Optional[list[int]]] = {}
 bili_client: Optional[BiliLiveClient] = None
 bili_clients: dict[int, BiliLiveClient] = {}  # room_id -> client
 
 
 async def broadcast_event(event: dict):
     dead = set()
-    for client in ws_clients:
+    room_id = event.get("room_id")
+    for client, allowed_rooms in ws_clients.items():
+        if allowed_rooms is not None and room_id and room_id not in allowed_rooms:
+            continue
         try:
             await client.send_json(event)
         except Exception:
             dead.add(client)
-    ws_clients.difference_update(dead)
+    for d in dead:
+        ws_clients.pop(d, None)
 
 
 @app.get("/")
@@ -1270,15 +1275,26 @@ async def get_rooms(request: Request):
 
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
+    # 从 cookie 检查权限
+    token = ws.cookies.get("auth_token")
+    allowed_rooms = None
+    if AUTH_PASSWORD_ALL or AUTH_PASSWORD_LIMITED:
+        if token == AUTH_TOKEN_ALL:
+            allowed_rooms = None
+        elif token == AUTH_TOKEN_LIMITED:
+            allowed_rooms = LIMITED_ROOMS
+        else:
+            await ws.close(code=1008)
+            return
     await ws.accept()
-    ws_clients.add(ws)
+    ws_clients[ws] = allowed_rooms
     try:
         while True:
             await ws.receive_text()
     except WebSocketDisconnect:
         pass
     finally:
-        ws_clients.discard(ws)
+        ws_clients.pop(ws, None)
 
 
 # ── Web QR Login API ────────────────────────────────────────────────
