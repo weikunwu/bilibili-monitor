@@ -67,7 +67,7 @@ GIFT_CONFIG_API = "https://api.live.bilibili.com/xlive/web-room/v1/giftPanel/gif
 # gift_id -> img_url cache, gift_id -> price cache, gift_id -> gif_url cache
 gift_img_cache: dict[int, str] = {}
 gift_price_cache: dict[int, int] = {}  # gift_id -> price in gold coins
-gift_gif_cache: dict[int, str] = {}  # gift_id -> gif url (for expensive gifts)
+gift_gif_cache: dict[int, str] = {}  # gift_id -> gif url
 
 # ── Wbi Signing ─────────────────────────────────────────────────────
 
@@ -263,7 +263,7 @@ async def load_gift_config(headers: dict):
                         gift_img_cache[g["id"]] = g.get("img_basic", "")
                         gift_price_cache[g["id"]] = g.get("price", 0)
                         gif_url = g.get("gif", "")
-                        if gif_url and g.get("price", 0) >= 2000000:
+                        if gif_url:
                             gift_gif_cache[g["id"]] = gif_url
                     log.info(f"加载礼物配置: {len(gift_img_cache)} 种礼物")
     except Exception as e:
@@ -1008,7 +1008,7 @@ async def gift_summary(
 
 @app.get("/api/gift-gif")
 async def get_gift_gif(gift_id: int = Query(...)):
-    """返回礼物的 GIF URL（仅单价>=2000元的礼物）"""
+    """返回礼物的 GIF URL"""
     gif_url = gift_gif_cache.get(gift_id, "")
     return {"gift_id": gift_id, "gif": gif_url}
 
