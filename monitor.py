@@ -14,9 +14,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+import base64
 import hashlib
 import re
+from collections import defaultdict
 from urllib.parse import urlencode
+from cryptography.fernet import Fernet
 
 import aiohttp
 import qrcode
@@ -117,19 +120,40 @@ HEADERS = {
 # ── QR Code Login ───────────────────────────────────────────────────
 
 
+def _get_fernet() -> Fernet:
+    key_src = os.environ.get("COOKIE_SECRET", os.environ.get("AUTH_PASSWORD_ALL", os.environ.get("AUTH_PASSWORD", "bilibili-monitor-default")))
+    key = base64.urlsafe_b64encode(hashlib.sha256(key_src.encode()).digest())
+    return Fernet(key)
+
+
 def save_cookies(cookies: dict):
-    with open(COOKIE_FILE, "w") as f:
-        json.dump(cookies, f, ensure_ascii=False, indent=2)
-    log.info("Cookie 已保存到 cookies.json")
+    data = json.dumps(cookies, ensure_ascii=False).encode()
+    encrypted = _get_fernet().encrypt(data)
+    with open(COOKIE_FILE, "wb") as f:
+        f.write(encrypted)
+    log.info("Cookie 已加密保存到 cookies.json")
 
 
 def load_cookies() -> dict:
     if COOKIE_FILE.exists():
-        with open(COOKIE_FILE) as f:
-            cookies = json.load(f)
-        if cookies.get("SESSDATA"):
-            log.info(f"从 cookies.json 加载登录信息 (UID: {cookies.get('DedeUserID', '?')})")
-            return cookies
+        try:
+            with open(COOKIE_FILE, "rb") as f:
+                encrypted = f.read()
+            cookies = json.loads(_get_fernet().decrypt(encrypted))
+            if cookies.get("SESSDATA"):
+                log.info(f"从 cookies.json 加载登录信息 (UID: {cookies.get('DedeUserID', '?')})")
+                return cookies
+        except Exception:
+            # 兼容旧的明文格式，读取后重新加密保存
+            try:
+                with open(COOKIE_FILE, "r") as f:
+                    cookies = json.load(f)
+                if cookies.get("SESSDATA"):
+                    log.info("迁移明文 cookies.json 为加密格式")
+                    save_cookies(cookies)
+                    return cookies
+            except Exception:
+                log.warning("无法读取 cookies.json，将重新登录")
     return {}
 
 
@@ -777,8 +801,22 @@ class AuthMiddleware(BaseHTTPMiddleware):
 app.add_middleware(AuthMiddleware)
 
 
+# 登录失败次数限制：IP -> (fail_count, first_fail_time)
+_login_attempts: dict[str, tuple[int, float]] = defaultdict(lambda: (0, 0.0))
+_MAX_LOGIN_ATTEMPTS = 5
+_LOGIN_LOCKOUT_SECONDS = 300  # 5分钟
+
+
 @app.post("/api/auth")
 async def auth_login(request: Request):
+    ip = request.client.host if request.client else "unknown"
+    fails, first_time = _login_attempts[ip]
+    # 超过锁定时间则重置
+    if fails >= _MAX_LOGIN_ATTEMPTS and time.time() - first_time < _LOGIN_LOCKOUT_SECONDS:
+        return HTMLResponse('{"ok":false,"error":"too_many_attempts"}', status_code=429)
+    if fails >= _MAX_LOGIN_ATTEMPTS:
+        _login_attempts[ip] = (0, 0.0)
+
     body = await request.json()
     pw = body.get("password", "")
     allowed_rooms = None  # None = all rooms
@@ -787,7 +825,11 @@ async def auth_login(request: Request):
     elif AUTH_PASSWORD_LIMITED and pw == AUTH_PASSWORD_LIMITED:
         allowed_rooms = LIMITED_ROOMS
     else:
+        fails, first_time = _login_attempts[ip]
+        _login_attempts[ip] = (fails + 1, first_time or time.time())
         return HTMLResponse('{"ok":false}', status_code=403)
+
+    _login_attempts.pop(ip, None)
     token = secrets.token_hex(32)
     auth_tokens[token] = allowed_rooms
     resp = HTMLResponse(json.dumps({"ok": True, "allowed_rooms": allowed_rooms}))
