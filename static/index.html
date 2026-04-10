@@ -528,8 +528,8 @@ async function checkLoginStatus() {
   document.getElementById('logoutBtn').style.display = '';
 }
 
-function doLogout() {
-  document.cookie = 'auth_token=; Max-Age=0; path=/';
+async function doLogout() {
+  await fetch('/api/logout', {method: 'POST'});
   location.reload();
 }
 

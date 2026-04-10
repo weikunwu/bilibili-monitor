@@ -786,7 +786,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
         # 放行登录相关路径
         path = request.url.path
-        if path == "/api/auth" or path.startswith("/static/"):
+        if path in ("/api/auth", "/api/logout") or path.startswith("/static/"):
             return await call_next(request)
         # 检查 cookie
         token = request.cookies.get("auth_token")
@@ -836,6 +836,13 @@ async def auth_login(request: Request):
     token = AUTH_TOKEN_ALL if allowed_rooms is None else AUTH_TOKEN_LIMITED
     resp = HTMLResponse(json.dumps({"ok": True, "allowed_rooms": allowed_rooms}))
     resp.set_cookie("auth_token", token, httponly=True, max_age=86400 * 3)
+    return resp
+
+
+@app.post("/api/logout")
+async def auth_logout():
+    resp = HTMLResponse('{"ok":true}')
+    resp.delete_cookie("auth_token")
     return resp
 
 
