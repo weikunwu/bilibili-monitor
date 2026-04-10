@@ -1045,6 +1045,10 @@ async def toggle_command(cmd_id: str, room_id: int = Query(...)):
 
 
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
+# Serve frontend build assets
+FRONTEND_DIST = BASE_DIR / "frontend" / "dist"
+if FRONTEND_DIST.exists():
+    app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="frontend-assets")
 # ws -> allowed_rooms (None = all)
 ws_clients: dict[WebSocket, Optional[list[int]]] = {}
 bili_client: Optional[BiliLiveClient] = None
@@ -1067,6 +1071,10 @@ async def broadcast_event(event: dict):
 
 @app.get("/")
 async def index():
+    # Serve React frontend if built, otherwise fallback to static/index.html
+    react_index = BASE_DIR / "frontend" / "dist" / "index.html"
+    if react_index.exists():
+        return FileResponse(react_index)
     return FileResponse(BASE_DIR / "static" / "index.html")
 
 
