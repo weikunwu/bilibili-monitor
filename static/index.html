@@ -603,6 +603,8 @@ function formatGold(coin) {
 }
 
 async function generateUserGiftImage(userName) {
+  // 确保 Baloo 2 字体已加载
+  try { await document.fonts.load('italic 800 30px "Baloo 2"'); } catch(e) {}
   const res = await fetch(`/api/gift-summary?user_name=${encodeURIComponent(userName)}`);
   const data = await res.json();
   const u = (data.users || [])[0];
