@@ -754,7 +754,7 @@ class BiliLiveClient:
                                     # 自动送礼：主播弹幕包含触发词
                                     if (event.get("event_type") == "danmaku"
                                             and event.get("user_id") == self.ruid
-                                            and AUTO_GIFT_TRIGGER in (event.get("content") or "")):
+                                            and (event.get("content") or "").strip() == AUTO_GIFT_TRIGGER):
                                         asyncio.create_task(self.send_gift())
                         elif raw_msg.type in (
                             aiohttp.WSMsgType.CLOSED,
