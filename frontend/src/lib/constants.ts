@@ -11,14 +11,14 @@ export const BADGE_NAMES: Record<string, string> = {
 }
 
 export const GUARD_FRAME_URLS: Record<number, string> = {
-  1: '/guard_frame_1.png',
-  2: '/guard_frame_2.png',
-  3: '/guard_frame_3.png',
+  1: '/static/guard_frame_1.png',
+  2: '/static/guard_frame_2.png',
+  3: '/static/guard_frame_3.png',
 }
 
 export const CARD_TPL_URLS: Record<string, string> = {
-  gold: '/card_tpl_gold.png',
-  pink: '/card_tpl_pink.png',
-  purple: '/card_tpl_purple.png',
-  blue: '/card_tpl_blue.png',
+  gold: '/static/card_tpl_gold.png',
+  pink: '/static/card_tpl_pink.png',
+  purple: '/static/card_tpl_purple.png',
+  blue: '/static/card_tpl_blue.png',
 }
