@@ -815,12 +815,14 @@ class BiliLiveClient:
                                     save_event(event)
                                     await self.on_event(event)
                                     # 指令系统：检查主播弹幕触发
-                                    if (event.get("event_type") == "danmaku"
-                                            and event.get("user_id") == self.ruid):
+                                    if event.get("event_type") == "danmaku":
+                                        uid = event.get("user_id")
                                         content = (event.get("content") or "").strip()
-                                        cmd = get_command(self.real_room_id, "auto_gift")
-                                        if cmd and cmd["enabled"] and content == cmd["config"]["trigger"]:
-                                            asyncio.create_task(self.send_gift(cmd["config"]))
+                                        if uid == self.ruid:
+                                            cmd = get_command(self.real_room_id, "auto_gift")
+                                            log.info(f"[指令检查] 房间{self.real_room_id} 主播弹幕: '{content}', cmd={cmd['id'] if cmd else None}, enabled={cmd['enabled'] if cmd else None}, trigger='{cmd['config']['trigger'] if cmd else ''}'")
+                                            if cmd and cmd["enabled"] and content == cmd["config"]["trigger"]:
+                                                asyncio.create_task(self.send_gift(cmd["config"]))
                         elif raw_msg.type in (
                             aiohttp.WSMsgType.CLOSED,
                             aiohttp.WSMsgType.ERROR,
