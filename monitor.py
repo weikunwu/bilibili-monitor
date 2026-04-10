@@ -758,8 +758,9 @@ app = FastAPI(title="B站直播监控")
 AUTH_PASSWORD_ALL = os.environ.get("AUTH_PASSWORD_ALL", os.environ.get("AUTH_PASSWORD", ""))
 AUTH_PASSWORD_LIMITED = os.environ.get("AUTH_PASSWORD_LIMITED", "")
 LIMITED_ROOMS = [int(r.strip()) for r in os.environ.get("LIMITED_ROOMS", "32365569").split(",") if r.strip()]
-# token -> allowed_rooms (None = all rooms)
-auth_tokens: dict[str, Optional[list[int]]] = {}
+# token -> (allowed_rooms, created_time)  allowed_rooms=None means all rooms
+auth_tokens: dict[str, tuple[Optional[list[int]], float]] = {}
+AUTH_TOKEN_TTL = 86400 * 3  # 3 days
 
 LOGIN_HTML = """<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -791,8 +792,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # 检查 cookie
         token = request.cookies.get("auth_token")
         if token in auth_tokens:
-            request.state.allowed_rooms = auth_tokens[token]
-            return await call_next(request)
+            allowed_rooms, created = auth_tokens[token]
+            if time.time() - created < AUTH_TOKEN_TTL:
+                request.state.allowed_rooms = allowed_rooms
+                return await call_next(request)
+            else:
+                del auth_tokens[token]
         # 未认证：页面请求返回登录页，API 返回 401
         if path.startswith("/api/") or path == "/ws":
             return HTMLResponse('{"error":"unauthorized"}', status_code=401)
@@ -831,9 +836,9 @@ async def auth_login(request: Request):
 
     _login_attempts.pop(ip, None)
     token = secrets.token_hex(32)
-    auth_tokens[token] = allowed_rooms
+    auth_tokens[token] = (allowed_rooms, time.time())
     resp = HTMLResponse(json.dumps({"ok": True, "allowed_rooms": allowed_rooms}))
-    resp.set_cookie("auth_token", token, httponly=True, max_age=86400 * 30)
+    resp.set_cookie("auth_token", token, httponly=True, max_age=86400 * 3)
     return resp
 
 
