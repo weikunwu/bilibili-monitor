@@ -42,8 +42,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 .badge.gift { background: #3e2a0a; color: #ffb74d; }
 .badge.superchat { background: #4a1515; color: #ef5350; }
 .badge.guard { background: #2e1542; color: #ce93d8; }
-.badge.enter { background: #1a2e1a; color: #81c784; }
-.badge.like { background: #3e2a2a; color: #e57373; }
 .badge.info { background: #2a2a3e; color: #90a4ae; }
 
 .event .avatar { width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0; object-fit: cover; }

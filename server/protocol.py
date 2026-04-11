@@ -203,23 +203,4 @@ def handle_message(msg: dict) -> Optional[dict]:
         log.info(f"[上舰] {data.get('username', '')} 开通 {guard_name}")
         return event
 
-    elif base_cmd == "INTERACT_WORD":
-        data = msg.get("data", {})
-        msg_type = data.get("msg_type", 0)
-        type_map = {1: "进入", 2: "关注", 3: "分享", 4: "特别关注", 5: "互相关注"}
-        action = type_map.get(msg_type, "互动")
-        return {
-            "timestamp": now, "event_type": "enter",
-            "user_name": data.get("uname", ""), "user_id": data.get("uid", 0),
-            "content": action, "extra": {"msg_type": msg_type, "action": action},
-        }
-
-    elif base_cmd in ("LIKE_INFO_V3_CLICK",):
-        data = msg.get("data", {})
-        return {
-            "timestamp": now, "event_type": "like",
-            "user_name": data.get("uname", ""), "user_id": data.get("uid", 0),
-            "content": "点赞", "extra": {},
-        }
-
     return None

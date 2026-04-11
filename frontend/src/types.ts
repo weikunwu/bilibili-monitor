@@ -1,5 +1,5 @@
 export interface LiveEvent {
-  event_type: 'danmaku' | 'gift' | 'superchat' | 'guard' | 'enter' | 'like' | 'info'
+  event_type: 'danmaku' | 'gift' | 'superchat' | 'guard' | 'info'
   timestamp: string
   user_name?: string
   user_id?: number
@@ -55,7 +55,7 @@ export interface Command {
   config: Record<string, unknown>
 }
 
-export type TabType = 'all' | 'danmaku' | 'gift' | 'superchat' | 'guard' | 'enter' | 'tools' | 'admin'
+export type TabType = 'all' | 'danmaku' | 'gift' | 'superchat' | 'guard' | 'tools' | 'admin'
 
 export type ConnectionStatus = 'connected' | 'disconnected' | 'connecting'
 

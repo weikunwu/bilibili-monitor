@@ -5,16 +5,12 @@ import { EventItem } from './EventItem'
 interface Props {
   events: LiveEvent[]
   activeTab: TabType
-  showEnter: boolean
-  showLike: boolean
   autoScroll: boolean
   onGenerateGiftImage: (userName: string) => void
 }
 
-function shouldShow(ev: LiveEvent, activeTab: TabType, showEnter: boolean, showLike: boolean): boolean {
+function shouldShow(ev: LiveEvent, activeTab: TabType): boolean {
   if (activeTab !== 'all' && ev.event_type !== activeTab) return false
-  if (ev.event_type === 'enter' && !showEnter) return false
-  if (ev.event_type === 'like' && !showLike) return false
   return true
 }
 
@@ -36,12 +32,12 @@ function formatDateLabel(dateStr: string): string {
 }
 
 export function EventList({
-  events, activeTab, showEnter, showLike, autoScroll,
+  events, activeTab, autoScroll,
   onGenerateGiftImage,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
 
-  const filtered = events.filter((ev) => shouldShow(ev, activeTab, showEnter, showLike))
+  const filtered = events.filter((ev) => shouldShow(ev, activeTab))
 
   useEffect(() => {
     if (autoScroll && containerRef.current) {

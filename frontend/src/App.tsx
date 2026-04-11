@@ -35,8 +35,6 @@ export default function App() {
   const [qrModalOpen, setQrModalOpen] = useState(false)
 
   const [autoScroll, setAutoScroll] = useLocalStorage('autoScroll', true)
-  const [showEnter, setShowEnter] = useLocalStorage('showEnter', false)
-  const [showLike, setShowLike] = useLocalStorage('showLike', false)
 
   const giftModalRef = useRef<GiftImageModalRef>(null)
   const currentRoomIdRef = useRef(currentRoomId)
@@ -119,19 +117,13 @@ export default function App() {
       <>
         <Controls
           autoScroll={autoScroll}
-          showEnter={showEnter}
-          showLike={showLike}
           defaultRange={todayRange()}
           onAutoScrollChange={setAutoScroll}
-          onShowEnterChange={setShowEnter}
-          onShowLikeChange={setShowLike}
           onQueryRange={handleQueryRange}
         />
         <EventList
           events={events}
           activeTab={activeTab}
-          showEnter={showEnter}
-          showLike={showLike}
           autoScroll={autoScroll}
           onGenerateGiftImage={(userName) => giftModalRef.current?.showGiftImage(userName)}
         />

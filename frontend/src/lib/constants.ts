@@ -5,8 +5,6 @@ export const BADGE_NAMES: Record<string, string> = {
   gift: '礼物',
   superchat: 'SC',
   guard: '上舰',
-  enter: '进场',
-  like: '点赞',
   info: '信息',
 }
 

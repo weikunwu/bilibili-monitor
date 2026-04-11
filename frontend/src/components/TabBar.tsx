@@ -6,7 +6,6 @@ const TABS: { type: TabType; label: string; adminOnly?: boolean }[] = [
   { type: 'gift', label: '礼物' },
   { type: 'superchat', label: '醒目留言' },
   { type: 'guard', label: '上舰' },
-  { type: 'enter', label: '进场' },
   { type: 'tools', label: '工具' },
   { type: 'admin', label: '管理', adminOnly: true },
 ]
