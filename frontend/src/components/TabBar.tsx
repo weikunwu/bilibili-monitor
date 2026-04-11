@@ -1,7 +1,7 @@
-import { Nav } from 'rsuite'
+import { Tabs } from 'rsuite'
 import type { TabType } from '../types'
 
-const TABS: { type: TabType; label: string; adminOnly?: boolean }[] = [
+const TAB_LIST: { type: TabType; label: string; adminOnly?: boolean }[] = [
   { type: 'all', label: '全部' },
   { type: 'danmaku', label: '弹幕' },
   { type: 'gift', label: '礼物' },
@@ -19,12 +19,10 @@ interface Props {
 
 export function TabBar({ active, onChange, isAdmin }: Props) {
   return (
-    <Nav appearance="subtle" activeKey={active} onSelect={(key) => onChange(key as TabType)} className="tabs-nav">
-      {TABS.filter((t) => !t.adminOnly || isAdmin).map((t) => (
-        <Nav.Item key={t.type} eventKey={t.type}>
-          {t.label}
-        </Nav.Item>
+    <Tabs activeKey={active} onSelect={(key) => key && onChange(key as TabType)} className="tabs-bar">
+      {TAB_LIST.filter((t) => !t.adminOnly || isAdmin).map((t) => (
+        <Tabs.Tab key={t.type} eventKey={t.type} title={t.label} />
       ))}
-    </Nav>
+    </Tabs>
   )
 }

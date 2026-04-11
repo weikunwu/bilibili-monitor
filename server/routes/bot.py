@@ -8,6 +8,7 @@ from fastapi import APIRouter, Query
 
 from ..config import DB_PATH, QR_GENERATE_API, QR_POLL_API, HEADERS, log
 from ..crypto import save_cookies
+from ..manager import manager
 
 router = APIRouter()
 
@@ -16,8 +17,7 @@ qr_session: Optional[req.Session] = None
 
 @router.get("/api/bot/status")
 async def bot_status(room_id: int = Query(...)):
-    from ..app import bili_clients
-    client = bili_clients.get(room_id)
+    client = manager.get(room_id)
     if not client:
         return {"logged_in": False, "uid": 0}
     logged_in = bool(client.cookies.get("SESSDATA"))
@@ -26,12 +26,11 @@ async def bot_status(room_id: int = Query(...)):
 
 @router.post("/api/bot/logout")
 async def bot_logout(room_id: int = Query(...)):
-    from ..app import bili_clients
     conn = sqlite3.connect(str(DB_PATH))
     conn.execute("UPDATE rooms SET bot_cookie=NULL WHERE room_id=?", (room_id,))
     conn.commit()
     conn.close()
-    client = bili_clients.get(room_id)
+    client = manager.get(room_id)
     if client:
         client.cookies = {}
         client.uid = 0
@@ -62,7 +61,6 @@ async def bot_poll(qrcode_key: str):
     code = poll_data.get("code", -1)
 
     if code == 0:
-        from ..app import bili_clients
         cookies = {}
         for key in ("SESSDATA", "bili_jct", "DedeUserID", "DedeUserID__ckMd5", "sid"):
             val = qr_session.cookies.get(key) or resp.cookies.get(key)
@@ -73,7 +71,7 @@ async def bot_poll(qrcode_key: str):
             cookies["refresh_token"] = url_str.split("refresh_token=")[-1].split("&")[0]
         save_cookies(cookies, target_room_id)
         uid = int(cookies.get("DedeUserID", 0))
-        client = bili_clients.get(target_room_id)
+        client = manager.get(target_room_id)
         if client:
             client.cookies = cookies
             client.uid = uid

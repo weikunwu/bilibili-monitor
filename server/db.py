@@ -115,6 +115,20 @@ def get_active_rooms() -> list[int]:
     return [r[0] for r in rows]
 
 
+def get_all_rooms() -> list[int]:
+    conn = sqlite3.connect(str(DB_PATH))
+    rows = conn.execute("SELECT room_id FROM rooms").fetchall()
+    conn.close()
+    return [r[0] for r in rows]
+
+
+def get_all_rooms_with_active() -> list[tuple[int, int]]:
+    conn = sqlite3.connect(str(DB_PATH))
+    rows = conn.execute("SELECT room_id, active FROM rooms").fetchall()
+    conn.close()
+    return [(r[0], r[1]) for r in rows]
+
+
 def set_room_active(room_id: int, active: bool):
     conn = sqlite3.connect(str(DB_PATH))
     conn.execute("INSERT OR IGNORE INTO rooms (room_id, active) VALUES (?, ?)", (room_id, int(active)))

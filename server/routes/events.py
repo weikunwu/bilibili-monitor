@@ -14,6 +14,7 @@ from fastapi.responses import Response, StreamingResponse
 from ..config import DB_PATH, BASE_DIR, HEADERS, log
 from ..bili_api import gift_gif_cache
 from ..auth import require_room_access
+from ..manager import manager
 
 router = APIRouter()
 
@@ -83,7 +84,6 @@ async def get_events(
 
 @router.get("/api/stats")
 async def get_stats(room_id: int = Query(...), _=Depends(require_room_access)):
-    from ..app import bili_clients
     conn = sqlite3.connect(str(DB_PATH))
     rp = [room_id]
     total = conn.execute("SELECT COUNT(*) FROM events WHERE room_id=?", rp).fetchone()[0]
@@ -100,7 +100,8 @@ async def get_stats(room_id: int = Query(...), _=Depends(require_room_access)):
         except Exception:
             pass
     conn.close()
-    pop = bili_clients[room_id].popularity if room_id in bili_clients else 0
+    client = manager.get(room_id)
+    pop = client.popularity if client else 0
     return {
         "total": total, "danmaku": danmaku_count, "gift": gift_count,
         "superchat": sc_count, "guard": guard_count, "sc_total_price": sc_total,

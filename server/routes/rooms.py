@@ -1,41 +1,51 @@
 """房间和指令 API"""
 
-import asyncio
-
 from fastapi import APIRouter, Depends, Query, Request, HTTPException
 from fastapi.responses import HTMLResponse
 
-from ..db import get_room_commands, save_command_state, get_command, set_room_active
+from ..db import get_room_commands, save_command_state, get_command, get_all_rooms_with_active
 from ..auth import require_room_access
+from ..manager import manager
 
 router = APIRouter()
 
 
 @router.get("/api/rooms")
 async def get_rooms(request: Request):
-    from ..app import bili_clients
     allowed = getattr(request.state, "allowed_rooms", None)
-    return [
-        {
-            "room_id": c.room_id,
-            "real_room_id": c.real_room_id,
-            "streamer_name": c.streamer_name,
-            "streamer_avatar": c.streamer_avatar,
-            "room_title": c.room_title,
-            "live_status": c.live_status,
-            "ruid": c.ruid,
-            "followers": c.followers,
-            "guard_count": c.guard_count,
-            "area_name": c.area_name,
-            "parent_area_name": c.parent_area_name,
-            "announcement": c.announcement,
-            "bot_uid": c.uid if c.cookies.get("SESSDATA") else 0,
-            "bot_name": c.bot_name if c.cookies.get("SESSDATA") else "",
-            "active": c._running,
-        }
-        for c in bili_clients.values()
-        if allowed is None or c.room_id in allowed
-    ]
+    db_rooms = get_all_rooms_with_active()
+    result = []
+    for room_id, active in db_rooms:
+        if allowed is not None and room_id not in allowed:
+            continue
+        c = manager.get(room_id)
+        if c:
+            result.append({
+                "room_id": c.room_id,
+                "real_room_id": c.real_room_id,
+                "streamer_name": c.streamer_name,
+                "streamer_avatar": c.streamer_avatar,
+                "room_title": c.room_title,
+                "live_status": c.live_status,
+                "ruid": c.ruid,
+                "followers": c.followers,
+                "guard_count": c.guard_count,
+                "area_name": c.area_name,
+                "parent_area_name": c.parent_area_name,
+                "announcement": c.announcement,
+                "bot_uid": c.uid if c.cookies.get("SESSDATA") else 0,
+                "bot_name": c.bot_name if c.cookies.get("SESSDATA") else "",
+                "active": c._running,
+            })
+        else:
+            result.append({
+                "room_id": room_id, "real_room_id": room_id,
+                "streamer_name": "", "streamer_avatar": "", "room_title": "",
+                "live_status": 0, "ruid": 0, "followers": 0, "guard_count": 0,
+                "area_name": "", "parent_area_name": "", "announcement": "",
+                "bot_uid": 0, "bot_name": "", "active": bool(active),
+            })
+    return result
 
 
 @router.get("/api/commands")
@@ -45,30 +55,18 @@ async def list_commands(room_id: int = Query(...)):
 
 @router.post("/api/rooms/{room_id}/stop")
 async def stop_room(room_id: int, _=Depends(require_room_access)):
-    from ..app import bili_clients
-
-    if room_id not in bili_clients:
+    if not manager.has(room_id):
         raise HTTPException(404, "房间不存在")
-
-    client = bili_clients[room_id]
-    client.stop()
-    set_room_active(room_id, False)
+    manager.stop_room(room_id)
     return {"ok": True, "room_id": room_id}
 
 
 @router.post("/api/rooms/{room_id}/start")
 async def start_room(room_id: int, _=Depends(require_room_access)):
-    from ..app import bili_clients
-
-    if room_id not in bili_clients:
-        raise HTTPException(404, "房间不存在")
-
-    client = bili_clients[room_id]
-    if client._running:
+    client = manager.get(room_id)
+    if client and client._running:
         raise HTTPException(400, "房间已在运行中")
-
-    set_room_active(room_id, True)
-    asyncio.create_task(client.run())
+    await manager.start_room(room_id)
     return {"ok": True, "room_id": room_id}
 
 

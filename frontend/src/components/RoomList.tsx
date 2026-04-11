@@ -90,15 +90,15 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot }: Pro
               <div className="rc-footer-actions">
                 <ButtonGroup size="xs">
                   {r.active ? (
-                    <IconButton icon={<MdStop />} color="red" appearance="subtle" size="xs" onClick={(e) => { e.stopPropagation(); handleToggle(e, r) }}>
+                    <IconButton icon={<MdStop />} color="red" appearance="ghost" size="xs" onClick={(e) => { e.stopPropagation(); handleToggle(e, r) }}>
                       停止
                     </IconButton>
                   ) : (
-                    <IconButton icon={<MdPlayArrow />} color="green" appearance="subtle" size="xs" onClick={(e) => { e.stopPropagation(); handleToggle(e, r) }}>
+                    <IconButton icon={<MdPlayArrow />} color="green" appearance="ghost" size="xs" onClick={(e) => { e.stopPropagation(); handleToggle(e, r) }}>
                       启动
                     </IconButton>
                   )}
-                  <IconButton icon={<MdSwapHoriz />} appearance="subtle" size="xs" onClick={(e) => { e.stopPropagation(); onBindBot?.(r.room_id) }}>
+                  <IconButton icon={<MdSwapHoriz />} appearance="ghost" size="xs" onClick={(e) => { e.stopPropagation(); onBindBot?.(r.room_id) }}>
                     {r.bot_uid ? '更换' : '绑定'}
                   </IconButton>
                 </ButtonGroup>

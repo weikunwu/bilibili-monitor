@@ -24,11 +24,12 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 .stat-card.popularity .value { color: #4dd0e1; }
 .stat-card.sc-total .value { color: #ff7043; }
 
-/* rsuite Nav tabs overrides */
-.tabs-nav { padding: 0 24px; background: #12121f; border-bottom: 1px solid #2a2a4a; }
-.tabs-nav .rs-nav-item { color: #888 !important; }
-.tabs-nav .rs-nav-item:hover { color: #bbb !important; }
-.tabs-nav .rs-nav-item.rs-nav-item-active { color: #fb7299 !important; }
+/* rsuite Tabs overrides */
+.tabs-bar { padding: 0 24px; background: #12121f; }
+.tabs-bar .rs-tab { color: #888 !important; }
+.tabs-bar .rs-tab:hover { color: #bbb !important; }
+.tabs-bar .rs-tab-active { color: #fb7299 !important; }
+.tabs-bar .rs-tabs-subtle .rs-tab-active { border-color: #fb7299 !important; }
 
 .events-container { padding: 8px 24px; overflow-y: auto; max-height: calc(100vh - 260px); }
 .date-separator { display: flex; align-items: center; gap: 12px; margin: 12px 0 8px; color: #666; font-size: 12px; }

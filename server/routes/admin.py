@@ -7,8 +7,8 @@ from fastapi import APIRouter, Depends, Request, HTTPException
 
 from ..config import DB_PATH
 from ..auth import require_admin
-from ..crypto import hash_password, load_cookies
-from ..db import set_room_active
+from ..crypto import hash_password
+from ..manager import manager
 
 router = APIRouter(dependencies=[Depends(require_admin)])
 
@@ -77,19 +77,13 @@ async def assign_rooms(user_id: int, request: Request):
 
 @router.post("/api/admin/rooms")
 async def add_room(request: Request):
-    from ..app import bili_clients, broadcast_event
-    from ..bili_client import BiliLiveClient
-
     body = await request.json()
     room_id = int(body["room_id"])
-    if room_id in bili_clients:
+    if manager.has(room_id):
         raise HTTPException(400, "该房间已存在")
 
-    cookies = load_cookies(room_id)
-    client = BiliLiveClient(room_id, on_event=broadcast_event, cookies=cookies)
-    bili_clients[room_id] = client
-    set_room_active(room_id, True)
-    asyncio.create_task(client.run())
+    client = manager.add_room(room_id)
+    await manager.start_room(room_id)
 
     # Wait briefly for room info to populate
     await asyncio.sleep(2)
@@ -104,12 +98,7 @@ async def add_room(request: Request):
 
 @router.delete("/api/admin/rooms/{room_id}")
 async def remove_room(room_id: int):
-    from ..app import bili_clients
-
-    if room_id not in bili_clients:
+    if not manager.has(room_id):
         raise HTTPException(404, "房间不存在")
-
-    client = bili_clients.pop(room_id)
-    client.stop()
-    set_room_active(room_id, False)
+    manager.remove_room(room_id)
     return {"ok": True, "room_id": room_id}

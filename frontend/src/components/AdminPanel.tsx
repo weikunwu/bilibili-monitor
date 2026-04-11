@@ -126,7 +126,7 @@ export function AdminPanel({ rooms, onRoomsChanged }: Props) {
             <div className="cmd-name">{r.streamer_name || r.room_id}</div>
             <div className="cmd-desc">房间号: {r.room_id}{r.real_room_id !== r.room_id ? ` (真实ID: ${r.real_room_id})` : ''}</div>
           </div>
-          <Button color="red" appearance="subtle" size="xs" onClick={() => handleRemoveRoom(r.room_id)}>
+          <Button color="red" appearance="ghost" size="xs" onClick={() => handleRemoveRoom(r.room_id)}>
             删除
           </Button>
         </div>
@@ -183,7 +183,7 @@ export function AdminPanel({ rooms, onRoomsChanged }: Props) {
                 分配房间
               </Button>
             )}
-            <Button color="red" appearance="subtle" size="xs" onClick={() => handleDelete(u.id)}>
+            <Button color="red" appearance="ghost" size="xs" onClick={() => handleDelete(u.id)}>
               删除
             </Button>
           </Stack>
