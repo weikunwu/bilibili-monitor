@@ -15,7 +15,8 @@ export function formatCoin(coin: number, coinType?: string): string {
 }
 
 export function formatGold(coin: number): string {
-  return '¥' + (coin / 1000).toFixed(1).replace(/\.0$/, '')
+  const sign = coin < 0 ? '-' : ''
+  return sign + '¥' + (Math.abs(coin) / 1000).toFixed(1).replace(/\.0$/, '')
 }
 
 export function fmtDate(d: Date): string {
