@@ -81,6 +81,7 @@ class BiliLiveClient:
                                 params={"uid": self.ruid}
                             ) as name_resp:
                                 name_data = await name_resp.json(content_type=None)
+                                log.info(f"[Master/info] response: {json.dumps(name_data, ensure_ascii=False)[:500]}")
                                 if name_data.get("code") == 0:
                                     master = name_data["data"]
                                     info_data = master.get("info", {})

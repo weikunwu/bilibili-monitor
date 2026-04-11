@@ -1,3 +1,4 @@
+import { MdCircle, MdPlayArrow } from 'react-icons/md'
 import type { Room } from '../types'
 
 interface Props {
@@ -13,7 +14,7 @@ function formatFans(n: number): string {
 export function RoomList({ rooms, onSelectRoom }: Props) {
   return (
     <div className="room-list">
-      <h2>选择直播间</h2>
+      <h2>房间列表</h2>
       <div className="room-cards">
         {rooms.map((r) => (
           <div
@@ -25,8 +26,8 @@ export function RoomList({ rooms, onSelectRoom }: Props) {
             <div className="rc-header">
               <span className="rc-name">{r.streamer_name || `房间 ${r.room_id}`}</span>
               <span className="rc-room-id">房间 {r.room_id}</span>
-              <span className="rc-badge rc-badge-running">运行中</span>
-              {r.live_status === 1 && <span className="rc-badge rc-badge-live">直播中</span>}
+              <span className="rc-badge rc-badge-running"><MdCircle size={8} /> 运行中</span>
+              {r.live_status === 1 && <span className="rc-badge rc-badge-live"><MdPlayArrow size={14} /> 直播中</span>}
             </div>
 
             {/* Streamer info + area/announcement */}
