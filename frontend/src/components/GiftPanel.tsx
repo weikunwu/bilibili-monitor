@@ -1,5 +1,5 @@
-import { useState, useMemo, useEffect } from 'react'
-import { CheckPicker, DateRangePicker, Table } from 'rsuite'
+import { useState, useMemo, useEffect, useCallback } from 'react'
+import { CheckPicker, DateRangePicker, Checkbox, Table } from 'rsuite'
 import type { DateRange } from 'rsuite/DateRangePicker'
 
 import type { LiveEvent } from '../types'
@@ -71,6 +71,7 @@ export function GiftPanel({
 }: Props) {
   const isMobile = useIsMobile()
   const [selectedUsers, setSelectedUsers] = useState<string[]>([])
+  const [checkedKeys, setCheckedKeys] = useState<Set<string>>(new Set())
 
   const giftEvents = useMemo(() =>
     events.filter((ev) => ev.event_type === EVENT_GIFT),
@@ -90,6 +91,20 @@ export function GiftPanel({
     : indexed
 
   const totalGold = filtered.reduce((s, ev) => s + (ev.extra?.total_coin || 0), 0)
+
+  const toggleKey = useCallback((key: string) => {
+    setCheckedKeys((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key); else next.add(key)
+      return next
+    })
+  }, [])
+
+  const toggleAll = useCallback(() => {
+    setCheckedKeys((prev) =>
+      prev.size === filtered.length ? new Set() : new Set(filtered.map((ev) => ev._key))
+    )
+  }, [filtered])
 
   return (
     <div className="gift-panel">
@@ -132,9 +147,29 @@ export function GiftPanel({
             data={filtered}
             autoHeight
             rowKey="_key"
+            rowClassName={(rowData) => checkedKeys.has(rowData?._key) ? 'gift-row-checked' : ''}
+            onRowClick={(rowData) => toggleKey(rowData._key)}
           >
+            <Column width={50} align="center">
+              <HeaderCell>
+                <Checkbox
+                  checked={checkedKeys.size > 0 && checkedKeys.size === filtered.length}
+                  indeterminate={checkedKeys.size > 0 && checkedKeys.size < filtered.length}
+                  onChange={toggleAll}
+                />
+              </HeaderCell>
+              <Cell>
+                {(rowData: LiveEvent & { _key: string }) => (
+                  <Checkbox
+                    checked={checkedKeys.has(rowData._key)}
+                    onChange={() => toggleKey(rowData._key)}
+                  />
+                )}
+              </Cell>
+            </Column>
+
             {!isMobile && (
-              <Column width={80}>
+              <Column flexGrow={1}>
                 <HeaderCell>时间</HeaderCell>
                 <Cell>
                   {(rowData: LiveEvent) => (
@@ -144,7 +179,7 @@ export function GiftPanel({
               </Column>
             )}
 
-            <Column width={isMobile ? 100 : 160}>
+            <Column flexGrow={2}>
               <HeaderCell>用户</HeaderCell>
               <Cell>
                 {(rowData: LiveEvent) => (
@@ -156,7 +191,7 @@ export function GiftPanel({
               </Cell>
             </Column>
 
-            <Column flexGrow={1} minWidth={isMobile ? 100 : 160}>
+            <Column flexGrow={2}>
               <HeaderCell>礼物</HeaderCell>
               <Cell>
                 {(rowData: LiveEvent) => {
@@ -175,7 +210,7 @@ export function GiftPanel({
             </Column>
 
             {!isMobile && (
-              <Column width={100} align="right">
+              <Column flexGrow={1} align="right">
                 <HeaderCell>价值</HeaderCell>
                 <Cell>
                   {(rowData: LiveEvent) => (
@@ -188,7 +223,7 @@ export function GiftPanel({
             )}
 
             {!isMobile && (
-              <Column width={300}>
+              <Column flexGrow={3}>
                 <HeaderCell>操作</HeaderCell>
                 <Cell>
                   {(rowData: LiveEvent) => rowData.user_name ? (

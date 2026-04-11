@@ -209,7 +209,9 @@ function RoomPage({ rooms, currentUser }: {
     <>
       <div className="header">
         <Button appearance="subtle" size="xs" onClick={() => navigate('/')}>← 房间</Button>
-        <h1>{currentRoom?.streamer_name || roomId}</h1>
+        <a className="room-link" href={`https://live.bilibili.com/${roomId}`} target="_blank" rel="noopener noreferrer">
+          <h1>{currentRoom?.streamer_name || roomId}</h1>
+        </a>
         <span className="room-info">({roomId})</span>
         <span className="status">
           <span className={`dot ${connectionStatus}`} />

@@ -5,6 +5,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 
 .header { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); padding: 16px 24px; display: flex; align-items: center; gap: 16px; border-bottom: 1px solid #2a2a4a; position: sticky; top: 0; z-index: 100; }
 .header h1 { font-size: 20px; color: #fb7299; margin: 0; }
+.header .room-link { text-decoration: none; }
+.header .room-link:hover h1 { opacity: 0.8; }
 .header .room-info { font-size: 14px; color: #888; }
 .status { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; margin-left: auto; }
 .status .dot { width: 8px; height: 8px; border-radius: 50%; }
@@ -32,7 +34,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 .event { display: flex; align-items: center; gap: 10px; padding: 8px 12px; margin: 4px 0; border-radius: 8px; background: #1a1a2e; border: 1px solid #222240; font-size: 14px; animation: fadeIn 0.3s ease; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
 
-.event .time { color: #555; font-size: 12px; white-space: nowrap; min-width: 58px; padding-top: 2px; }
+.time { color: #555; font-size: 12px; white-space: nowrap; min-width: 58px; padding-top: 2px; }
 .event .rs-tag { flex-shrink: 0; }
 
 .event .avatar { width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0; object-fit: cover; }
@@ -177,7 +179,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 
   .events-container { padding: 4px 8px; max-height: calc(100vh - 300px); }
   .event { padding: 6px 8px; gap: 6px; font-size: 13px; flex-wrap: wrap; }
-  .event .time { font-size: 11px; min-width: 48px; }
+  .time { font-size: 11px; min-width: 48px; }
   .event .badge { font-size: 10px; padding: 1px 6px; }
   .event .avatar { width: 24px; height: 24px; }
   .event .user { font-size: 13px; }
