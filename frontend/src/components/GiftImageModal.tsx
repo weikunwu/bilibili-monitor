@@ -4,7 +4,7 @@ import { fetchGiftSummary } from '../api/client'
 import { generateGiftCard } from '../lib/giftCard'
 
 export interface GiftImageModalRef {
-  showGiftImage: (userName: string) => void
+  showGiftImage: (roomId: number, userName: string) => void
 }
 
 export const GiftImageModal = forwardRef<GiftImageModalRef>(function GiftImageModal(_, ref) {
@@ -13,10 +13,9 @@ export const GiftImageModal = forwardRef<GiftImageModalRef>(function GiftImageMo
   const [imgUrl, setImgUrl] = useState('')
 
   useImperativeHandle(ref, () => ({
-    async showGiftImage(userName: string) {
+    async showGiftImage(roomId: number, userName: string) {
       try { await document.fonts.load('italic 800 30px "Baloo 2"') } catch { /* ok */ }
-      const tz = new Date().getTimezoneOffset()
-      const data = await fetchGiftSummary(userName, tz)
+      const data = await fetchGiftSummary(roomId, userName)
       const u = data.users?.[0]
       if (!u) { alert('该用户今日暂无礼物记录'); return }
 

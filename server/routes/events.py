@@ -150,18 +150,24 @@ def _build_gift_users(rows) -> dict:
 
 @router.get("/api/gift-summary")
 async def gift_summary(
+    room_id: int = Query(...),
     date: Optional[str] = Query(None),
     user_name: Optional[str] = Query(None),
-    tz_offset: Optional[int] = Query(None),
+    _=Depends(require_room_access),
 ):
+    beijing_tz = timezone(timedelta(hours=8))
     conn = sqlite3.connect(str(DB_PATH))
     if date:
-        where = "event_type='gift' AND timestamp LIKE ?"
-        params: list = [date + "%"]
+        where = "event_type='gift' AND room_id=? AND timestamp LIKE ?"
+        params: list = [room_id, date + "%"]
     else:
-        utc_start, utc_end = _today_utc_range(tz_offset)
-        where = "event_type='gift' AND timestamp >= ? AND timestamp < ?"
-        params = [utc_start, utc_end]
+        now_bj = datetime.now(beijing_tz)
+        bj_start = now_bj.replace(hour=0, minute=0, second=0, microsecond=0)
+        bj_end = bj_start + timedelta(days=1)
+        utc_start = bj_start.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        utc_end = bj_end.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        where = "event_type='gift' AND room_id=? AND timestamp >= ? AND timestamp < ?"
+        params = [room_id, utc_start, utc_end]
     if user_name:
         where += " AND user_name=?"
         params.append(user_name)
@@ -170,7 +176,7 @@ async def gift_summary(
 
     users = _build_gift_users(rows)
     result = sorted(users.values(), key=lambda x: x["total_coin"], reverse=True)
-    display_date = date if date else datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    display_date = date if date else datetime.now(beijing_tz).strftime("%Y-%m-%d")
     return {"date": display_date, "users": result}
 
 

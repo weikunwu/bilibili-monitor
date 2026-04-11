@@ -185,7 +185,7 @@ function RoomPage({ rooms, currentUser }: {
           events={events}
           activeTab={activeTab}
           autoScroll={autoScroll}
-          onGenerateGiftImage={(userName) => giftModalRef.current?.showGiftImage(userName)}
+          onGenerateGiftImage={(userName) => giftModalRef.current?.showGiftImage(roomId, userName)}
         />
       </>
     )

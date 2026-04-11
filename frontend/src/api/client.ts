@@ -143,11 +143,11 @@ export async function toggleCommand(roomId: number, cmdId: string): Promise<void
 }
 
 export async function fetchGiftSummary(
+  roomId: number,
   userName: string,
-  tzOffset: number,
 ): Promise<{ date: string; users: GiftUser[] }> {
   const res = await fetch(
-    `/api/gift-summary?user_name=${encodeURIComponent(userName)}&tz_offset=${tzOffset}`,
+    `/api/gift-summary?room_id=${roomId}&user_name=${encodeURIComponent(userName)}`,
   )
   return res.json()
 }
