@@ -57,7 +57,12 @@ async def index():
 
 
 @app.get("/room/{path:path}")
-async def spa_fallback():
+async def spa_room_fallback():
+    return FileResponse(BASE_DIR / "frontend" / "dist" / "index.html")
+
+
+@app.get("/admin")
+async def spa_admin_fallback():
     return FileResponse(BASE_DIR / "frontend" / "dist" / "index.html")
 
 

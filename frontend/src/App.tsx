@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Routes, Route, useParams, useNavigate, Navigate } from 'react-router-dom'
 import type { LiveEvent, TabType, Room, Stats } from './types'
-import { fetchRooms, fetchStats, fetchEvents, fetchBotStatus, botLogout, fetchMe, type CurrentUser } from './api/client'
+import { fetchRooms, fetchStats, fetchEvents, fetchMe, type CurrentUser } from './api/client'
 import { useWebSocket } from './hooks/useWebSocket'
 import { useLocalStorage } from './hooks/useLocalStorage'
 import { localToUTC, fmtDate } from './lib/formatters'
@@ -27,7 +27,7 @@ function todayRange(): DateRange {
   ]
 }
 
-const VALID_TABS: TabType[] = ['all', 'danmaku', 'gift', 'superchat', 'guard', 'tools', 'admin']
+const VALID_TABS: TabType[] = ['all', 'danmaku', 'gift', 'superchat', 'guard', 'tools']
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null)
@@ -54,8 +54,12 @@ export default function App() {
         <RoomPage
           rooms={rooms}
           currentUser={currentUser}
-          onRoomsChanged={() => fetchRooms().then(setRooms)}
         />
+      } />
+      <Route path="/admin" element={
+        currentUser?.role === 'admin'
+          ? <AdminPage rooms={rooms} currentUser={currentUser} onRoomsChanged={() => fetchRooms().then(setRooms)} />
+          : <Navigate to="/" replace />
       } />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
@@ -91,10 +95,24 @@ function HomePage({ rooms, currentUser, onRoomsChanged }: { rooms: Room[]; curre
   )
 }
 
-function RoomPage({ rooms, currentUser, onRoomsChanged }: {
+function AdminPage({ rooms, currentUser, onRoomsChanged }: { rooms: Room[]; currentUser: CurrentUser | null; onRoomsChanged: () => void }) {
+  const navigate = useNavigate()
+  return (
+    <div>
+      <div className="header">
+        <Button appearance="subtle" size="xs" onClick={() => navigate('/')}>← 房间</Button>
+        <h1>管理后台</h1>
+        <span style={{ flex: 1 }} />
+        {currentUser && <ProfileMenu user={currentUser} />}
+      </div>
+      <AdminPanel rooms={rooms} onRoomsChanged={onRoomsChanged} />
+    </div>
+  )
+}
+
+function RoomPage({ rooms, currentUser }: {
   rooms: Room[]
   currentUser: CurrentUser | null
-  onRoomsChanged: () => void
 }) {
   const { roomId: roomIdStr, tab: tabStr } = useParams()
   const navigate = useNavigate()
@@ -103,8 +121,6 @@ function RoomPage({ rooms, currentUser, onRoomsChanged }: {
 
   const [stats, setStats] = useState<Stats | null>(null)
   const [events, setEvents] = useState<LiveEvent[]>([])
-  const [botUid, setBotUid] = useState<number | null>(null)
-  const [qrModalOpen, setQrModalOpen] = useState(false)
   const [autoScroll, setAutoScroll] = useLocalStorage('autoScroll', true)
 
   const giftModalRef = useRef<GiftImageModalRef>(null)
@@ -130,10 +146,6 @@ function RoomPage({ rooms, currentUser, onRoomsChanged }: {
       fetchStats(roomId).then(setStats).catch(() => {})
     }, 10000)
 
-    fetchBotStatus(roomId).then((d) => {
-      setBotUid(d.logged_in ? d.uid : null)
-    }).catch(() => {})
-
     const now = new Date()
     const from = fmtDate(now) + ' 00:00:00'
     const to = fmtDate(now) + ' 23:59:59'
@@ -150,16 +162,6 @@ function RoomPage({ rooms, currentUser, onRoomsChanged }: {
     navigate(`/room/${roomId}/${tab}`, { replace: true })
   }
 
-  function handleBotClick() {
-    if (botUid) {
-      if (!confirm('确定解绑机器人？解绑后将无法显示完整用户名和自动送礼')) return
-      botLogout(roomId).then(() => setBotUid(null))
-    } else {
-      setQrModalOpen(true)
-    }
-  }
-
-  const isAdmin = currentUser?.role === 'admin'
   const currentRoom = rooms.find((r) => r.room_id === roomId)
 
   // rooms already filtered by backend permissions — if not found, no access
@@ -168,9 +170,6 @@ function RoomPage({ rooms, currentUser, onRoomsChanged }: {
   }
 
   function renderContent() {
-    if (activeTab === 'admin' && isAdmin) {
-      return <AdminPanel rooms={rooms} onRoomsChanged={onRoomsChanged} />
-    }
     if (activeTab === 'tools') {
       return <ToolsPanel roomId={roomId} />
     }
@@ -198,14 +197,6 @@ function RoomPage({ rooms, currentUser, onRoomsChanged }: {
         <Button appearance="subtle" size="xs" onClick={() => navigate('/')}>← 房间</Button>
         <h1>{currentRoom?.streamer_name || roomId}</h1>
         <span className="room-info">({roomId})</span>
-        <Button
-          appearance="ghost"
-          color={botUid ? 'green' : undefined}
-          size="xs"
-          onClick={handleBotClick}
-        >
-          {botUid ? `机器人已绑定 (${botUid})` : '绑定机器人'}
-        </Button>
         <span className="status">
           <span className={`dot ${connectionStatus}`} />
           {connectionStatus === 'connected' ? '已连接' : connectionStatus === 'connecting' ? '连接中' : '未连接'}
@@ -215,16 +206,9 @@ function RoomPage({ rooms, currentUser, onRoomsChanged }: {
       </div>
 
       <StatsGrid stats={stats} />
-      <TabBar active={activeTab} onChange={handleTabChange} isAdmin={isAdmin} />
+      <TabBar active={activeTab} onChange={handleTabChange} />
 
       {renderContent()}
-
-      <QrLoginModal
-        isOpen={qrModalOpen}
-        roomId={roomId}
-        onClose={() => setQrModalOpen(false)}
-        onSuccess={(uid) => setBotUid(uid)}
-      />
 
       <GiftImageModal ref={giftModalRef} />
     </>

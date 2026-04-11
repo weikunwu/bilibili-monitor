@@ -1,6 +1,7 @@
 import { forwardRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Popover, Whisper, Button, Divider } from 'rsuite'
-import { MdLogout } from 'react-icons/md'
+import { MdLogout, MdAdminPanelSettings } from 'react-icons/md'
 import { authLogout, type CurrentUser } from '../api/client'
 
 interface Props {
@@ -21,6 +22,7 @@ function hashColor(str: string): string {
 }
 
 export function ProfileMenu({ user }: Props) {
+  const navigate = useNavigate()
   const handleLogout = () => {
     authLogout().then(() => location.reload())
   }
@@ -39,13 +41,23 @@ export function ProfileMenu({ user }: Props) {
         </div>
       </div>
       <Divider style={{ margin: '8px 0' }} />
+      {user.role === 'admin' && (
+        <Button
+          appearance="subtle"
+          block
+          size="sm"
+          onClick={() => navigate('/admin')}
+          startIcon={<MdAdminPanelSettings />}
+        >
+          管理后台
+        </Button>
+      )}
       <Button
         appearance="subtle"
         block
         size="sm"
         onClick={handleLogout}
         startIcon={<MdLogout />}
-        className="profile-logout-btn"
       >
         退出登录
       </Button>
