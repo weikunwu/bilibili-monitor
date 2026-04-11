@@ -128,7 +128,7 @@ export function GuardPanel({
       if (extra.guard_level && extra.guard_level > u.guard_level) u.guard_level = extra.guard_level
       const name = extra.guard_name || ev.content || ''
       const num = extra.num || 1
-      const coin = (extra.price || 0) * 1000
+      const coin = extra.price || 0
       u.gifts[name] = (u.gifts[name] || 0) + num
       u.gift_coins[name] = (u.gift_coins[name] || 0) + coin
       u.total_coin += coin
@@ -256,7 +256,7 @@ export function GuardPanel({
                       {GUARD_NAMES[level] || extra.guard_name || '舰长'}
                       {(extra.num || 1) > 1 ? ` x${extra.num}` : ''}
                       {isMobile && extra.price ? (
-                        <span className="gift-item-coin">¥{extra.price}</span>
+                        <span className="gift-item-coin">{extra.price} 电池</span>
                       ) : null}
                     </span>
                   )
@@ -270,7 +270,7 @@ export function GuardPanel({
                 <Cell>
                   {(rowData: LiveEvent) => (
                     rowData.extra?.price
-                      ? <span className="gift-total">¥{rowData.extra.price}</span>
+                      ? <span className="gift-total">{rowData.extra.price} 电池</span>
                       : null
                   )}
                 </Cell>

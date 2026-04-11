@@ -141,10 +141,10 @@ def handle_message(msg: dict) -> Optional[dict]:
             "content": f"{gift_name} x{num}",
             "extra": {
                 "gift_name": gift_name, "gift_id": gift_id, "num": num,
-                "coin_type": data.get("coin_type", ""), "total_coin": price * num,
-                "price": data.get("price", 0), "action": action, "blind_name": blind_name,
+                "coin_type": data.get("coin_type", ""), "total_coin": price * num / 100,
+                "price": price / 100, "action": action, "blind_name": blind_name,
                 "avatar": data.get("face", ""), "gift_img": gift_img, "gift_gif": gift_gif,
-                "guard_level": data.get("guard_level", 0), "blind_price": blind_price,
+                "guard_level": data.get("guard_level", 0), "blind_price": blind_price / 100,
             },
         }
         log.info(f"[礼物] {data.get('uname')} {action} {gift_name} x{num}")
@@ -158,7 +158,7 @@ def handle_message(msg: dict) -> Optional[dict]:
             "user_name": user_info.get("uname", ""), "user_id": data.get("uid", 0),
             "content": data.get("message", ""),
             "extra": {
-                "price": data.get("price", 0), "duration": data.get("time", 0),
+                "price": data.get("price", 0) * 10, "duration": data.get("time", 0),
                 "background_color": data.get("background_color", ""),
                 "avatar": user_info.get("face", ""),
             },
@@ -174,7 +174,7 @@ def handle_message(msg: dict) -> Optional[dict]:
             "timestamp": now, "event_type": "guard",
             "user_name": data.get("username", ""), "user_id": data.get("uid", 0),
             "content": f"开通 {guard_name}",
-            "extra": {"guard_level": level, "guard_name": guard_name, "num": data.get("num", 1), "price": data.get("price", 0), "avatar": data.get("face", "")},
+            "extra": {"guard_level": level, "guard_name": guard_name, "num": data.get("num", 1), "price": data.get("price", 0) / 100, "avatar": data.get("face", "")},
         }
         log.info(f"[上舰] {data.get('username', '')} 开通 {guard_name}")
         log.debug(f"[上舰原始数据] {json.dumps(data, ensure_ascii=False)}")

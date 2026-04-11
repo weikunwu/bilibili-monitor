@@ -8,15 +8,15 @@ export function formatTime(ts: string): string {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 }
 
-export function formatCoin(coin: number, coinType?: string): string {
-  if (!coin) return ''
+export function formatCoin(battery: number, coinType?: string): string {
+  if (!battery) return ''
   if (coinType === 'silver') return ''
-  return '¥' + (coin / 1000).toFixed(1).replace(/\.0$/, '')
+  return battery.toFixed(0) + ' 电池'
 }
 
-export function formatGold(coin: number): string {
-  const sign = coin < 0 ? '-' : ''
-  return sign + '¥' + (Math.abs(coin) / 1000).toFixed(1).replace(/\.0$/, '')
+export function formatGold(battery: number): string {
+  const sign = battery < 0 ? '-' : ''
+  return sign + Math.abs(battery).toFixed(0) + ' 电池'
 }
 
 export function fmtDate(d: Date): string {

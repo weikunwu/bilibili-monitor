@@ -140,11 +140,10 @@ export function GiftPanel({
       if (extra.gift_id && !u.gift_ids[name]) u.gift_ids[name] = extra.gift_id
     }
     // sort gifts within each user by tier: gold > pink > purple > blue
-    function tierOrder(coin: number): number {
-      const yuan = coin / 1000
-      if (yuan >= 1000) return 0
-      if (yuan >= 500) return 1
-      if (yuan >= 100) return 2
+    function tierOrder(battery: number): number {
+      if (battery >= 10000) return 0
+      if (battery >= 5000) return 1
+      if (battery >= 1000) return 2
       return 3
     }
     for (const u of Object.values(map)) {

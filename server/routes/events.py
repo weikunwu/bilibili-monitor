@@ -145,12 +145,11 @@ def _build_gift_users(rows, sort_by: str = "value") -> dict:
             users[key]["guard_level"] = gl
 
     if sort_by == "tier":
-        def _tier(coin: int) -> int:
-            yuan = coin / 1000
-            if yuan >= 1000: return 0  # gold
-            if yuan >= 500: return 1   # pink
-            if yuan >= 100: return 2   # purple
-            return 3                    # blue
+        def _tier(battery: float) -> int:
+            if battery >= 10000: return 0  # gold (≥1000元)
+            if battery >= 5000: return 1   # pink (≥500元)
+            if battery >= 1000: return 2   # purple (≥100元)
+            return 3                        # blue
 
         for u in users.values():
             sorted_names = sorted(
@@ -340,8 +339,8 @@ async def gift_gif_card(
         return {"error": "该礼物没有动态图"}
 
     gift_coins = u.get("gift_coins", {})
-    yuan = gift_coins.get(gift_name, 0) / 1000
-    tpl_name = "gold" if yuan >= 1000 else "pink" if yuan >= 500 else "purple" if yuan >= 100 else "blue"
+    battery = gift_coins.get(gift_name, 0)
+    tpl_name = "gold" if battery >= 10000 else "pink" if battery >= 5000 else "purple" if battery >= 1000 else "blue"
     tpl_path = BASE_DIR / "static" / f"card_tpl_{tpl_name}.png"
 
     S = 2

@@ -55,9 +55,8 @@ export async function generateGiftCard(canvas: HTMLCanvasElement, u: GiftUser) {
     const [giftName, num] = gifts[i]
     const y = PAD_TOP + i * (CARD_H + GAP)
 
-    const thisGiftCoin = giftCoins[giftName] || 0
-    const thisYuan = thisGiftCoin / 1000
-    const tplKey = thisYuan >= 1000 ? 'gold' : thisYuan >= 500 ? 'pink' : thisYuan >= 100 ? 'purple' : 'blue'
+    const battery = giftCoins[giftName] || 0
+    const tplKey = battery >= 10000 ? 'gold' : battery >= 5000 ? 'pink' : battery >= 1000 ? 'purple' : 'blue'
     const tpl = cardTpls[tplKey]
     if (tpl) ctx.drawImage(tpl, 0, y, W, CARD_H)
 
