@@ -291,7 +291,7 @@ class BiliLiveClient:
         import sqlite3
         from .config import DB_PATH
 
-        utc_start, utc_end, label = _beijing_time_range(period)
+        utc_start, utc_end, _ = _beijing_time_range(period)
         conn = sqlite3.connect(str(DB_PATH))
         rows = conn.execute(
             "SELECT extra_json FROM events WHERE event_type='gift' AND room_id=? AND timestamp >= ? AND timestamp < ? AND user_name=? AND extra_json LIKE '%blind_name%' AND extra_json NOT LIKE '%\"blind_name\": \"\"%'",
@@ -299,8 +299,9 @@ class BiliLiveClient:
         ).fetchall()
         conn.close()
 
+        period_label = {"today": "今日", "yesterday": "昨日", "this_month": "本月", "last_month": "上月"}.get(period, "今日")
         if not rows:
-            await self.send_danmaku(f"@{user_name} {label}暂无盲盒记录")
+            await self.send_danmaku(f"{user_name} {period_label}暂无盲盒记录")
             return
 
         total_boxes = 0
@@ -318,13 +319,10 @@ class BiliLiveClient:
 
         profit = total_value - total_cost
 
-        def fmt(coin: int) -> str:
-            if coin >= 10000000:
-                return f"{coin/10000000:.1f}万元"
-            return f"¥{coin/1000:.0f}" if coin >= 1000 else f"{coin}金瓜子"
-
-        sign = "+" if profit >= 0 else ""
-        msg = f"@{user_name} {label}盲盒: {total_boxes}次 花费{fmt(total_cost)} 价值{fmt(total_value)} {sign}{fmt(profit)}"
+        yuan = abs(profit) / 1000
+        yuan_str = f"{yuan:.1f}".rstrip('0').rstrip('.')
+        result = f"赚{yuan_str}元" if profit >= 0 else f"亏{yuan_str}元"
+        msg = f"{user_name} {period_label}盲盒开了{total_boxes}个，{result}"
         await self.send_danmaku(msg)
 
     def stop(self):
