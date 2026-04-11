@@ -1,17 +1,15 @@
-import { useEffect, useRef } from 'react'
-import type { LiveEvent, TabType } from '../types'
+import { useEffect, useRef, useMemo, useState, useCallback } from 'react'
+import { TagPicker, Checkbox, Button } from 'rsuite'
+import type { LiveEvent, TabType, GiftUser } from '../types'
 import { EventItem } from './EventItem'
+import { generateGiftCard } from '../lib/giftCard'
 
 interface Props {
   events: LiveEvent[]
   activeTab: TabType
   autoScroll: boolean
   onGenerateGiftImage: (userName: string) => void
-}
-
-function shouldShow(ev: LiveEvent, activeTab: TabType): boolean {
-  if (activeTab !== 'all' && ev.event_type !== activeTab) return false
-  return true
+  onGenerateBlindBoxImage?: (userName: string) => void
 }
 
 function getDateStr(ts: string): string {
@@ -31,13 +29,96 @@ function formatDateLabel(dateStr: string): string {
   return dateStr
 }
 
+function buildGiftUserFromEvents(events: LiveEvent[]): GiftUser | null {
+  if (events.length === 0) return null
+  const u: GiftUser = {
+    user_name: '', avatar: '',
+    gifts: {}, gift_imgs: {}, gift_actions: {}, gift_coins: {}, gift_ids: {},
+    guard_level: 0, total_coin: 0,
+  }
+  for (const ev of events) {
+    const extra = ev.extra || {}
+    if (!u.user_name && ev.user_name) u.user_name = ev.user_name
+    if (!u.avatar && extra.avatar) u.avatar = extra.avatar
+    const name = extra.gift_name || ev.content || ''
+    const num = extra.num || 1
+    const coin = (extra.price || 0) * num
+    u.gifts[name] = (u.gifts[name] || 0) + num
+    u.gift_coins[name] = (u.gift_coins[name] || 0) + coin
+    u.total_coin += coin
+    if (extra.gift_img && !u.gift_imgs[name]) u.gift_imgs[name] = extra.gift_img
+    if (extra.action && !u.gift_actions[name]) u.gift_actions[name] = extra.action
+    if (extra.gift_id && !u.gift_ids[name]) u.gift_ids[name] = extra.gift_id
+    if (extra.guard_level && (!u.guard_level || extra.guard_level < u.guard_level)) {
+      u.guard_level = extra.guard_level
+    }
+  }
+  return u
+}
+
 export function EventList({
   events, activeTab, autoScroll,
-  onGenerateGiftImage,
+  onGenerateGiftImage, onGenerateBlindBoxImage,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const [selectedUsers, setSelectedUsers] = useState<string[]>([])
+  const [checkedKeys, setCheckedKeys] = useState<Set<string>>(new Set())
+  const [generating, setGenerating] = useState(false)
 
-  const filtered = events.filter((ev) => shouldShow(ev, activeTab))
+  const isGiftTab = activeTab === 'gift'
+
+  const giftUsers = useMemo(() => {
+    const names = new Set<string>()
+    for (const ev of events) {
+      if (ev.event_type === 'gift' && ev.user_name) names.add(ev.user_name)
+    }
+    return Array.from(names).sort().map((n) => ({ label: n, value: n }))
+  }, [events])
+
+  const filtered = events.filter((ev) => {
+    if (activeTab !== 'all' && ev.event_type !== activeTab) return false
+    if (selectedUsers.length > 0 && activeTab === 'gift' && !selectedUsers.includes(ev.user_name || '')) return false
+    return true
+  })
+
+  const eventKey = (ev: LiveEvent, i: number) => `${ev.timestamp}-${i}`
+
+  const toggleCheck = useCallback((key: string) => {
+    setCheckedKeys((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }, [])
+
+  const selectAll = useCallback(() => {
+    if (checkedKeys.size === filtered.length) {
+      setCheckedKeys(new Set())
+    } else {
+      setCheckedKeys(new Set(filtered.map((ev, i) => eventKey(ev, i))))
+    }
+  }, [filtered, checkedKeys.size])
+
+  const handleGenerateCard = useCallback(async () => {
+    const selected = filtered.filter((ev, i) => checkedKeys.has(eventKey(ev, i)))
+    const giftUser = buildGiftUserFromEvents(selected)
+    if (!giftUser) return
+    setGenerating(true)
+    try {
+      try { await document.fonts.load('italic 800 30px "Baloo 2"') } catch { /* ok */ }
+      const canvas = document.createElement('canvas')
+      await generateGiftCard(canvas, giftUser)
+      const url = canvas.toDataURL('image/png')
+      // Download
+      const a = document.createElement('a')
+      a.download = `gift-card-${new Date().toISOString().slice(0, 10)}.png`
+      a.href = url
+      a.click()
+    } finally {
+      setGenerating(false)
+    }
+  }, [filtered, checkedKeys])
 
   useEffect(() => {
     if (autoScroll && containerRef.current) {
@@ -45,30 +126,75 @@ export function EventList({
     }
   }, [filtered.length, autoScroll])
 
+  useEffect(() => {
+    setCheckedKeys(new Set())
+  }, [activeTab])
+
   return (
-    <div className="events-container" ref={containerRef}>
-      {filtered.length === 0 ? (
-        <div className="empty">等待接收消息...</div>
-      ) : (
-        filtered.map((ev, i) => {
-          const dateStr = getDateStr(ev.timestamp)
-          const prevDateStr = i > 0 ? getDateStr(filtered[i - 1].timestamp) : ''
-          const showDateSep = dateStr !== prevDateStr
-          return (
-            <div key={`${ev.timestamp}-${i}`}>
-              {showDateSep && (
-                <div className="date-separator">
-                  <span>{formatDateLabel(dateStr)}</span>
-                </div>
+    <>
+      {isGiftTab && (
+        <div className="event-filter">
+          <TagPicker
+            data={giftUsers}
+            value={selectedUsers}
+            onChange={setSelectedUsers}
+            placeholder="筛选用户"
+            size="sm"
+            style={{ minWidth: 200 }}
+          />
+          {filtered.length > 0 && (
+            <>
+              <Checkbox
+                checked={checkedKeys.size > 0 && checkedKeys.size === filtered.length}
+                indeterminate={checkedKeys.size > 0 && checkedKeys.size < filtered.length}
+                onChange={selectAll}
+              >
+                全选
+              </Checkbox>
+              {checkedKeys.size > 0 && (
+                <Button size="sm" appearance="primary" loading={generating} onClick={handleGenerateCard}>
+                  生成礼物卡片 ({checkedKeys.size})
+                </Button>
               )}
-              <EventItem
-                event={ev}
-                onGenerateGiftImage={onGenerateGiftImage}
-              />
-            </div>
-          )
-        })
+            </>
+          )}
+        </div>
       )}
-    </div>
+      <div className="events-container" ref={containerRef}>
+        {filtered.length === 0 ? (
+          <div className="empty">等待接收消息...</div>
+        ) : (
+          filtered.map((ev, i) => {
+            const key = eventKey(ev, i)
+            const dateStr = getDateStr(ev.timestamp)
+            const prevDateStr = i > 0 ? getDateStr(filtered[i - 1].timestamp) : ''
+            const showDateSep = dateStr !== prevDateStr
+            return (
+              <div key={key}>
+                {showDateSep && (
+                  <div className="date-separator">
+                    <span>{formatDateLabel(dateStr)}</span>
+                  </div>
+                )}
+                <div className="event-row">
+                  {isGiftTab && (
+                    <Checkbox
+                      checked={checkedKeys.has(key)}
+                      onChange={() => toggleCheck(key)}
+                      className="event-checkbox"
+                    />
+                  )}
+                  <EventItem
+                    event={ev}
+                    onGenerateGiftImage={onGenerateGiftImage}
+                    onGenerateBlindBoxImage={onGenerateBlindBoxImage}
+                  />
+                </div>
+              </div>
+            )
+          })
+        )}
+      </div>
+    </>
   )
 }

@@ -190,6 +190,7 @@ function RoomPage({ rooms, currentUser }: {
           activeTab={activeTab}
           autoScroll={autoScroll}
           onGenerateGiftImage={(userName) => giftModalRef.current?.showGiftImage(roomId, userName)}
+          onGenerateBlindBoxImage={(userName) => giftModalRef.current?.showGiftImage(roomId, userName, true)}
         />
       </>
     )

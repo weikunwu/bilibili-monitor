@@ -7,6 +7,7 @@ import { BADGE_NAMES } from '../lib/constants'
 interface Props {
   event: LiveEvent
   onGenerateGiftImage: (userName: string) => void
+  onGenerateBlindBoxImage?: (userName: string) => void
 }
 
 const TAG_COLORS: Record<string, 'red' | 'orange' | 'yellow' | 'green' | 'blue' | 'violet' | 'cyan'> = {
@@ -65,7 +66,7 @@ function renderContent(ev: LiveEvent): ReactNode {
   return <>{ev.content || ''}</>
 }
 
-export const EventItem = memo(function EventItem({ event: ev, onGenerateGiftImage }: Props) {
+export const EventItem = memo(function EventItem({ event: ev, onGenerateGiftImage, onGenerateBlindBoxImage }: Props) {
   const extra = ev.extra || {}
   const face = extra.avatar || ''
 
@@ -96,9 +97,16 @@ export const EventItem = memo(function EventItem({ event: ev, onGenerateGiftImag
         {priceTag}
       </span>
       {ev.event_type === 'gift' && ev.user_name && (
-        <Button size="sm" appearance="ghost" onClick={() => onGenerateGiftImage(ev.user_name!)}>
-          今日礼物
-        </Button>
+        <>
+          <Button size="sm" appearance="ghost" onClick={() => onGenerateGiftImage(ev.user_name!)}>
+            今日礼物
+          </Button>
+          {extra.blind_name && onGenerateBlindBoxImage && (
+            <Button size="sm" appearance="ghost" onClick={() => onGenerateBlindBoxImage(ev.user_name!)}>
+              今日盲盒
+            </Button>
+          )}
+        </>
       )}
     </div>
   )

@@ -4,7 +4,7 @@ import { fetchGiftSummary } from '../api/client'
 import { generateGiftCard } from '../lib/giftCard'
 
 export interface GiftImageModalRef {
-  showGiftImage: (roomId: number, userName: string) => void
+  showGiftImage: (roomId: number, userName: string, blindOnly?: boolean) => void
 }
 
 export const GiftImageModal = forwardRef<GiftImageModalRef>(function GiftImageModal(_, ref) {
@@ -13,17 +13,17 @@ export const GiftImageModal = forwardRef<GiftImageModalRef>(function GiftImageMo
   const [imgUrl, setImgUrl] = useState('')
 
   useImperativeHandle(ref, () => ({
-    async showGiftImage(roomId: number, userName: string) {
+    async showGiftImage(roomId: number, userName: string, blindOnly?: boolean) {
       try { await document.fonts.load('italic 800 30px "Baloo 2"') } catch { /* ok */ }
-      const data = await fetchGiftSummary(roomId, userName)
+      const data = await fetchGiftSummary(roomId, userName, blindOnly)
       const u = data.users?.[0]
-      if (!u) { alert('该用户今日暂无礼物记录'); return }
+      if (!u) { alert(blindOnly ? '该用户今日暂无盲盒记录' : '该用户今日暂无礼物记录'); return }
 
       const offscreen = document.createElement('canvas')
       await generateGiftCard(offscreen, u)
       const url = offscreen.toDataURL('image/png')
 
-      setTitle(`${u.user_name} - ${data.date} 礼物`)
+      setTitle(`${u.user_name} - ${data.date} ${blindOnly ? '盲盒' : '礼物'}`)
       setImgUrl(url)
       setIsOpen(true)
     },

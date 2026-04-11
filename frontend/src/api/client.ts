@@ -145,10 +145,11 @@ export async function toggleCommand(roomId: number, cmdId: string): Promise<void
 export async function fetchGiftSummary(
   roomId: number,
   userName: string,
+  blindOnly?: boolean,
 ): Promise<{ date: string; users: GiftUser[] }> {
-  const res = await fetch(
-    `/api/gift-summary?room_id=${roomId}&user_name=${encodeURIComponent(userName)}`,
-  )
+  let url = `/api/gift-summary?room_id=${roomId}&user_name=${encodeURIComponent(userName)}`
+  if (blindOnly) url += '&blind_only=true'
+  const res = await fetch(url)
   return res.json()
 }
 

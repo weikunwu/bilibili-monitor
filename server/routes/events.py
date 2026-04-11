@@ -152,6 +152,7 @@ async def gift_summary(
     room_id: int = Query(...),
     date: Optional[str] = Query(None),
     user_name: Optional[str] = Query(None),
+    blind_only: bool = Query(False),
     _=Depends(require_room_access),
 ):
     beijing_tz = timezone(timedelta(hours=8))
@@ -170,6 +171,8 @@ async def gift_summary(
     if user_name:
         where += " AND user_name=?"
         params.append(user_name)
+    if blind_only:
+        where += " AND extra_json LIKE '%blind_name%' AND extra_json NOT LIKE '%\"blind_name\": \"\"%'"
     rows = conn.execute(f"SELECT user_name, user_id, extra_json FROM events WHERE {where}", params).fetchall()
     conn.close()
 
