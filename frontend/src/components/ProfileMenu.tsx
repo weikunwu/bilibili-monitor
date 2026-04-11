@@ -1,3 +1,4 @@
+import { forwardRef } from 'react'
 import { Popover, Whisper, Button, Divider } from 'rsuite'
 import { MdLogout } from 'react-icons/md'
 import { authLogout, type CurrentUser } from '../api/client'
@@ -51,11 +52,17 @@ export function ProfileMenu({ user }: Props) {
     </Popover>
   )
 
-  return (
-    <Whisper placement="bottomEnd" trigger="click" speaker={speaker}>
-      <button className="profile-avatar-btn" style={{ background: hashColor(user.email) }}>
+  const AvatarButton = forwardRef<HTMLButtonElement, React.ButtonHTMLAttributes<HTMLButtonElement>>(
+    (props, ref) => (
+      <button {...props} ref={ref} className="profile-avatar-btn" style={{ background: hashColor(user.email) }}>
         {getInitial(user.email)}
       </button>
+    ),
+  )
+
+  return (
+    <Whisper placement="bottomEnd" trigger="click" speaker={speaker}>
+      <AvatarButton />
     </Whisper>
   )
 }
