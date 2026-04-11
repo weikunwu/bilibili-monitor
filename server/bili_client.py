@@ -8,7 +8,7 @@ import aiohttp
 
 from .config import (
     HEADERS, DANMU_CONF_API, DANMU_INFO_API, ROOM_INFO_API, NAV_API,
-    SEND_GIFT_API, WS_OP_AUTH, WS_OP_HEARTBEAT, log,
+    SEND_GIFT_API, SEND_MSG_API, WS_OP_AUTH, WS_OP_HEARTBEAT, log,
 )
 from .protocol import make_packet, parse_packets, handle_message
 from .bili_api import get_wbi_key, wbi_sign
@@ -212,11 +212,17 @@ class BiliLiveClient:
                                     # 指令系统
                                     if event.get("event_type") == "danmaku":
                                         uid = event.get("user_id")
+                                        uname = event.get("user_name", "")
                                         content = (event.get("content") or "").strip()
+                                        # 主播指令
                                         if uid == self.ruid:
                                             cmd_cfg = get_command(self.real_room_id, "auto_gift")
                                             if cmd_cfg and cmd_cfg["enabled"] and content == cmd_cfg["config"]["trigger"]:
                                                 asyncio.create_task(self.send_gift(cmd_cfg["config"]))
+                                        # 盲盒查询指令
+                                        period_map = {"今日盲盒": "today", "昨日盲盒": "yesterday", "本月盲盒": "this_month", "上月盲盒": "last_month"}
+                                        if content in period_map:
+                                            asyncio.create_task(self.handle_blind_box_query(uname, period_map[content]))
                         elif raw_msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
                             break
                 finally:
@@ -253,6 +259,73 @@ class BiliLiveClient:
                         log.warning(f"[自动送礼] 失败: {data}")
         except Exception as e:
             log.warning(f"[自动送礼] 异常: {e}")
+
+    async def send_danmaku(self, msg: str):
+        if not self.cookies.get("SESSDATA"):
+            return
+        csrf = self.cookies.get("bili_jct", "")
+        # B站弹幕限制20字，超长分段发送
+        chunks = [msg[i:i+20] for i in range(0, len(msg), 20)]
+        try:
+            async with aiohttp.ClientSession(headers=self._make_cookie_header()) as session:
+                for chunk in chunks:
+                    payload = {
+                        "bubble": 0, "msg": chunk, "color": 16777215,
+                        "mode": 1, "fontsize": 25, "rnd": int(time.time()),
+                        "roomid": self.real_room_id,
+                        "csrf": csrf, "csrf_token": csrf,
+                    }
+                    async with session.post(SEND_MSG_API, data=payload) as resp:
+                        data = await resp.json(content_type=None)
+                        if data.get("code") != 0:
+                            log.warning(f"[发弹幕] 失败: {data}")
+                            break
+                    if len(chunks) > 1:
+                        await asyncio.sleep(1)
+        except Exception as e:
+            log.warning(f"[发弹幕] 异常: {e}")
+
+    async def handle_blind_box_query(self, user_name: str, period: str = "today"):
+        """Query blind box stats and reply via danmaku."""
+        from .routes.events import _beijing_time_range
+        import sqlite3
+        from .config import DB_PATH
+
+        utc_start, utc_end, label = _beijing_time_range(period)
+        conn = sqlite3.connect(str(DB_PATH))
+        rows = conn.execute(
+            "SELECT extra_json FROM events WHERE event_type='gift' AND room_id=? AND timestamp >= ? AND timestamp < ? AND user_name=? AND extra_json LIKE '%blind_name%' AND extra_json NOT LIKE '%\"blind_name\": \"\"%'",
+            (self.real_room_id, utc_start, utc_end, user_name),
+        ).fetchall()
+        conn.close()
+
+        if not rows:
+            await self.send_danmaku(f"@{user_name} {label}暂无盲盒记录")
+            return
+
+        total_boxes = 0
+        total_cost = 0
+        total_value = 0
+        for r in rows:
+            try:
+                extra = json.loads(r[0])
+            except:
+                continue
+            num = extra.get("num", 1)
+            total_boxes += num
+            total_cost += extra.get("blind_price", 0) * num
+            total_value += extra.get("price", 0) * num
+
+        profit = total_value - total_cost
+
+        def fmt(coin: int) -> str:
+            if coin >= 10000000:
+                return f"{coin/10000000:.1f}万元"
+            return f"¥{coin/1000:.0f}" if coin >= 1000 else f"{coin}金瓜子"
+
+        sign = "+" if profit >= 0 else ""
+        msg = f"@{user_name} {label}盲盒: {total_boxes}次 花费{fmt(total_cost)} 价值{fmt(total_value)} {sign}{fmt(profit)}"
+        await self.send_danmaku(msg)
 
     def stop(self):
         self._running = False
