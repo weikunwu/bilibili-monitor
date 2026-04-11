@@ -18,6 +18,23 @@ function shouldShow(ev: LiveEvent, activeTab: TabType, showEnter: boolean, showL
   return true
 }
 
+function getDateStr(ts: string): string {
+  if (!ts) return ''
+  const d = new Date(ts + 'Z')
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function formatDateLabel(dateStr: string): string {
+  const today = new Date()
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+  const yesterday = new Date(today)
+  yesterday.setDate(yesterday.getDate() - 1)
+  const yesterdayStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`
+  if (dateStr === todayStr) return `今天 ${dateStr}`
+  if (dateStr === yesterdayStr) return `昨天 ${dateStr}`
+  return dateStr
+}
+
 export function EventList({
   events, activeTab, showEnter, showLike, autoScroll,
   onGenerateGiftImage,
@@ -37,13 +54,24 @@ export function EventList({
       {filtered.length === 0 ? (
         <div className="empty">等待接收消息...</div>
       ) : (
-        filtered.map((ev, i) => (
-          <EventItem
-            key={`${ev.timestamp}-${i}`}
-            event={ev}
-            onGenerateGiftImage={onGenerateGiftImage}
-          />
-        ))
+        filtered.map((ev, i) => {
+          const dateStr = getDateStr(ev.timestamp)
+          const prevDateStr = i > 0 ? getDateStr(filtered[i - 1].timestamp) : ''
+          const showDateSep = dateStr !== prevDateStr
+          return (
+            <div key={`${ev.timestamp}-${i}`}>
+              {showDateSep && (
+                <div className="date-separator">
+                  <span>{formatDateLabel(dateStr)}</span>
+                </div>
+              )}
+              <EventItem
+                event={ev}
+                onGenerateGiftImage={onGenerateGiftImage}
+              />
+            </div>
+          )
+        })
       )}
     </div>
   )
