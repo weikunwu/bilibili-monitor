@@ -8,9 +8,8 @@ export function formatTime(ts: string): string {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 }
 
-export function formatCoin(battery: number, coinType?: string): string {
-  if (!battery) return ''
-  if (coinType === 'silver') return ''
+export function formatBattery(battery: number): string {
+  if (battery == null) return ''
   const sign = battery < 0 ? '-' : ''
   const yuan = Math.abs(battery) / 10
   return sign + '¥' + yuan.toFixed(1).replace(/\.0$/, '')

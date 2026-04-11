@@ -53,6 +53,7 @@ def _today_utc_range(tz_offset: Optional[int] = None) -> tuple[str, str]:
 async def get_events(
     room_id: int = Query(...),
     type: Optional[str] = Query(None),
+    user_name: Optional[str] = Query(None),
     limit: int = Query(200, ge=1, le=5000),
     offset: int = Query(0, ge=0),
     time_from: Optional[str] = Query(None),
@@ -72,6 +73,11 @@ async def get_events(
     if time_to:
         conditions.append("timestamp<=?")
         params.append(time_to)
+    if user_name:
+        conditions.append("user_name=?")
+        params.append(user_name)
+    # exclude silver coin gifts (free gifts like 辣条)
+    conditions.append("extra_json NOT LIKE '%\"coin_type\": \"silver\"%'")
     where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
     rows = conn.execute(
         f"SELECT * FROM events{where} ORDER BY id DESC LIMIT ? OFFSET ?",
@@ -174,7 +180,7 @@ async def gift_summary(
     beijing_tz = timezone(timedelta(hours=8))
     conn = sqlite3.connect(str(DB_PATH))
     if date:
-        where = "event_type='gift' AND room_id=? AND timestamp LIKE ?"
+        where = "event_type='gift' AND room_id=? AND timestamp LIKE ? AND extra_json NOT LIKE '%\"coin_type\": \"silver\"%'"
         params: list = [room_id, date + "%"]
     else:
         now_bj = datetime.now(beijing_tz)
@@ -182,7 +188,7 @@ async def gift_summary(
         bj_end = bj_start + timedelta(days=1)
         utc_start = bj_start.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         utc_end = bj_end.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-        where = "event_type='gift' AND room_id=? AND timestamp >= ? AND timestamp < ?"
+        where = "event_type='gift' AND room_id=? AND timestamp >= ? AND timestamp < ? AND extra_json NOT LIKE '%\"coin_type\": \"silver\"%'"
         params = [room_id, utc_start, utc_end]
     if user_name:
         where += " AND user_name=?"

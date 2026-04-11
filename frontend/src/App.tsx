@@ -153,14 +153,14 @@ function RoomPage({ rooms, currentUser }: {
     const now = new Date()
     const from = fmtDate(now) + ' 00:00:00'
     const to = fmtDate(now) + ' 23:59:59'
-    fetchEvents(roomId, localToUTC(from), localToUTC(to)).then(setEvents)
+    fetchEvents(roomId, { timeFrom: localToUTC(from), timeTo: localToUTC(to) }).then(setEvents)
 
     return () => clearInterval(interval)
   }, [roomId])
 
   function handleQueryRange(from: string, to: string, range: DateRange) {
     setDateRange(range)
-    fetchEvents(roomId, localToUTC(from), localToUTC(to)).then(setEvents)
+    fetchEvents(roomId, { timeFrom: localToUTC(from), timeTo: localToUTC(to) }).then(setEvents)
   }
 
   function handleTabChange(tab: TabType) {

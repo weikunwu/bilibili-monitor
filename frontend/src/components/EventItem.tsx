@@ -1,7 +1,7 @@
 import { type ReactNode, memo } from 'react'
 import { Tag, Checkbox } from 'rsuite'
 import type { LiveEvent } from '../types'
-import { formatTime, formatCoin, fixUrl } from '../lib/formatters'
+import { formatTime, formatBattery, fixUrl } from '../lib/formatters'
 import { BADGE_NAMES, EVENT_GIFT, EVENT_SUPERCHAT, EVENT_GUARD } from '../lib/constants'
 
 interface Props {
@@ -72,7 +72,7 @@ export const EventItem = memo(function EventItem({ event: ev, checked, onCheck }
 
   let priceTag: ReactNode = null
   if (ev.event_type === EVENT_GIFT && extra.total_coin) {
-    priceTag = <span className="price-tag">{formatCoin(extra.total_coin, extra.coin_type)}</span>
+    priceTag = <span className="price-tag">{formatBattery(extra.total_coin)}</span>
   } else if (ev.event_type === EVENT_SUPERCHAT && extra.price) {
     priceTag = <span className="price-tag">¥{(extra.price / 10).toFixed(1).replace(/\.0$/, '')}</span>
   } else if (ev.event_type === EVENT_GUARD && extra.guard_name) {

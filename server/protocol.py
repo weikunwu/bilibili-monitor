@@ -141,7 +141,7 @@ def handle_message(msg: dict) -> Optional[dict]:
             "content": f"{gift_name} x{num}",
             "extra": {
                 "gift_name": gift_name, "gift_id": gift_id, "num": num,
-                "coin_type": data.get("coin_type", ""), "total_coin": price * num / 100,
+                "total_coin": price * num / 100,
                 "price": price / 100, "action": action, "blind_name": blind_name,
                 "avatar": data.get("face", ""), "gift_img": gift_img, "gift_gif": gift_gif,
                 "guard_level": data.get("guard_level", 0), "blind_price": blind_price / 100,

@@ -12,13 +12,14 @@ export async function fetchStats(roomId: number): Promise<Stats> {
 
 export async function fetchEvents(
   roomId: number,
-  timeFrom?: string,
-  timeTo?: string,
-  limit = 2000,
+  opts?: { timeFrom?: string; timeTo?: string; type?: string; userName?: string; limit?: number },
 ): Promise<LiveEvent[]> {
+  const { timeFrom, timeTo, type, userName, limit = 2000 } = opts || {}
   let url = `/api/events?limit=${limit}&room_id=${roomId}`
   if (timeFrom) url += `&time_from=${encodeURIComponent(timeFrom)}`
   if (timeTo) url += `&time_to=${encodeURIComponent(timeTo)}`
+  if (type) url += `&type=${encodeURIComponent(type)}`
+  if (userName) url += `&user_name=${encodeURIComponent(userName)}`
   const res = await fetch(url)
   const data: LiveEvent[] = await res.json()
   return data.reverse().map((e) => {

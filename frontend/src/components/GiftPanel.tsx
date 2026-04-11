@@ -3,7 +3,7 @@ import { CheckPicker, DateRangePicker, Checkbox, Table, Pagination } from 'rsuit
 import type { DateRange } from 'rsuite/DateRangePicker'
 
 import type { LiveEvent, GiftUser } from '../types'
-import { formatTime, formatCoin, fixUrl } from '../lib/formatters'
+import { formatTime, formatBattery, fixUrl } from '../lib/formatters'
 import { GenerateImageButton } from './GenerateImageButton'
 import { EVENT_GIFT } from '../lib/constants'
 import { generateGiftCard } from '../lib/giftCard'
@@ -279,7 +279,7 @@ export function GiftPanel({
                       {extra.gift_img && <img className="gift-item-img" src={fixUrl(extra.gift_img)} alt="" />}
                       {extra.gift_name || rowData.content} x{extra.num || 1}
                       {isMobile && extra.total_coin ? (
-                        <span className="gift-item-coin">{formatCoin(extra.total_coin, extra.coin_type)}</span>
+                        <span className="gift-item-coin">{formatBattery(extra.total_coin)}</span>
                       ) : null}
                     </span>
                   )
@@ -293,7 +293,7 @@ export function GiftPanel({
                 <Cell>
                   {(rowData: LiveEvent) => (
                     rowData.extra?.total_coin
-                      ? <span className="gift-total">{formatCoin(rowData.extra.total_coin, rowData.extra.coin_type)}</span>
+                      ? <span className="gift-total">{formatBattery(rowData.extra.total_coin)}</span>
                       : null
                   )}
                 </Cell>
@@ -322,7 +322,7 @@ export function GiftPanel({
           </Table>
 
           <div className="gift-table-footer">
-            <span>共 {filtered.length} 条，合计: <span className="gift-total">{formatCoin(totalGold, 'gold')}</span></span>
+            <span>共 {filtered.length} 条，合计: <span className="gift-total">{formatBattery(totalGold)}</span></span>
             <Pagination
               size="xs"
               prev

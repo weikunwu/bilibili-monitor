@@ -12,7 +12,7 @@ export interface LiveEvent {
 export interface EventExtra {
   avatar?: string
   total_coin?: number
-  coin_type?: string
+
   price?: number
   guard_name?: string
   guard_level?: number
