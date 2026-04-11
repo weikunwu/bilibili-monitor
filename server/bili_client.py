@@ -222,7 +222,11 @@ class BiliLiveClient:
                                         # 盲盒查询指令
                                         period_map = {"今日盲盒": "today", "昨日盲盒": "yesterday", "本月盲盒": "this_month", "上月盲盒": "last_month"}
                                         if content in period_map:
-                                            asyncio.create_task(self.handle_blind_box_query(uname, period_map[content]))
+                                            is_streamer = uid == self.ruid
+                                            asyncio.create_task(self.handle_blind_box_query(
+                                                None if is_streamer else uname,
+                                                period_map[content],
+                                            ))
                         elif raw_msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
                             break
                 finally:
@@ -285,23 +289,26 @@ class BiliLiveClient:
         except Exception as e:
             log.warning(f"[发弹幕] 异常: {e}")
 
-    async def handle_blind_box_query(self, user_name: str, period: str = "today"):
-        """Query blind box stats and reply via danmaku."""
+    async def handle_blind_box_query(self, user_name: str | None, period: str = "today"):
+        """Query blind box stats and reply via danmaku. user_name=None for all users (streamer)."""
         from .routes.events import _beijing_time_range
         import sqlite3
         from .config import DB_PATH
 
         utc_start, utc_end, _ = _beijing_time_range(period)
         conn = sqlite3.connect(str(DB_PATH))
-        rows = conn.execute(
-            "SELECT extra_json FROM events WHERE event_type='gift' AND room_id=? AND timestamp >= ? AND timestamp < ? AND user_name=? AND extra_json LIKE '%blind_name%' AND extra_json NOT LIKE '%\"blind_name\": \"\"%'",
-            (self.real_room_id, utc_start, utc_end, user_name),
-        ).fetchall()
+        sql = "SELECT extra_json FROM events WHERE event_type='gift' AND room_id=? AND timestamp >= ? AND timestamp < ? AND extra_json LIKE '%blind_name%' AND extra_json NOT LIKE '%\"blind_name\": \"\"%'"
+        params: list = [self.real_room_id, utc_start, utc_end]
+        if user_name:
+            sql += " AND user_name=?"
+            params.append(user_name)
+        rows = conn.execute(sql, params).fetchall()
         conn.close()
 
         period_label = {"today": "今日", "yesterday": "昨日", "this_month": "本月", "last_month": "上月"}.get(period, "今日")
+        prefix = f"{user_name}，" if user_name else ""
         if not rows:
-            await self.send_danmaku(f"{user_name} {period_label}暂无盲盒记录")
+            await self.send_danmaku(f"{prefix}{period_label}暂无盲盒记录")
             return
 
         total_boxes = 0
@@ -330,7 +337,7 @@ class BiliLiveClient:
             return "不亏不赚" if p == 0 else f"赚{s}元" if p > 0 else f"亏{s}元"
 
         profit = total_value - total_cost
-        msg = f"{user_name}，{period_label}盲盒{total_boxes}个，{fmt_profit(profit)}"
+        msg = f"{prefix}{period_label}盲盒共{total_boxes}个，{fmt_profit(profit)}"
         await self.send_danmaku(msg)
 
         for name, b in boxes.items():
