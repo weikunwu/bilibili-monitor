@@ -1,14 +1,27 @@
 import type { GiftUser } from '../types'
 import { GUARD_FRAME_URLS, CARD_TPL_URLS } from './constants'
 
-function loadImage(src: string): Promise<HTMLImageElement | null> {
+function loadImage(src: string, isCDN = false): Promise<HTMLImageElement | null> {
   return new Promise((resolve) => {
     if (!src) { resolve(null); return }
     const img = new Image()
-    img.crossOrigin = 'anonymous'
+    // B站 CDN 不支持 CORS，不设 crossOrigin 才能加载
+    // 本地资源设 crossOrigin 保证 canvas 可导出
+    if (!isCDN) img.crossOrigin = 'anonymous'
     img.referrerPolicy = 'no-referrer'
     img.onload = () => resolve(img)
-    img.onerror = () => resolve(null)
+    img.onerror = () => {
+      // fallback: 如果带 crossOrigin 失败，去掉重试
+      if (!isCDN && img.crossOrigin) {
+        const retry = new Image()
+        retry.referrerPolicy = 'no-referrer'
+        retry.onload = () => resolve(retry)
+        retry.onerror = () => resolve(null)
+        retry.src = src.replace(/^http:\/\//, 'https://')
+      } else {
+        resolve(null)
+      }
+    }
     img.src = src.replace(/^http:\/\//, 'https://')
   })
 }
@@ -35,9 +48,9 @@ export async function generateGiftCard(canvas: HTMLCanvasElement, u: GiftUser) {
   ctx.clearRect(0, 0, W, H)
 
   const [avatar, guardFrame, ...giftImgObjs] = await Promise.all([
-    loadImage(u.face || ''),
+    loadImage(u.face || '', true),  // B站 CDN
     u.guard_level > 0 ? loadImage(GUARD_FRAME_URLS[u.guard_level]) : Promise.resolve(null),
-    ...gifts.map(([name]) => loadImage(giftImgs[name] || '')),
+    ...gifts.map(([name]) => loadImage(giftImgs[name] || '', true)),  // B站 CDN
   ])
 
   const cardTpls: Record<string, HTMLImageElement | null> = {}

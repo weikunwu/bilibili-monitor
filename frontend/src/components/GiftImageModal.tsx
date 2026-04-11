@@ -1,6 +1,7 @@
-import { useRef, useImperativeHandle, forwardRef, useState } from 'react'
+import { useRef, useImperativeHandle, forwardRef, useState, useEffect } from 'react'
 import { fetchGiftSummary } from '../api/client'
 import { generateGiftCard } from '../lib/giftCard'
+import type { GiftUser } from '../types'
 
 export interface GiftImageModalRef {
   showGiftImage: (userName: string) => void
@@ -9,7 +10,15 @@ export interface GiftImageModalRef {
 export const GiftImageModal = forwardRef<GiftImageModalRef>(function GiftImageModal(_, ref) {
   const [isOpen, setIsOpen] = useState(false)
   const [title, setTitle] = useState('')
+  const [pendingUser, setPendingUser] = useState<GiftUser | null>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+
+  useEffect(() => {
+    if (isOpen && pendingUser && canvasRef.current) {
+      generateGiftCard(canvasRef.current, pendingUser).catch(() => {})
+      setPendingUser(null)
+    }
+  }, [isOpen, pendingUser])
 
   useImperativeHandle(ref, () => ({
     async showGiftImage(userName: string) {
@@ -20,22 +29,22 @@ export const GiftImageModal = forwardRef<GiftImageModalRef>(function GiftImageMo
       if (!u) { alert('该用户今日暂无礼物记录'); return }
 
       setTitle(`${u.user_name} - ${data.date} 礼物`)
+      setPendingUser(u)
       setIsOpen(true)
-
-      requestAnimationFrame(() => {
-        if (canvasRef.current) {
-          generateGiftCard(canvasRef.current, u)
-        }
-      })
     },
   }))
 
   function download() {
     if (!canvasRef.current) return
-    const a = document.createElement('a')
-    a.download = `gift-summary-${new Date().toISOString().slice(0, 10)}.png`
-    a.href = canvasRef.current.toDataURL('image/png')
-    a.click()
+    // canvas 可能被污染（CDN 图片无 CORS），用 try-catch
+    try {
+      const a = document.createElement('a')
+      a.download = `gift-summary-${new Date().toISOString().slice(0, 10)}.png`
+      a.href = canvasRef.current.toDataURL('image/png')
+      a.click()
+    } catch {
+      alert('图片保存失败（跨域限制），请截图保存')
+    }
   }
 
   if (!isOpen) return null
