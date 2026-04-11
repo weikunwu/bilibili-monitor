@@ -10,14 +10,12 @@ export function formatTime(ts: string): string {
 
 export function formatCoin(coin: number, coinType?: string): string {
   if (!coin) return ''
-  if (coinType === 'gold') return '¥' + (coin / 1000).toFixed(1)
-  return coin + '银瓜子'
+  if (coinType === 'silver') return ''
+  return '¥' + (coin / 1000).toFixed(1).replace(/\.0$/, '')
 }
 
 export function formatGold(coin: number): string {
-  if (coin >= 10000000) return (coin / 10000000).toFixed(1) + '万元'
-  if (coin >= 1000) return '¥' + (coin / 1000).toFixed(coin % 1000 === 0 ? 0 : 1)
-  return coin + '金瓜子'
+  return '¥' + (coin / 1000).toFixed(1).replace(/\.0$/, '')
 }
 
 export function fmtDate(d: Date): string {
