@@ -268,7 +268,7 @@ class BiliLiveClient:
         if not self.cookies.get("SESSDATA"):
             return
         csrf = self.cookies.get("bili_jct", "")
-        # B站弹幕限制20字，超长分段发送
+        # B站弹幕限制40字，超长分段发送
         chunks = [msg[i:i+40] for i in range(0, len(msg), 40)]
         try:
             async with aiohttp.ClientSession(headers=self._make_cookie_header()) as session:
@@ -279,13 +279,15 @@ class BiliLiveClient:
                         "roomid": self.real_room_id,
                         "csrf": csrf, "csrf_token": csrf,
                     }
-                    async with session.post(SEND_MSG_API, data=payload) as resp:
-                        data = await resp.json(content_type=None)
-                        if data.get("code") != 0:
-                            log.warning(f"[发弹幕] 失败: {data}")
+                    for attempt in range(3):
+                        async with session.post(SEND_MSG_API, data=payload) as resp:
+                            data = await resp.json(content_type=None)
+                            if data.get("code") == 0:
+                                break
+                            log.warning(f"[发弹幕] 第{attempt+1}次失败: {data.get('message', data.get('msg', ''))}")
                             await asyncio.sleep(2)
                     if len(chunks) > 1:
-                        await asyncio.sleep(1)
+                        await asyncio.sleep(2)
         except Exception as e:
             log.warning(f"[发弹幕] 异常: {e}")
 
@@ -341,7 +343,7 @@ class BiliLiveClient:
         await self.send_danmaku(msg)
 
         for name, b in boxes.items():
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(2)
             await self.send_danmaku(f"{name}{b['count']}个，{fmt_profit(b['value'] - b['cost'])}")
 
     def stop(self):
