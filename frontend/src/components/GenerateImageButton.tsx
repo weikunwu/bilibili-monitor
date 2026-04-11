@@ -1,10 +1,8 @@
 import { useState, useCallback, type ReactNode } from 'react'
 import { Button } from 'rsuite'
-import type { TypeAttributes } from 'rsuite/esm/internals/types'
-
 interface Props {
   size?: 'xs' | 'sm' | 'md' | 'lg'
-  appearance?: TypeAttributes.Appearance
+  appearance?: 'default' | 'primary' | 'link' | 'subtle' | 'ghost'
   onClick: () => Promise<void> | void
   children: ReactNode
 }

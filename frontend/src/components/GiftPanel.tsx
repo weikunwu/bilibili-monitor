@@ -207,7 +207,7 @@ export function GiftPanel({
             rowClassName={(rowData) => checkedUsers.has(rowData?.user_name) ? 'gift-row-checked' : ''}
           >
             <Column width={50} align="center">
-              <HeaderCell></HeaderCell>
+              <HeaderCell>{' '}</HeaderCell>
               <Cell>
                 {(rowData: GiftUser) => (
                   <Checkbox
