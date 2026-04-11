@@ -279,7 +279,7 @@ class BiliLiveClient:
                         data = await resp.json(content_type=None)
                         if data.get("code") != 0:
                             log.warning(f"[发弹幕] 失败: {data}")
-                            break
+                            await asyncio.sleep(2)
                     if len(chunks) > 1:
                         await asyncio.sleep(1)
         except Exception as e:
