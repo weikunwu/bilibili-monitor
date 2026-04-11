@@ -145,7 +145,7 @@ export function EventList({
   }, [filtered, checkedKeys])
 
   useEffect(() => {
-    if (autoScroll && containerRef.current) {
+    if (autoScroll && (activeTab === 'all' || activeTab === 'danmaku') && containerRef.current) {
       containerRef.current.scrollTop = containerRef.current.scrollHeight
     }
   }, [filtered.length, autoScroll])

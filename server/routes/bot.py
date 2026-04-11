@@ -4,10 +4,11 @@ import sqlite3
 from typing import Optional
 
 import requests as req
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 
 from ..config import DB_PATH, QR_GENERATE_API, QR_POLL_API, HEADERS, log
 from ..crypto import save_cookies
+from ..auth import require_room_access
 from ..manager import manager
 
 router = APIRouter()
@@ -16,7 +17,7 @@ qr_session: Optional[req.Session] = None
 
 
 @router.get("/api/bot/status")
-async def bot_status(room_id: int = Query(...)):
+async def bot_status(room_id: int = Query(...), _=Depends(require_room_access)):
     client = manager.get(room_id)
     if not client:
         return {"logged_in": False, "uid": 0}
@@ -25,7 +26,7 @@ async def bot_status(room_id: int = Query(...)):
 
 
 @router.post("/api/bot/logout")
-async def bot_logout(room_id: int = Query(...)):
+async def bot_logout(room_id: int = Query(...), _=Depends(require_room_access)):
     conn = sqlite3.connect(str(DB_PATH))
     conn.execute("UPDATE rooms SET bot_cookie=NULL WHERE room_id=?", (room_id,))
     conn.commit()
@@ -39,7 +40,7 @@ async def bot_logout(room_id: int = Query(...)):
 
 
 @router.get("/api/bot/qrcode")
-async def bot_qrcode(room_id: int = Query(...)):
+async def bot_qrcode(room_id: int = Query(...), _=Depends(require_room_access)):
     global qr_session
     qr_session = req.Session()
     qr_session._target_room_id = room_id  # type: ignore

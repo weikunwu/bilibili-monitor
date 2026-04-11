@@ -20,3 +20,10 @@ export const CARD_TPL_URLS: Record<string, string> = {
   purple: '/static/card_tpl_purple.png',
   blue: '/static/card_tpl_blue.png',
 }
+
+export const PERIODS = [
+  { key: 'today', label: '今日' },
+  { key: 'yesterday', label: '昨日' },
+  { key: 'this_month', label: '本月' },
+  { key: 'last_month', label: '上月' },
+] as const

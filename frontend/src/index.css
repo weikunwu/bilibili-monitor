@@ -29,7 +29,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 .date-separator { display: flex; align-items: center; gap: 12px; margin: 12px 0 8px; color: #666; font-size: 12px; }
 .date-separator::before, .date-separator::after { content: ''; flex: 1; height: 1px; background: #2a2a4a; }
 .date-separator span { white-space: nowrap; }
-.event { display: flex; align-items: flex-start; gap: 10px; padding: 8px 12px; margin: 4px 0; border-radius: 8px; background: #1a1a2e; border: 1px solid #222240; font-size: 14px; animation: fadeIn 0.3s ease; }
+.event { display: flex; align-items: center; gap: 10px; padding: 8px 12px; margin: 4px 0; border-radius: 8px; background: #1a1a2e; border: 1px solid #222240; font-size: 14px; animation: fadeIn 0.3s ease; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
 
 .event .time { color: #555; font-size: 12px; white-space: nowrap; min-width: 58px; padding-top: 2px; }

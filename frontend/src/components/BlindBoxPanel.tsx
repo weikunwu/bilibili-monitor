@@ -3,17 +3,11 @@ import { Button, ButtonGroup, Input, InputGroup, Tag, Divider } from 'rsuite'
 import SearchIcon from '@rsuite/icons/Search'
 import { fetchBlindBoxSummary, type BlindBoxUser } from '../api/client'
 import { formatGold } from '../lib/formatters'
+import { PERIODS } from '../lib/constants'
 
 interface Props {
   roomId: number
 }
-
-const PERIODS = [
-  { key: 'today', label: '今日' },
-  { key: 'yesterday', label: '昨日' },
-  { key: 'this_month', label: '本月' },
-  { key: 'last_month', label: '上月' },
-]
 
 export function BlindBoxPanel({ roomId }: Props) {
   const [period, setPeriod] = useState('today')

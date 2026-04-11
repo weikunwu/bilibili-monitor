@@ -62,7 +62,7 @@ async def get_rooms(request: Request):
 
 
 @router.get("/api/commands")
-async def list_commands(room_id: int = Query(...)):
+async def list_commands(room_id: int = Query(...), _=Depends(require_room_access)):
     return get_room_commands(room_id)
 
 
@@ -86,7 +86,7 @@ async def start_room(room_id: int, _=Depends(require_room_access)):
 
 
 @router.post("/api/commands/{cmd_id}/toggle")
-async def toggle_command(cmd_id: str, room_id: int = Query(...)):
+async def toggle_command(cmd_id: str, room_id: int = Query(...), _=Depends(require_room_access)):
     cmd = get_command(room_id, cmd_id)
     if not cmd:
         return HTMLResponse('{"error":"not found"}', status_code=404)

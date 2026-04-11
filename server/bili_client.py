@@ -8,7 +8,8 @@ import aiohttp
 
 from .config import (
     HEADERS, DANMU_CONF_API, DANMU_INFO_API, ROOM_INFO_API, NAV_API,
-    SEND_GIFT_API, SEND_MSG_API, WS_OP_AUTH, WS_OP_HEARTBEAT, log,
+    SEND_GIFT_API, SEND_MSG_API, WS_OP_AUTH, WS_OP_HEARTBEAT,
+    PERIOD_LABELS, DANMAKU_PERIOD_MAP, log,
 )
 from .protocol import make_packet, parse_packets, handle_message
 from .bili_api import get_wbi_key, wbi_sign
@@ -220,12 +221,11 @@ class BiliLiveClient:
                                             if cmd_cfg and cmd_cfg["enabled"] and content == cmd_cfg["config"]["trigger"]:
                                                 asyncio.create_task(self.send_gift(cmd_cfg["config"]))
                                         # 盲盒查询指令
-                                        period_map = {"今日盲盒": "today", "昨日盲盒": "yesterday", "本月盲盒": "this_month", "上月盲盒": "last_month"}
-                                        if content in period_map:
+                                        if content in DANMAKU_PERIOD_MAP:
                                             is_streamer = uid == self.ruid
                                             asyncio.create_task(self.handle_blind_box_query(
                                                 None if is_streamer else uname,
-                                                period_map[content],
+                                                DANMAKU_PERIOD_MAP[content],
                                             ))
                         elif raw_msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
                             break
@@ -307,7 +307,7 @@ class BiliLiveClient:
         rows = conn.execute(sql, params).fetchall()
         conn.close()
 
-        period_label = {"today": "今日", "yesterday": "昨日", "this_month": "本月", "last_month": "上月"}.get(period, "今日")
+        period_label = PERIOD_LABELS.get(period, "今日")
         prefix = f"{user_name}，" if user_name else ""
         if not rows:
             await self.send_danmaku(f"{prefix}{period_label}暂无盲盒记录")
