@@ -66,6 +66,8 @@ async def start_room(room_id: int, _=Depends(require_room_access)):
     client = manager.get(room_id)
     if client and client._running:
         raise HTTPException(400, "房间已在运行中")
+    if client and not client.cookies.get("SESSDATA"):
+        raise HTTPException(400, "请先绑定机器人后再启动监控")
     await manager.start_room(room_id)
     return {"ok": True, "room_id": room_id}
 

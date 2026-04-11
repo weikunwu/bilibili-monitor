@@ -1,5 +1,5 @@
 import { MdCircle } from 'react-icons/md'
-import { Button, ButtonToolbar } from 'rsuite'
+import { Button, ButtonToolbar, useToaster, Message } from 'rsuite'
 import PlayOutlineIcon from '@rsuite/icons/PlayOutline'
 import CloseOutlineIcon from '@rsuite/icons/CloseOutline'
 import ChangeListIcon from '@rsuite/icons/ChangeList'
@@ -18,10 +18,17 @@ function formatFans(n: number): string {
 }
 
 export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot }: Props) {
+  const toaster = useToaster()
+
   const handleToggle = async (e: React.MouseEvent, room: Room) => {
     e.stopPropagation()
     const action = room.active ? 'stop' : 'start'
-    await fetch(`/api/rooms/${room.room_id}/${action}`, { method: 'POST' })
+    const res = await fetch(`/api/rooms/${room.room_id}/${action}`, { method: 'POST' })
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      toaster.push(<Message type="error" showIcon closable>{data.detail || '操作失败'}</Message>, { duration: 3000 })
+      return
+    }
     onRoomsChanged?.()
   }
 
@@ -93,15 +100,15 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot }: Pro
               <div className="rc-footer-actions">
                 <ButtonToolbar>
                   {r.active ? (
-                    <Button size="xs" color="red" appearance="ghost" startIcon={<CloseOutlineIcon />} onClick={(e) => { e.stopPropagation(); handleToggle(e, r) }}>
+                    <Button size="sm" color="red" appearance="ghost" startIcon={<CloseOutlineIcon />} onClick={(e) => { e.stopPropagation(); handleToggle(e, r) }}>
                       停止
                     </Button>
                   ) : (
-                    <Button size="xs" color="green" appearance="ghost" startIcon={<PlayOutlineIcon />} onClick={(e) => { e.stopPropagation(); handleToggle(e, r) }}>
+                    <Button size="sm" color="green" appearance="ghost" startIcon={<PlayOutlineIcon />} onClick={(e) => { e.stopPropagation(); handleToggle(e, r) }}>
                       启动
                     </Button>
                   )}
-                  <Button size="xs" appearance="ghost" startIcon={<ChangeListIcon />} onClick={(e) => { e.stopPropagation(); onBindBot?.(r.room_id) }}>
+                  <Button size="sm" appearance="ghost" startIcon={<ChangeListIcon />} onClick={(e) => { e.stopPropagation(); onBindBot?.(r.room_id) }}>
                     {r.bot_uid ? '更换' : '绑定'}
                   </Button>
                 </ButtonToolbar>

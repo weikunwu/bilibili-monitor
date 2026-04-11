@@ -1,6 +1,5 @@
 """管理员 API"""
 
-import asyncio
 import sqlite3
 
 from fastapi import APIRouter, Depends, Request, HTTPException
@@ -83,10 +82,6 @@ async def add_room(request: Request):
         raise HTTPException(400, "该房间已存在")
 
     client = manager.add_room(room_id)
-    await manager.start_room(room_id)
-
-    # Wait briefly for room info to populate
-    await asyncio.sleep(2)
 
     return {
         "ok": True,
