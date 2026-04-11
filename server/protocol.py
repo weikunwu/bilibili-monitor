@@ -151,29 +151,6 @@ def handle_message(msg: dict) -> Optional[dict]:
         log.info(f"[礼物] {data.get('uname')} {action} {gift_name} x{num}")
         return event
 
-    elif base_cmd == "COMBO_SEND":
-        data = msg.get("data", {})
-        combo_gift_id = data.get("gift_id", 0)
-        gift_img = gift_img_cache.get(combo_gift_id, "")
-        combo_num = data.get("combo_num", 1)
-        combo_real_price = gift_price_cache.get(combo_gift_id, 0)
-        combo_total = combo_real_price * combo_num if combo_real_price else data.get("combo_total_coin", 0)
-        event = {
-            "timestamp": now,
-            "event_type": "gift",
-            "user_name": data.get("uname", ""),
-            "user_id": data.get("uid", 0),
-            "content": f"{data.get('gift_name', '')} x{combo_num} (连击)",
-            "extra": {
-                "gift_name": data.get("gift_name", ""), "gift_id": combo_gift_id,
-                "num": combo_num, "total_coin": combo_total, "combo": True,
-                "face": data.get("uface", ""), "gift_img": gift_img,
-                "guard_level": data.get("guard_level", 0),
-            },
-        }
-        log.info(f"[连击] {data.get('uname')} {data.get('action', '送出')} {data.get('gift_name')} x{combo_num}")
-        return event
-
     elif base_cmd == "SUPER_CHAT_MESSAGE":
         data = msg.get("data", {})
         user_info = data.get("user_info", {})

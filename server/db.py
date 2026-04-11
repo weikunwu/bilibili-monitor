@@ -132,14 +132,17 @@ def cleanup_old_events():
     conn = sqlite3.connect(str(DB_PATH))
     cutoff = (datetime.now(timezone.utc) - timedelta(days=90)).strftime("%Y-%m-%d %H:%M:%S")
     deleted = conn.execute("DELETE FROM events WHERE timestamp < ?", (cutoff,)).rowcount
-    # Remove enter/like events — no longer persisted
+    # Remove enter/like events and silver gifts — no longer persisted
     deleted_el = conn.execute("DELETE FROM events WHERE event_type IN ('enter', 'like')").rowcount
+    deleted_combo = conn.execute("DELETE FROM events WHERE event_type='gift' AND extra_json LIKE '%\"combo\": true%'").rowcount
     conn.commit()
     conn.close()
     if deleted:
         log.info(f"清理过期事件: 删除 {deleted} 条 (早于 {cutoff})")
     if deleted_el:
         log.info(f"清理进场/点赞事件: 删除 {deleted_el} 条")
+    if deleted_combo:
+        log.info(f"清理连击重复事件: 删除 {deleted_combo} 条")
 
 
 def save_event(event: dict):
