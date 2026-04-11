@@ -1,13 +1,14 @@
 import { type ReactNode, memo } from 'react'
-import { Tag, Button, Checkbox } from 'rsuite'
+import { Tag, Checkbox } from 'rsuite'
 import type { LiveEvent } from '../types'
 import { formatTime, formatCoin, fixUrl } from '../lib/formatters'
+import { GenerateImageButton } from './GenerateImageButton'
 import { BADGE_NAMES, EVENT_GIFT, EVENT_SUPERCHAT, EVENT_GUARD } from '../lib/constants'
 
 interface Props {
   event: LiveEvent
-  onGenerateGiftImage: (userName: string) => void
-  onGenerateBlindBoxImage?: (userName: string) => void
+  onGenerateGiftImage: (userName: string) => Promise<void> | void
+  onGenerateBlindBoxImage?: (userName: string) => Promise<void> | void
   checked?: boolean
   onCheck?: () => void
 }
@@ -103,13 +104,13 @@ export const EventItem = memo(function EventItem({ event: ev, onGenerateGiftImag
       </span>
       {ev.event_type === EVENT_GIFT && ev.user_name && (
         <>
-          <Button size="sm" appearance="ghost" onClick={() => onGenerateGiftImage(ev.user_name!)}>
+          <GenerateImageButton onClick={() => onGenerateGiftImage(ev.user_name!)}>
             今日礼物
-          </Button>
+          </GenerateImageButton>
           {onGenerateBlindBoxImage && (
-            <Button size="sm" appearance="ghost" onClick={() => onGenerateBlindBoxImage(ev.user_name!)}>
+            <GenerateImageButton onClick={() => onGenerateBlindBoxImage(ev.user_name!)}>
               今日盲盒
-            </Button>
+            </GenerateImageButton>
           )}
         </>
       )}

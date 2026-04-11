@@ -10,6 +10,7 @@ import { StatsGrid } from './components/StatsGrid'
 import { TabBar } from './components/TabBar'
 
 import { EventList } from './components/EventList'
+import { GiftPanel } from './components/GiftPanel'
 import { ToolsPanel } from './components/ToolsPanel'
 import { BlindBoxPanel } from './components/BlindBoxPanel'
 import { AdminPanel } from './components/AdminPanel'
@@ -177,21 +178,31 @@ function RoomPage({ rooms, currentUser }: {
     if (activeTab === 'tools') {
       return <ToolsPanel roomId={roomId} />
     }
-    return (
-      <>
-        <EventList
+    if (activeTab === EVENT_GIFT) {
+      return (
+        <GiftPanel
           events={events}
-          activeTab={activeTab}
-          autoScroll={autoScroll}
-          showAutoScroll={activeTab === TAB_ALL || activeTab === EVENT_DANMAKU}
-          onAutoScrollChange={setAutoScroll}
           defaultRange={todayRange()}
           onQueryRange={handleQueryRange}
           onGenerateGiftImage={(userName) => giftModalRef.current?.showGiftImage(roomId, userName)}
           onGenerateBlindBoxImage={(userName) => giftModalRef.current?.showGiftImage(roomId, userName, true)}
           onShowCardPreview={(title, url) => giftModalRef.current?.showPreview(title, url)}
         />
-      </>
+      )
+    }
+    return (
+      <EventList
+        events={events}
+        activeTab={activeTab}
+        autoScroll={autoScroll}
+        showAutoScroll={activeTab === TAB_ALL || activeTab === EVENT_DANMAKU}
+        onAutoScrollChange={setAutoScroll}
+        defaultRange={todayRange()}
+        onQueryRange={handleQueryRange}
+        onGenerateGiftImage={(userName) => giftModalRef.current?.showGiftImage(roomId, userName)}
+        onGenerateBlindBoxImage={(userName) => giftModalRef.current?.showGiftImage(roomId, userName, true)}
+        onShowCardPreview={(title, url) => giftModalRef.current?.showPreview(title, url)}
+      />
     )
   }
 
