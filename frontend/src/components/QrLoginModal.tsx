@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { Modal, Button } from 'rsuite'
 import { fetchQrCode, pollQrLogin } from '../api/client'
 
 interface Props {
@@ -73,20 +74,21 @@ export function QrLoginModal({ isOpen, roomId, onClose, onSuccess }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, roomId])
 
-  if (!isOpen) return null
-
   return (
-    <div className="modal-overlay show" onClick={(e) => { if (e.target === e.currentTarget) onClose() }}>
-      <div className="modal">
-        <h2>绑定机器人</h2>
-        <p>使用哔哩哔哩 APP 扫描二维码</p>
+    <Modal open={isOpen} onClose={onClose} size="xs">
+      <Modal.Header>
+        <Modal.Title>绑定机器人</Modal.Title>
+      </Modal.Header>
+      <Modal.Body style={{ textAlign: 'center' }}>
+        <p style={{ color: '#aaa', marginBottom: 16 }}>使用哔哩哔哩 APP 扫描二维码</p>
         <div className="qr-container">
           {qrUrl && <img src={qrUrl} alt="二维码" />}
         </div>
         <div className={`qr-status ${statusClass}`}>{status}</div>
-        <br />
-        <button className="close-btn" onClick={onClose}>关闭</button>
-      </div>
-    </div>
+      </Modal.Body>
+      <Modal.Footer>
+        <Button onClick={onClose} appearance="subtle">关闭</Button>
+      </Modal.Footer>
+    </Modal>
   )
 }

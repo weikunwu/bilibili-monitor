@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Routes, Route, useParams, useNavigate, Navigate } from 'react-router-dom'
 import type { LiveEvent, TabType, Room, Stats } from './types'
-import { fetchRooms, fetchStats, fetchEvents, fetchBotStatus, botLogout, authLogout, fetchMe, type CurrentUser } from './api/client'
+import { fetchRooms, fetchStats, fetchEvents, fetchBotStatus, botLogout, fetchMe, type CurrentUser } from './api/client'
 import { useWebSocket } from './hooks/useWebSocket'
 import { useLocalStorage } from './hooks/useLocalStorage'
 import { localToUTC, fmtDate } from './lib/formatters'
@@ -15,7 +15,8 @@ import { AdminPanel } from './components/AdminPanel'
 import { QrLoginModal } from './components/QrLoginModal'
 import { GiftImageModal, type GiftImageModalRef } from './components/GiftImageModal'
 import { RoomList } from './components/RoomList'
-import { Dropdown } from 'rsuite'
+import { Button } from 'rsuite'
+import { ProfileMenu } from './components/ProfileMenu'
 import type { DateRange } from 'rsuite/DateRangePicker'
 
 function todayRange(): DateRange {
@@ -70,11 +71,7 @@ function HomePage({ rooms, currentUser, onRoomsChanged }: { rooms: Room[]; curre
       <div className="header">
         <h1>B站直播监控</h1>
         <span style={{ flex: 1 }} />
-        {currentUser && (
-          <Dropdown title={currentUser.email} placement="bottomEnd" size="xs">
-            <Dropdown.Item onSelect={() => authLogout().then(() => location.reload())}>退出登录</Dropdown.Item>
-          </Dropdown>
-        )}
+        {currentUser && <ProfileMenu user={currentUser} />}
       </div>
       <RoomList
         rooms={rooms}
@@ -198,25 +195,23 @@ function RoomPage({ rooms, currentUser, onRoomsChanged }: {
   return (
     <>
       <div className="header">
-        <button className="back-btn" onClick={() => navigate('/')}>← 房间</button>
+        <Button appearance="subtle" size="xs" onClick={() => navigate('/')}>← 房间</Button>
         <h1>{currentRoom?.streamer_name || roomId}</h1>
         <span className="room-info">({roomId})</span>
-        <button
-          className={`login-btn ${botUid ? 'logged-in' : ''}`}
+        <Button
+          appearance="ghost"
+          color={botUid ? 'green' : undefined}
+          size="xs"
           onClick={handleBotClick}
         >
           {botUid ? `机器人已绑定 (${botUid})` : '绑定机器人'}
-        </button>
+        </Button>
         <span className="status">
           <span className={`dot ${connectionStatus}`} />
           {connectionStatus === 'connected' ? '已连接' : connectionStatus === 'connecting' ? '连接中' : '未连接'}
         </span>
         <span style={{ flex: 1 }} />
-        {currentUser && (
-          <Dropdown title={currentUser.email} placement="bottomEnd" size="xs">
-            <Dropdown.Item onSelect={() => authLogout().then(() => location.reload())}>退出登录</Dropdown.Item>
-          </Dropdown>
-        )}
+        {currentUser && <ProfileMenu user={currentUser} />}
       </div>
 
       <StatsGrid stats={stats} />

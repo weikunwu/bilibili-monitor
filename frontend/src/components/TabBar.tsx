@@ -1,3 +1,4 @@
+import { Nav } from 'rsuite'
 import type { TabType } from '../types'
 
 const TABS: { type: TabType; label: string; adminOnly?: boolean }[] = [
@@ -18,16 +19,12 @@ interface Props {
 
 export function TabBar({ active, onChange, isAdmin }: Props) {
   return (
-    <div className="tabs">
+    <Nav appearance="subtle" activeKey={active} onSelect={(key) => onChange(key as TabType)} className="tabs-nav">
       {TABS.filter((t) => !t.adminOnly || isAdmin).map((t) => (
-        <div
-          key={t.type}
-          className={`tab ${active === t.type ? 'active' : ''}`}
-          onClick={() => onChange(t.type)}
-        >
+        <Nav.Item key={t.type} eventKey={t.type}>
           {t.label}
-        </div>
+        </Nav.Item>
       ))}
-    </div>
+    </Nav>
   )
 }

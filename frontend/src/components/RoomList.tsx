@@ -1,4 +1,5 @@
-import { MdCircle, MdPlayArrow, MdSwapHoriz } from 'react-icons/md'
+import { MdCircle, MdPlayArrow, MdStop, MdSwapHoriz } from 'react-icons/md'
+import { IconButton, ButtonGroup } from 'rsuite'
 import type { Room } from '../types'
 
 interface Props {
@@ -87,18 +88,20 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot }: Pro
                 )}
               </div>
               <div className="rc-footer-actions">
-                {r.active ? (
-                  <button className="rc-action-btn rc-action-running" onClick={(e) => { e.stopPropagation(); handleToggle(e, r) }} title="点击停止监控">
-                    <MdCircle size={8} /> <span className="rc-action-label">运行中</span><span className="rc-action-hover-label">停止</span>
-                  </button>
-                ) : (
-                  <button className="rc-action-btn rc-action-stopped" onClick={(e) => { e.stopPropagation(); handleToggle(e, r) }} title="点击启动监控">
-                    <MdPlayArrow size={12} /> 启动
-                  </button>
-                )}
-                <button className="rc-action-btn rc-action-bind" onClick={(e) => { e.stopPropagation(); onBindBot?.(r.room_id) }} title={r.bot_uid ? '更换机器人' : '绑定机器人'}>
-                  <MdSwapHoriz size={12} /> {r.bot_uid ? '更换' : '绑定'}
-                </button>
+                <ButtonGroup size="xs">
+                  {r.active ? (
+                    <IconButton icon={<MdStop />} color="red" appearance="subtle" size="xs" onClick={(e) => { e.stopPropagation(); handleToggle(e, r) }}>
+                      停止
+                    </IconButton>
+                  ) : (
+                    <IconButton icon={<MdPlayArrow />} color="green" appearance="subtle" size="xs" onClick={(e) => { e.stopPropagation(); handleToggle(e, r) }}>
+                      启动
+                    </IconButton>
+                  )}
+                  <IconButton icon={<MdSwapHoriz />} appearance="subtle" size="xs" onClick={(e) => { e.stopPropagation(); onBindBot?.(r.room_id) }}>
+                    {r.bot_uid ? '更换' : '绑定'}
+                  </IconButton>
+                </ButtonGroup>
               </div>
             </div>
           </div>

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Input, Button, SelectPicker, Modal, Checkbox, Stack, Divider, Message } from 'rsuite'
 import type { Room } from '../types'
 import { fetchUsers, createUser, deleteUser, assignUserRooms, addRoom, removeRoom, type UserInfo } from '../api/client'
 
@@ -95,68 +96,79 @@ export function AdminPanel({ rooms, onRoomsChanged }: Props) {
     }
   }
 
+  const roleData = [
+    { label: '普通用户', value: 'user' },
+    { label: '管理员', value: 'admin' },
+  ]
+
   return (
     <div style={{ padding: '16px 24px' }}>
       {/* ── Room management ── */}
       <h3 style={{ color: '#fb7299', marginBottom: 16, fontSize: 16 }}>房间管理</h3>
-      <form onSubmit={handleAddRoom} style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-        <input
-          type="text"
-          placeholder="房间号"
-          value={newRoomId}
-          onChange={(e) => setNewRoomId(e.target.value)}
-          required
-          style={{ ...inputStyle, width: 160 }}
-        />
-        <button type="submit" disabled={roomLoading} style={btnStyle}>
-          {roomLoading ? '连接中...' : '添加房间'}
-        </button>
+      <form onSubmit={handleAddRoom}>
+        <Stack spacing={8} wrap style={{ marginBottom: 16 }}>
+          <Input
+            placeholder="房间号"
+            value={newRoomId}
+            onChange={setNewRoomId}
+            size="sm"
+            style={{ width: 160 }}
+          />
+          <Button type="submit" appearance="primary" size="sm" loading={roomLoading}>
+            添加房间
+          </Button>
+        </Stack>
       </form>
-      {roomError && <div style={{ color: '#ef5350', fontSize: 13, marginBottom: 12 }}>{roomError}</div>}
+      {roomError && <Message type="error" showIcon style={{ marginBottom: 12 }}>{roomError}</Message>}
       {rooms.map((r) => (
         <div key={r.room_id} className="cmd-item">
           <div className="cmd-info">
             <div className="cmd-name">{r.streamer_name || r.room_id}</div>
             <div className="cmd-desc">房间号: {r.room_id}{r.real_room_id !== r.room_id ? ` (真实ID: ${r.real_room_id})` : ''}</div>
           </div>
-          <button onClick={() => handleRemoveRoom(r.room_id)} style={{ ...smallBtnStyle, background: '#c0392b' }}>
+          <Button color="red" appearance="subtle" size="xs" onClick={() => handleRemoveRoom(r.room_id)}>
             删除
-          </button>
+          </Button>
         </div>
       ))}
 
-      <div style={{ borderTop: '1px solid #2a2a4a', margin: '24px 0 16px' }} />
+      <Divider style={{ borderColor: '#2a2a4a' }} />
 
       {/* ── User management ── */}
       <h3 style={{ color: '#fb7299', marginBottom: 16, fontSize: 16 }}>用户管理</h3>
 
-      {/* Create user form */}
-      <form onSubmit={handleCreate} style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-        <input
-          type="email"
-          placeholder="邮箱"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-          style={inputStyle}
-        />
-        <input
-          type="password"
-          placeholder="密码"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-          style={inputStyle}
-        />
-        <select value={role} onChange={(e) => setRole(e.target.value)} style={inputStyle}>
-          <option value="user">普通用户</option>
-          <option value="admin">管理员</option>
-        </select>
-        <button type="submit" style={btnStyle}>创建用户</button>
+      <form onSubmit={handleCreate}>
+        <Stack spacing={8} wrap style={{ marginBottom: 16 }}>
+          <Input
+            type="email"
+            placeholder="邮箱"
+            value={email}
+            onChange={setEmail}
+            size="sm"
+            style={{ width: 160 }}
+          />
+          <Input
+            type="password"
+            placeholder="密码"
+            value={password}
+            onChange={setPassword}
+            size="sm"
+            style={{ width: 140 }}
+          />
+          <SelectPicker
+            data={roleData}
+            value={role}
+            onChange={(v) => v && setRole(v)}
+            size="sm"
+            searchable={false}
+            cleanable={false}
+            style={{ width: 120 }}
+          />
+          <Button type="submit" appearance="primary" size="sm">创建用户</Button>
+        </Stack>
       </form>
-      {error && <div style={{ color: '#ef5350', fontSize: 13, marginBottom: 12 }}>{error}</div>}
+      {error && <Message type="error" showIcon style={{ marginBottom: 12 }}>{error}</Message>}
 
-      {/* User list */}
       {users.map((u) => (
         <div key={u.id} className="cmd-item">
           <div className="cmd-info">
@@ -165,72 +177,40 @@ export function AdminPanel({ rooms, onRoomsChanged }: Props) {
               {u.role === 'admin' ? '管理员 (全部房间)' : `普通用户 | 房间: ${u.rooms.length > 0 ? u.rooms.join(', ') : '无'}`}
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 6 }}>
+          <Stack spacing={6}>
             {u.role !== 'admin' && (
-              <button onClick={() => startEditRooms(u)} style={{ ...smallBtnStyle, background: '#2a6aaa' }}>
+              <Button appearance="ghost" size="xs" onClick={() => startEditRooms(u)}>
                 分配房间
-              </button>
+              </Button>
             )}
-            <button onClick={() => handleDelete(u.id)} style={{ ...smallBtnStyle, background: '#c0392b' }}>
+            <Button color="red" appearance="subtle" size="xs" onClick={() => handleDelete(u.id)}>
               删除
-            </button>
-          </div>
+            </Button>
+          </Stack>
         </div>
       ))}
 
       {/* Edit rooms modal */}
-      {editingUser !== null && (
-        <div className="modal-overlay show" onClick={(e) => { if (e.target === e.currentTarget) setEditingUser(null) }}>
-          <div className="modal" style={{ textAlign: 'left' }}>
-            <h2>分配房间</h2>
-            <div style={{ marginTop: 12 }}>
-              {rooms.map((r) => (
-                <label key={r.room_id} style={{ display: 'block', padding: '6px 0', fontSize: 14, color: '#ccc', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={editRooms.includes(r.room_id)}
-                    onChange={() => toggleRoom(r.room_id)}
-                    style={{ accentColor: '#fb7299', marginRight: 8 }}
-                  />
-                  {r.streamer_name || r.room_id} ({r.room_id})
-                </label>
-              ))}
-            </div>
-            <div style={{ marginTop: 16, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button onClick={() => setEditingUser(null)} className="close-btn">取消</button>
-              <button onClick={saveRooms} style={btnStyle}>保存</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <Modal open={editingUser !== null} onClose={() => setEditingUser(null)} size="xs">
+        <Modal.Header>
+          <Modal.Title>分配房间</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {rooms.map((r) => (
+            <Checkbox
+              key={r.room_id}
+              checked={editRooms.includes(r.room_id)}
+              onChange={() => toggleRoom(r.room_id)}
+            >
+              {r.streamer_name || r.room_id} ({r.room_id})
+            </Checkbox>
+          ))}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button onClick={() => setEditingUser(null)} appearance="subtle">取消</Button>
+          <Button onClick={saveRooms} appearance="primary">保存</Button>
+        </Modal.Footer>
+      </Modal>
     </div>
   )
-}
-
-const inputStyle: React.CSSProperties = {
-  background: '#0f0f1a',
-  border: '1px solid #2a2a4a',
-  color: '#ccc',
-  padding: '6px 12px',
-  borderRadius: 6,
-  fontSize: 13,
-}
-
-const btnStyle: React.CSSProperties = {
-  background: '#fb7299',
-  color: '#fff',
-  border: 'none',
-  padding: '6px 16px',
-  borderRadius: 6,
-  cursor: 'pointer',
-  fontSize: 13,
-}
-
-const smallBtnStyle: React.CSSProperties = {
-  color: '#fff',
-  border: 'none',
-  padding: '4px 10px',
-  borderRadius: 4,
-  cursor: 'pointer',
-  fontSize: 11,
 }

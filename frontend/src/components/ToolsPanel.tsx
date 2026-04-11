@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Toggle } from 'rsuite'
 import type { Command } from '../types'
 import { fetchCommands, toggleCommand } from '../api/client'
 
@@ -30,14 +31,11 @@ export function ToolsPanel({ roomId }: Props) {
             <div className="cmd-name">{cmd.name}</div>
             <div className="cmd-desc">{cmd.description}</div>
           </div>
-          <label className="cmd-toggle">
-            <input
-              type="checkbox"
-              checked={cmd.enabled}
-              onChange={() => handleToggle(cmd.id, i)}
-            />
-            <span className="slider" />
-          </label>
+          <Toggle
+            checked={cmd.enabled}
+            onChange={() => handleToggle(cmd.id, i)}
+            size="sm"
+          />
         </div>
       ))}
     </div>

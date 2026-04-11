@@ -1,4 +1,4 @@
-import { DateRangePicker } from 'rsuite'
+import { DateRangePicker, Checkbox } from 'rsuite'
 import type { DateRange } from 'rsuite/DateRangePicker'
 import 'rsuite/DateRangePicker/styles/index.css'
 
@@ -67,10 +67,12 @@ export function Controls({
 
   return (
     <div className="controls">
-      <label>
-        <input type="checkbox" checked={autoScroll} onChange={(e) => onAutoScrollChange(e.target.checked)} />
-        {' '}自动滚动
-      </label>
+      <Checkbox
+        checked={autoScroll}
+        onChange={(_, checked) => onAutoScrollChange(checked)}
+      >
+        自动滚动
+      </Checkbox>
       <div className="time-range">
         <DateRangePicker
           format="yyyy-MM-dd HH:mm:ss"

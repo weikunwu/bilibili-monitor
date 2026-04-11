@@ -1,4 +1,5 @@
 import { type ReactNode, memo } from 'react'
+import { Tag, Button } from 'rsuite'
 import type { LiveEvent } from '../types'
 import { formatTime, formatCoin, fixUrl } from '../lib/formatters'
 import { BADGE_NAMES } from '../lib/constants'
@@ -6,6 +7,14 @@ import { BADGE_NAMES } from '../lib/constants'
 interface Props {
   event: LiveEvent
   onGenerateGiftImage: (userName: string) => void
+}
+
+const TAG_COLORS: Record<string, 'red' | 'orange' | 'yellow' | 'green' | 'blue' | 'violet' | 'cyan'> = {
+  danmaku: 'blue',
+  gift: 'orange',
+  superchat: 'yellow',
+  guard: 'violet',
+  info: 'cyan',
 }
 
 function renderContent(ev: LiveEvent): ReactNode {
@@ -28,15 +37,11 @@ function renderContent(ev: LiveEvent): ReactNode {
   if (emots && Object.keys(emots).length > 0) {
     const text = ev.content || ''
     const parts: ReactNode[] = []
-    let remaining = text
     let key = 0
 
-    // Sort emot keys by their position in text (longest first for greedy match)
     const emotKeys = Object.keys(emots).sort((a, b) => b.length - a.length)
-
-    // Simple split approach
     const regex = new RegExp(`(${emotKeys.map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`)
-    const segments = remaining.split(regex)
+    const segments = text.split(regex)
 
     for (const seg of segments) {
       if (emots[seg]) {
@@ -76,9 +81,9 @@ export const EventItem = memo(function EventItem({ event: ev, onGenerateGiftImag
   return (
     <div className={`event ${ev.event_type}`}>
       <span className="time">{formatTime(ev.timestamp)}</span>
-      <span className={`badge ${ev.event_type}`}>
+      <Tag size="sm" color={TAG_COLORS[ev.event_type]}>
         {BADGE_NAMES[ev.event_type] || ev.event_type}
-      </span>
+      </Tag>
       {face && (
         <img className="avatar" referrerPolicy="no-referrer" src={face} alt="" />
       )}
@@ -88,11 +93,9 @@ export const EventItem = memo(function EventItem({ event: ev, onGenerateGiftImag
         {priceTag}
       </span>
       {ev.event_type === 'gift' && ev.user_name && (
-        <div className="gift-btns">
-          <span className="gen-img-btn" onClick={() => onGenerateGiftImage(ev.user_name!)}>
-            今日礼物
-          </span>
-        </div>
+        <Button size="xs" appearance="link" onClick={() => onGenerateGiftImage(ev.user_name!)}>
+          今日礼物
+        </Button>
       )}
     </div>
   )
