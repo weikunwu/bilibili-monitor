@@ -26,6 +26,10 @@ class BiliLiveClient:
         self.room_title = ""
         self.streamer_name = ""
         self.popularity = 0
+        self.followers = 0
+        self.guard_count = 0
+        self.area_name = ""
+        self.announcement = ""
         self.buvid = ""
         self._running = False
         self._ws = None
@@ -62,6 +66,11 @@ class BiliLiveClient:
                     self.real_room_id = info.get("room_id", self.room_id)
                     self.ruid = info.get("uid", 0)
                     self.room_title = info.get("title", "")
+                    self.area_name = info.get("area_name", "")
+                    parent_area = info.get("parent_area_name", "")
+                    if parent_area and parent_area != self.area_name:
+                        self.area_name = f"{parent_area} / {self.area_name}"
+                    self.announcement = info.get("description", "")
                     log.info(f"房间信息: {self.room_title} (真实ID: {self.real_room_id}, 主播UID: {self.ruid})")
                     if self.ruid:
                         try:
@@ -71,8 +80,11 @@ class BiliLiveClient:
                             ) as name_resp:
                                 name_data = await name_resp.json(content_type=None)
                                 if name_data.get("code") == 0:
-                                    self.streamer_name = name_data["data"].get("info", {}).get("uname", "")
-                                    log.info(f"主播名字: {self.streamer_name}")
+                                    master = name_data["data"]
+                                    self.streamer_name = master.get("info", {}).get("uname", "")
+                                    self.followers = master.get("info", {}).get("fans", 0)
+                                    self.guard_count = master.get("guard", {}).get("num", 0) if master.get("guard") else 0
+                                    log.info(f"主播: {self.streamer_name} 粉丝: {self.followers} 舰长: {self.guard_count}")
                         except Exception:
                             pass
                     return info

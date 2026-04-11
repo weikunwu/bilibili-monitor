@@ -4,10 +4,6 @@ export function StatsGrid({ stats }: { stats: Stats | null }) {
   const s = stats
   return (
     <div className="stats">
-      <div className="stat-card popularity">
-        <div className="label">人气值</div>
-        <div className="value">{s?.popularity?.toLocaleString() ?? '0'}</div>
-      </div>
       <div className="stat-card danmaku">
         <div className="label">弹幕</div>
         <div className="value">{s?.danmaku?.toLocaleString() ?? '0'}</div>

@@ -18,7 +18,12 @@ async def get_rooms(request: Request):
             "real_room_id": c.real_room_id,
             "streamer_name": c.streamer_name,
             "room_title": c.room_title,
-            "popularity": c.popularity,
+            "ruid": c.ruid,
+            "followers": c.followers,
+            "guard_count": c.guard_count,
+            "area_name": c.area_name,
+            "announcement": c.announcement,
+            "bot_uid": c.uid if c.cookies.get("SESSDATA") else 0,
         }
         for c in bili_clients.values()
         if allowed is None or c.room_id in allowed

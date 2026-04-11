@@ -33,11 +33,15 @@ export interface Room {
   real_room_id: number
   streamer_name: string
   room_title: string
-  popularity: number
+  ruid: number
+  followers: number
+  guard_count: number
+  area_name: string
+  announcement: string
+  bot_uid: number
 }
 
 export interface Stats {
-  popularity: number
   total: number
   danmaku: number
   gift: number

@@ -16,10 +16,23 @@ export function RoomList({ rooms, onSelectRoom }: Props) {
             className="room-card"
             onClick={() => onSelectRoom(r.room_id)}
           >
-            <div className="room-card-name">{r.streamer_name || `房间 ${r.room_id}`}</div>
-            <div className="room-card-id">房间号: {r.room_id}</div>
-            <div className="room-card-title">{r.room_title || '暂无标题'}</div>
-            <div className="room-card-pop">人气: {r.popularity?.toLocaleString() ?? 0}</div>
+            <div className="room-card-header">
+              <div className="room-card-name">{r.streamer_name || `房间 ${r.room_id}`}</div>
+              <span className={`room-card-bot ${r.bot_uid ? 'active' : ''}`}>
+                {r.bot_uid ? `机器人 (${r.bot_uid})` : '未绑定机器人'}
+              </span>
+            </div>
+            <div className="room-card-meta">
+              <span>UID: {r.ruid}</span>
+              <span>房间: {r.room_id}</span>
+            </div>
+            <div className="room-card-stats">
+              <span>粉丝 {r.followers?.toLocaleString() ?? 0}</span>
+              <span>舰长 {r.guard_count ?? 0}</span>
+            </div>
+            {r.area_name && <div className="room-card-area">{r.area_name}</div>}
+            {r.room_title && <div className="room-card-title">{r.room_title}</div>}
+            {r.announcement && <div className="room-card-announce">{r.announcement}</div>}
           </div>
         ))}
         {rooms.length === 0 && <div className="empty">暂无可用房间</div>}

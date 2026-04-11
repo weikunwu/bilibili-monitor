@@ -117,7 +117,7 @@ export function AdminPanel({ rooms, onRoomsChanged }: Props) {
         <div key={r.room_id} className="cmd-item">
           <div className="cmd-info">
             <div className="cmd-name">{r.streamer_name || r.room_id}</div>
-            <div className="cmd-desc">房间号: {r.room_id}{r.real_room_id !== r.room_id ? ` (真实ID: ${r.real_room_id})` : ''} | 人气: {r.popularity}</div>
+            <div className="cmd-desc">房间号: {r.room_id}{r.real_room_id !== r.room_id ? ` (真实ID: ${r.real_room_id})` : ''}</div>
           </div>
           <button onClick={() => handleRemoveRoom(r.room_id)} style={{ ...smallBtnStyle, background: '#c0392b' }}>
             删除

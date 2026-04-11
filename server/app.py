@@ -58,6 +58,11 @@ async def index():
     return FileResponse(BASE_DIR / "frontend" / "dist" / "index.html")
 
 
+@app.get("/room/{path:path}")
+async def spa_fallback():
+    return FileResponse(BASE_DIR / "frontend" / "dist" / "index.html")
+
+
 # ── WebSocket ──
 ws_clients: dict[WebSocket, Optional[list[int]]] = {}
 bili_clients: dict[int, BiliLiveClient] = {}

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { Routes, Route, useParams, useNavigate, Navigate } from 'react-router-dom'
 import type { LiveEvent, TabType, Room, Stats } from './types'
 import { fetchRooms, fetchStats, fetchEvents, fetchBotStatus, botLogout, authLogout, fetchMe, type CurrentUser } from './api/client'
 import { useWebSocket } from './hooks/useWebSocket'
@@ -24,25 +25,82 @@ function todayRange(): DateRange {
   ]
 }
 
+const VALID_TABS: TabType[] = ['all', 'danmaku', 'gift', 'superchat', 'guard', 'tools', 'admin']
+
 export default function App() {
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null)
   const [rooms, setRooms] = useState<Room[]>([])
-  const [currentRoomId, setCurrentRoomId] = useState<number | null>(null)
+
+  useEffect(() => {
+    fetchMe().then(setCurrentUser)
+    fetchRooms().then(setRooms)
+  }, [])
+
+  return (
+    <Routes>
+      <Route path="/" element={
+        <HomePage
+          rooms={rooms}
+          currentUser={currentUser}
+        />
+      } />
+      <Route path="/room/:roomId" element={
+        <Navigate to="all" replace />
+      } />
+      <Route path="/room/:roomId/:tab" element={
+        <RoomPage
+          rooms={rooms}
+          currentUser={currentUser}
+          onRoomsChanged={() => fetchRooms().then(setRooms)}
+        />
+      } />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  )
+}
+
+function HomePage({ rooms, currentUser }: { rooms: Room[]; currentUser: CurrentUser | null }) {
+  const navigate = useNavigate()
+
+  return (
+    <div>
+      <div className="header">
+        <h1>B站直播监控</h1>
+        <span style={{ flex: 1 }} />
+        {currentUser && (
+          <span style={{ fontSize: 12, color: '#888' }}>{currentUser.email}</span>
+        )}
+        <button className="login-btn" style={{ background: '#555' }} onClick={() => authLogout().then(() => location.reload())}>
+          退出登录
+        </button>
+      </div>
+      <RoomList rooms={rooms} onSelectRoom={(id) => navigate(`/room/${id}/all`)} />
+    </div>
+  )
+}
+
+function RoomPage({ rooms, currentUser, onRoomsChanged }: {
+  rooms: Room[]
+  currentUser: CurrentUser | null
+  onRoomsChanged: () => void
+}) {
+  const { roomId: roomIdStr, tab: tabStr } = useParams()
+  const navigate = useNavigate()
+  const roomId = Number(roomIdStr)
+  const activeTab = (VALID_TABS.includes(tabStr as TabType) ? tabStr : 'all') as TabType
+
   const [stats, setStats] = useState<Stats | null>(null)
   const [events, setEvents] = useState<LiveEvent[]>([])
-  const [activeTab, setActiveTab] = useState<TabType>('all')
   const [botUid, setBotUid] = useState<number | null>(null)
   const [qrModalOpen, setQrModalOpen] = useState(false)
-
   const [autoScroll, setAutoScroll] = useLocalStorage('autoScroll', true)
 
   const giftModalRef = useRef<GiftImageModalRef>(null)
-  const currentRoomIdRef = useRef(currentRoomId)
-  currentRoomIdRef.current = currentRoomId
+  const roomIdRef = useRef(roomId)
+  roomIdRef.current = roomId
 
   const onWsEvent = useCallback((ev: LiveEvent) => {
-    const roomId = currentRoomIdRef.current
-    if (roomId && ev.room_id && ev.room_id !== roomId) return
+    if (ev.room_id && ev.room_id !== roomIdRef.current) return
     setEvents((prev) => {
       const next = [...prev, ev]
       return next.length > MAX_EVENTS ? next.slice(-MAX_EVENTS) : next
@@ -52,90 +110,52 @@ export default function App() {
   const connectionStatus = useWebSocket(onWsEvent)
 
   useEffect(() => {
-    fetchMe().then(setCurrentUser)
-    fetchRooms().then(setRooms)
-  }, [])
+    setEvents([])
+    setStats(null)
 
-  useEffect(() => {
-    if (!currentRoomId) return
-
-    fetchStats(currentRoomId).then(setStats).catch(() => {})
+    fetchStats(roomId).then(setStats).catch(() => {})
     const interval = setInterval(() => {
-      fetchStats(currentRoomId).then(setStats).catch(() => {})
+      fetchStats(roomId).then(setStats).catch(() => {})
     }, 10000)
 
-    fetchBotStatus(currentRoomId).then((d) => {
+    fetchBotStatus(roomId).then((d) => {
       setBotUid(d.logged_in ? d.uid : null)
     }).catch(() => {})
 
-    loadTodayEvents(currentRoomId)
-
-    return () => clearInterval(interval)
-  }, [currentRoomId])
-
-  async function loadTodayEvents(roomId: number) {
     const now = new Date()
     const from = fmtDate(now) + ' 00:00:00'
     const to = fmtDate(now) + ' 23:59:59'
-    const data = await fetchEvents(roomId, localToUTC(from), localToUTC(to))
-    setEvents(data)
-  }
+    fetchEvents(roomId, localToUTC(from), localToUTC(to)).then(setEvents)
+
+    return () => clearInterval(interval)
+  }, [roomId])
 
   function handleQueryRange(from: string, to: string) {
-    if (!currentRoomId) return
-    fetchEvents(currentRoomId, localToUTC(from), localToUTC(to)).then(setEvents)
+    fetchEvents(roomId, localToUTC(from), localToUTC(to)).then(setEvents)
   }
 
-  function handleSelectRoom(roomId: number) {
-    setCurrentRoomId(roomId)
-    setEvents([])
-    setActiveTab('all')
-  }
-
-  function handleBackToRooms() {
-    setCurrentRoomId(null)
-    setEvents([])
-    setStats(null)
+  function handleTabChange(tab: TabType) {
+    navigate(`/room/${roomId}/${tab}`, { replace: true })
   }
 
   function handleBotClick() {
     if (botUid) {
       if (!confirm('确定解绑机器人？解绑后将无法显示完整用户名和自动送礼')) return
-      if (currentRoomId) botLogout(currentRoomId).then(() => setBotUid(null))
+      botLogout(roomId).then(() => setBotUid(null))
     } else {
       setQrModalOpen(true)
     }
   }
 
   const isAdmin = currentUser?.role === 'admin'
-  const currentRoom = rooms.find((r) => r.room_id === currentRoomId)
+  const currentRoom = rooms.find((r) => r.room_id === roomId)
 
-  // Room selection page
-  if (!currentRoomId) {
-    return (
-      <div>
-        <div className="header">
-          <h1>B站直播监控</h1>
-          <span style={{ flex: 1 }} />
-          {currentUser && (
-            <span style={{ fontSize: 12, color: '#888' }}>{currentUser.email}</span>
-          )}
-          <button className="login-btn" style={{ background: '#555' }} onClick={() => authLogout().then(() => location.reload())}>
-            退出登录
-          </button>
-        </div>
-        <RoomList rooms={rooms} onSelectRoom={handleSelectRoom} />
-      </div>
-    )
-  }
-
-  // Room detail page
   function renderContent() {
     if (activeTab === 'admin' && isAdmin) {
-      return <AdminPanel rooms={rooms} onRoomsChanged={() => fetchRooms().then(setRooms)} />
+      return <AdminPanel rooms={rooms} onRoomsChanged={onRoomsChanged} />
     }
     if (activeTab === 'tools') {
-      return <ToolsPanel roomId={currentRoomId} />
+      return <ToolsPanel roomId={roomId} />
     }
     return (
       <>
@@ -158,16 +178,16 @@ export default function App() {
   return (
     <>
       <div className="header">
-        <button className="back-btn" onClick={handleBackToRooms}>← 房间</button>
-        <h1>{currentRoom?.streamer_name || currentRoomId}</h1>
-        <span className="room-info">({currentRoomId})</span>
+        <button className="back-btn" onClick={() => navigate('/')}>← 房间</button>
+        <h1>{currentRoom?.streamer_name || roomId}</h1>
+        <span className="room-info">({roomId})</span>
         <button
           className={`login-btn ${botUid ? 'logged-in' : ''}`}
           onClick={handleBotClick}
         >
           {botUid ? `机器人已绑定 (${botUid})` : '绑定机器人'}
         </button>
-        <span className={`status`}>
+        <span className="status">
           <span className={`dot ${connectionStatus}`} />
           {connectionStatus === 'connected' ? '已连接' : connectionStatus === 'connecting' ? '连接中' : '未连接'}
         </span>
@@ -181,13 +201,13 @@ export default function App() {
       </div>
 
       <StatsGrid stats={stats} />
-      <TabBar active={activeTab} onChange={setActiveTab} isAdmin={isAdmin} />
+      <TabBar active={activeTab} onChange={handleTabChange} isAdmin={isAdmin} />
 
       {renderContent()}
 
       <QrLoginModal
         isOpen={qrModalOpen}
-        roomId={currentRoomId}
+        roomId={roomId}
         onClose={() => setQrModalOpen(false)}
         onSuccess={(uid) => setBotUid(uid)}
       />
