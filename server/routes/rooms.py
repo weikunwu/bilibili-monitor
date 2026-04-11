@@ -12,8 +12,21 @@ router = APIRouter()
 
 @router.get("/api/rooms")
 async def get_rooms(request: Request):
+    import asyncio
     allowed = getattr(request.state, "allowed_rooms", None)
     db_rooms = get_all_rooms_with_active()
+
+    # Lazy fetch: ensure room info is loaded for clients that haven't fetched yet
+    clients_to_fetch = []
+    for room_id, _ in db_rooms:
+        if allowed is not None and room_id not in allowed:
+            continue
+        c = manager.get(room_id)
+        if c and not c._info_fetched:
+            clients_to_fetch.append(c.ensure_info())
+    if clients_to_fetch:
+        await asyncio.gather(*clients_to_fetch, return_exceptions=True)
+
     result = []
     for room_id, active in db_rooms:
         if allowed is not None and room_id not in allowed:

@@ -8,7 +8,6 @@ from fastapi import WebSocket
 from .bili_client import BiliLiveClient
 from .crypto import load_cookies
 from .db import set_room_active, get_all_rooms, get_active_rooms
-from .config import log
 
 
 class RoomManager:

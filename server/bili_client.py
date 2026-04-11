@@ -38,6 +38,7 @@ class BiliLiveClient:
         self._running = False
         self._ws = None
         self._reconnect = False
+        self._info_fetched = False
 
     def _make_cookie_header(self) -> dict:
         headers = dict(HEADERS)
@@ -83,7 +84,6 @@ class BiliLiveClient:
                                 params={"uid": self.ruid}
                             ) as name_resp:
                                 name_data = await name_resp.json(content_type=None)
-                                log.info(f"[Master/info] response: {json.dumps(name_data, ensure_ascii=False)[:500]}")
                                 if name_data.get("code") == 0:
                                     master = name_data["data"]
                                     info_data = master.get("info", {})
@@ -94,8 +94,14 @@ class BiliLiveClient:
                                     log.info(f"主播: {self.streamer_name} 粉丝: {self.followers} 舰长: {self.guard_count}")
                         except Exception:
                             pass
+                    self._info_fetched = True
                     return info
         return {}
+
+    async def ensure_info(self):
+        """Fetch room info if not yet fetched."""
+        if not self._info_fetched:
+            await self.get_room_info()
 
     async def get_danmu_info(self):
         headers = self._make_cookie_header()
