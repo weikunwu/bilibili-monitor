@@ -1,10 +1,12 @@
-import { MdCircle, MdPlayArrow, MdStop } from 'react-icons/md'
+import { MdCircle, MdPlayArrow, MdStop, MdSwapHoriz } from 'react-icons/md'
+import { Button, ButtonGroup } from 'rsuite'
 import type { Room } from '../types'
 
 interface Props {
   rooms: Room[]
   onSelectRoom: (roomId: number) => void
   onRoomsChanged?: () => void
+  onBindBot?: (roomId: number) => void
 }
 
 function formatFans(n: number): string {
@@ -12,7 +14,7 @@ function formatFans(n: number): string {
   return n.toLocaleString()
 }
 
-export function RoomList({ rooms, onSelectRoom, onRoomsChanged }: Props) {
+export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot }: Props) {
   const handleToggle = async (e: React.MouseEvent, room: Room) => {
     e.stopPropagation()
     const action = room.active ? 'stop' : 'start'
@@ -77,21 +79,25 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged }: Props) {
 
             {/* Footer: bot + monitor status */}
             <div className="rc-footer">
-              <div className="rc-footer-item">
-                <span className="rc-detail-label">机器人</span>
-                {r.bot_uid ? (
-                  <span className="rc-bot-status active">{r.bot_name || 'Unknown'} (UID: {r.bot_uid})</span>
-                ) : (
-                  <span className="rc-bot-status">未绑定</span>
-                )}
-              </div>
-              <div className="rc-footer-item">
-                <span className="rc-detail-label">监控</span>
-                {r.active ? (
-                  <span className="rc-badge rc-badge-running" onClick={(e) => handleToggle(e, r)} title="点击停止监控"><MdStop size={12} /> 运行中</span>
-                ) : (
-                  <span className="rc-badge rc-badge-stopped" onClick={(e) => handleToggle(e, r)} title="点击启动监控"><MdPlayArrow size={12} /> 已停止</span>
-                )}
+              <div className="rc-footer-section">
+                <div className="rc-footer-item">
+                  <span className="rc-detail-label">机器人</span>
+                  {r.bot_uid ? (
+                    <span className="rc-bot-status active">{r.bot_name || 'Unknown'} (UID: {r.bot_uid})</span>
+                  ) : (
+                    <span className="rc-bot-status">未绑定</span>
+                  )}
+                </div>
+                <ButtonGroup size="xs">
+                  {r.active ? (
+                    <Button appearance="primary" color="green" onClick={(e) => handleToggle(e as unknown as React.MouseEvent, r)} title="点击停止监控"><MdStop size={12} /> 运行中</Button>
+                  ) : (
+                    <Button appearance="ghost" onClick={(e) => handleToggle(e as unknown as React.MouseEvent, r)} title="点击启动监控"><MdPlayArrow size={12} /> 已停止</Button>
+                  )}
+                  <Button appearance="ghost" onClick={(e) => { e.stopPropagation(); onBindBot?.(r.room_id) }} title={r.bot_uid ? '更换机器人' : '绑定机器人'}>
+                    <MdSwapHoriz size={12} /> {r.bot_uid ? '更换' : '绑定'}
+                  </Button>
+                </ButtonGroup>
               </div>
             </div>
           </div>

@@ -62,6 +62,7 @@ export default function App() {
 
 function HomePage({ rooms, currentUser, onRoomsChanged }: { rooms: Room[]; currentUser: CurrentUser | null; onRoomsChanged: () => void }) {
   const navigate = useNavigate()
+  const [bindRoomId, setBindRoomId] = useState<number | null>(null)
 
   return (
     <div>
@@ -75,7 +76,20 @@ function HomePage({ rooms, currentUser, onRoomsChanged }: { rooms: Room[]; curre
           退出登录
         </button>
       </div>
-      <RoomList rooms={rooms} onSelectRoom={(id) => navigate(`/room/${id}/all`)} onRoomsChanged={onRoomsChanged} />
+      <RoomList
+        rooms={rooms}
+        onSelectRoom={(id) => navigate(`/room/${id}/all`)}
+        onRoomsChanged={onRoomsChanged}
+        onBindBot={(id) => setBindRoomId(id)}
+      />
+      {bindRoomId && (
+        <QrLoginModal
+          isOpen={true}
+          roomId={bindRoomId}
+          onClose={() => setBindRoomId(null)}
+          onSuccess={() => { setBindRoomId(null); onRoomsChanged() }}
+        />
+      )}
     </div>
   )
 }
