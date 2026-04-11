@@ -174,9 +174,10 @@ def handle_message(msg: dict) -> Optional[dict]:
             "timestamp": now, "event_type": "guard",
             "user_name": data.get("username", ""), "user_id": data.get("uid", 0),
             "content": f"开通 {guard_name}",
-            "extra": {"guard_level": level, "guard_name": guard_name, "num": data.get("num", 1), "price": data.get("price", 0)},
+            "extra": {"guard_level": level, "guard_name": guard_name, "num": data.get("num", 1), "price": data.get("price", 0), "avatar": data.get("face", "")},
         }
         log.info(f"[上舰] {data.get('username', '')} 开通 {guard_name}")
+        log.debug(f"[上舰原始数据] {json.dumps(data, ensure_ascii=False)}")
         return event
 
     return None

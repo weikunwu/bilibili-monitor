@@ -128,10 +128,11 @@ export function GuardPanel({
       if (extra.guard_level && extra.guard_level > u.guard_level) u.guard_level = extra.guard_level
       const name = extra.guard_name || ev.content || ''
       const num = extra.num || 1
-      const price = (extra.price || 0) * 1000
+      const coin = (extra.price || 0) * 1000
       u.gifts[name] = (u.gifts[name] || 0) + num
-      u.gift_coins[name] = (u.gift_coins[name] || 0) + price
-      u.total_coin += price
+      u.gift_coins[name] = (u.gift_coins[name] || 0) + coin
+      u.total_coin += coin
+      if (!u.gift_actions[name]) u.gift_actions[name] = '开通'
     }
     const users = Object.values(map).sort((a, b) => b.total_coin - a.total_coin)
     try { await document.fonts.load('italic 800 30px "Baloo 2"') } catch { /* ok */ }
@@ -254,6 +255,9 @@ export function GuardPanel({
                     <span className={`guard-level guard-level-${level}`}>
                       {GUARD_NAMES[level] || extra.guard_name || '舰长'}
                       {(extra.num || 1) > 1 ? ` x${extra.num}` : ''}
+                      {isMobile && extra.price ? (
+                        <span className="gift-item-coin">¥{extra.price}</span>
+                      ) : null}
                     </span>
                   )
                 }}
