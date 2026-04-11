@@ -11,7 +11,7 @@ from .config import (
     HEADER_SIZE, WS_OP_MESSAGE, WS_OP_HEARTBEAT_REPLY, WS_OP_AUTH_REPLY,
     PROTO_RAW_JSON, PROTO_ZLIB, PROTO_BROTLI, GUARD_LEVELS, log,
 )
-from .bili_api import gift_img_cache, gift_price_cache
+from .bili_api import gift_img_cache
 
 
 def make_packet(body: bytes, operation: int) -> bytes:
@@ -126,14 +126,12 @@ def handle_message(msg: dict) -> Optional[dict]:
         blind_name = ""
         if blind and isinstance(blind, dict):
             blind_name = blind.get("gift_name") or blind.get("original_gift_name") or ""
-            log.info(f"[盲盒DEBUG] price={data.get('price')} total_coin={data.get('total_coin')} num={data.get('num')} discount_price={data.get('discount_price')} blind_gift={blind}")
         action = data.get("action", "投喂")
         gift_name = data.get("giftName", "")
         if blind_name:
             action = f"{blind_name} 爆出"
         num = data.get("num", 1)
-        real_price = gift_price_cache.get(gift_id, 0)
-        real_total_coin = real_price * num if real_price else data.get("total_coin", 0)
+        price = data.get("price", 0)
         event = {
             "timestamp": now,
             "event_type": "gift",
@@ -142,7 +140,7 @@ def handle_message(msg: dict) -> Optional[dict]:
             "content": f"{gift_name} x{num}",
             "extra": {
                 "gift_name": gift_name, "gift_id": gift_id, "num": num,
-                "coin_type": data.get("coin_type", ""), "total_coin": real_total_coin,
+                "coin_type": data.get("coin_type", ""), "total_coin": price * num,
                 "price": data.get("price", 0), "action": action, "blind_name": blind_name,
                 "avatar": data.get("face", ""), "gift_img": gift_img,
                 "guard_level": data.get("guard_level", 0),

@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, Query
 from fastapi.responses import Response, StreamingResponse
 
 from ..config import DB_PATH, BASE_DIR, HEADERS, log
-from ..bili_api import gift_price_cache, gift_gif_cache
+from ..bili_api import gift_gif_cache
 from ..auth import require_room_access
 
 router = APIRouter()
@@ -143,16 +143,6 @@ def _build_gift_users(rows) -> dict:
         gl = extra.get("guard_level", 0)
         if gl and (not users[key]["guard_level"] or gl < users[key]["guard_level"]):
             users[key]["guard_level"] = gl
-
-    # Recalculate with real prices
-    for u in users.values():
-        u["total_coin"] = 0
-        for gift_name, num in u["gifts"].items():
-            gid = u["gift_ids"].get(gift_name, 0)
-            real_price = gift_price_cache.get(gid, 0)
-            if real_price:
-                u["gift_coins"][gift_name] = real_price * num
-            u["total_coin"] += u["gift_coins"].get(gift_name, 0)
 
     return users
 
