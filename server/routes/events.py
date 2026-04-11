@@ -108,7 +108,7 @@ async def get_stats(room_id: int = Query(...), _=Depends(require_room_access)):
     }
 
 
-def _build_gift_users(rows) -> dict:
+def _build_gift_users(rows, sort_by: str = "value") -> dict:
     users: dict = {}
     for user_name, user_id, extra_json in rows:
         extra = json.loads(extra_json)
@@ -144,6 +144,22 @@ def _build_gift_users(rows) -> dict:
         if gl and (not users[key]["guard_level"] or gl < users[key]["guard_level"]):
             users[key]["guard_level"] = gl
 
+    if sort_by == "tier":
+        def _tier(coin: int) -> int:
+            yuan = coin / 1000
+            if yuan >= 1000: return 0  # gold
+            if yuan >= 500: return 1   # pink
+            if yuan >= 100: return 2   # purple
+            return 3                    # blue
+
+        for u in users.values():
+            sorted_names = sorted(
+                u["gifts"].keys(),
+                key=lambda n: (_tier(u["gift_coins"].get(n, 0)), -(u["gift_coins"].get(n, 0))),
+            )
+            u["gifts"] = {n: u["gifts"][n] for n in sorted_names}
+            u["gift_coins"] = {n: u["gift_coins"][n] for n in sorted_names if n in u["gift_coins"]}
+
     return users
 
 
@@ -153,6 +169,7 @@ async def gift_summary(
     date: Optional[str] = Query(None),
     user_name: Optional[str] = Query(None),
     blind_only: bool = Query(False),
+    sort: str = Query("value"),
     _=Depends(require_room_access),
 ):
     beijing_tz = timezone(timedelta(hours=8))
@@ -176,7 +193,7 @@ async def gift_summary(
     rows = conn.execute(f"SELECT user_name, user_id, extra_json FROM events WHERE {where}", params).fetchall()
     conn.close()
 
-    users = _build_gift_users(rows)
+    users = _build_gift_users(rows, sort_by=sort)
     result = sorted(users.values(), key=lambda x: x["total_coin"], reverse=True)
     display_date = date if date else datetime.now(beijing_tz).strftime("%Y-%m-%d")
     return {"date": display_date, "users": result}

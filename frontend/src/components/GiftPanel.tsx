@@ -135,6 +135,26 @@ export function GiftPanel({
       if (extra.action && !u.gift_actions[name]) u.gift_actions[name] = extra.action
       if (extra.gift_id && !u.gift_ids[name]) u.gift_ids[name] = extra.gift_id
     }
+    // sort gifts within each user by tier: gold > pink > purple > blue
+    function tierOrder(coin: number): number {
+      const yuan = coin / 1000
+      if (yuan >= 1000) return 0
+      if (yuan >= 500) return 1
+      if (yuan >= 100) return 2
+      return 3
+    }
+    for (const u of Object.values(map)) {
+      const sorted = Object.keys(u.gifts).sort((a, b) => {
+        const ta = tierOrder(u.gift_coins[a] || 0)
+        const tb = tierOrder(u.gift_coins[b] || 0)
+        return ta !== tb ? ta - tb : (u.gift_coins[b] || 0) - (u.gift_coins[a] || 0)
+      })
+      const g: Record<string, number> = {}
+      const c: Record<string, number> = {}
+      for (const n of sorted) { g[n] = u.gifts[n]; c[n] = u.gift_coins[n] }
+      u.gifts = g
+      u.gift_coins = c
+    }
     const users = Object.values(map).sort((a, b) => b.total_coin - a.total_coin)
     try { await document.fonts.load('italic 800 30px "Baloo 2"') } catch { /* ok */ }
     const canvases: HTMLCanvasElement[] = []
@@ -143,14 +163,15 @@ export function GiftPanel({
       await generateGiftCard(c, u)
       canvases.push(c)
     }
-    const totalHeight = canvases.reduce((h, c) => h + c.height, 0)
+    const mergeGap = 2
+    const totalHeight = canvases.reduce((h, c) => h + c.height, 0) + (canvases.length - 1) * mergeGap
     const maxWidth = Math.max(...canvases.map((c) => c.width))
     const merged = document.createElement('canvas')
     merged.width = maxWidth
     merged.height = totalHeight
     const ctx = merged.getContext('2d')!
     let y = 0
-    for (const c of canvases) { ctx.drawImage(c, 0, y); y += c.height }
+    for (const c of canvases) { ctx.drawImage(c, 0, y); y += c.height + mergeGap }
     const url = merged.toDataURL('image/png')
     const names = users.map((u) => u.user_name)
     onShowCardPreview?.(`${names.join(', ')} - 礼物截图`, url)

@@ -147,7 +147,7 @@ export async function fetchGiftSummary(
   userName: string,
   blindOnly?: boolean,
 ): Promise<{ date: string; users: GiftUser[] }> {
-  let url = `/api/gift-summary?room_id=${roomId}&user_name=${encodeURIComponent(userName)}`
+  let url = `/api/gift-summary?room_id=${roomId}&user_name=${encodeURIComponent(userName)}&sort=tier`
   if (blindOnly) url += '&blind_only=true'
   const res = await fetch(url)
   return res.json()

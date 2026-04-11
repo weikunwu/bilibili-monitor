@@ -45,16 +45,14 @@ export const GiftImageModal = forwardRef<GiftImageModalRef>(function GiftImageMo
 
   return (
     <Modal open={isOpen} onClose={() => setIsOpen(false)} size="sm">
-      <Modal.Header>
-        <Modal.Title>{title}</Modal.Title>
-      </Modal.Header>
+      <Modal.Header closeButton={false} />
       <Modal.Body style={{ textAlign: 'center' }}>
         {imgUrl && <img src={imgUrl} alt={title} style={{ borderRadius: 8, maxWidth: '100%' }} />}
       </Modal.Body>
       <Modal.Footer>
         <ButtonGroup>
-          <Button appearance="primary" onClick={download}>保存图片</Button>
-          <Button appearance="subtle" onClick={() => setIsOpen(false)}>关闭</Button>
+          <Button size="sm" appearance="primary" onClick={download}>保存图片</Button>
+          <Button size="sm" appearance="subtle" onClick={() => setIsOpen(false)}>关闭</Button>
         </ButtonGroup>
       </Modal.Footer>
     </Modal>
