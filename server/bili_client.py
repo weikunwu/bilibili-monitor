@@ -334,6 +334,7 @@ class BiliLiveClient:
         await self.send_danmaku(msg)
 
         for name, b in boxes.items():
+            await asyncio.sleep(0.5)
             await self.send_danmaku(f"{name}{b['count']}个，{fmt_profit(b['value'] - b['cost'])}")
 
     def stop(self):
