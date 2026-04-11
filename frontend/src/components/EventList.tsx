@@ -1,5 +1,6 @@
 import { useEffect, useRef, useMemo, useState, useCallback } from 'react'
-import { CheckPicker, Checkbox, Button } from 'rsuite'
+import { CheckPicker, Checkbox, Button, DateRangePicker } from 'rsuite'
+import type { DateRange } from 'rsuite/DateRangePicker'
 
 import type { LiveEvent, TabType, GiftUser } from '../types'
 import { EventItem } from './EventItem'
@@ -10,6 +11,10 @@ interface Props {
   events: LiveEvent[]
   activeTab: TabType
   autoScroll: boolean
+  defaultRange: DateRange | null
+  showAutoScroll?: boolean
+  onAutoScrollChange: (v: boolean) => void
+  onQueryRange: (from: string, to: string) => void
   onGenerateGiftImage: (userName: string) => void
   onGenerateBlindBoxImage?: (userName: string) => void
   onShowCardPreview?: (title: string, imgUrl: string) => void
@@ -63,8 +68,46 @@ function buildGiftUsersFromEvents(events: LiveEvent[]): GiftUser[] {
   return Object.values(map)
 }
 
+function fmtDate(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+}
+
+const predefinedRanges = [
+  {
+    label: '今日',
+    value: () => {
+      const now = new Date()
+      return [new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0), new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59)] as DateRange
+    },
+  },
+  {
+    label: '昨日',
+    value: () => {
+      const now = new Date()
+      return [new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 0, 0, 0), new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59)] as DateRange
+    },
+  },
+  {
+    label: '本周',
+    value: () => {
+      const now = new Date()
+      const day = now.getDay() || 7
+      return [new Date(now.getFullYear(), now.getMonth(), now.getDate() - day + 1, 0, 0, 0), new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59)] as DateRange
+    },
+  },
+  {
+    label: '本月',
+    value: () => {
+      const now = new Date()
+      return [new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0), new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59)] as DateRange
+    },
+  },
+]
+
 export function EventList({
-  events, activeTab, autoScroll,
+  events, activeTab, autoScroll, defaultRange, showAutoScroll = true,
+  onAutoScrollChange, onQueryRange,
   onGenerateGiftImage, onGenerateBlindBoxImage, onShowCardPreview,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -157,17 +200,31 @@ export function EventList({
 
   return (
     <>
-      {isGiftTab && (
-        <div className="event-filter">
-          {filtered.length > 0 && (
-            <Checkbox
-              checked={checkedKeys.size > 0 && checkedKeys.size === filtered.length}
-              indeterminate={checkedKeys.size > 0 && checkedKeys.size < filtered.length}
-              onChange={selectAll}
-            >
-              全选
-            </Checkbox>
-          )}
+      <div className="event-filter">
+        {showAutoScroll && (
+          <Checkbox
+            checked={autoScroll}
+            onChange={(_, checked) => onAutoScrollChange(checked)}
+          >
+            自动滚动
+          </Checkbox>
+        )}
+        <DateRangePicker
+          format="yyyy-MM-dd HH:mm:ss"
+          character=" ~ "
+          placeholder="选择时间范围"
+          size="sm"
+          appearance="subtle"
+          ranges={predefinedRanges}
+          defaultValue={defaultRange}
+          onChange={(range) => {
+            if (!range) return
+            onQueryRange(fmtDate(range[0]), fmtDate(range[1]))
+          }}
+          placement="bottomEnd"
+          style={{ width: 340 }}
+        />
+        {isGiftTab && giftUsers.length > 0 && (
           <CheckPicker
             data={giftUsers}
             value={selectedUsers}
@@ -178,13 +235,22 @@ export function EventList({
             countable
             w={200}
           />
-          {checkedKeys.size > 0 && (
-            <Button size="sm" appearance="primary" loading={generating} onClick={handleGenerateCard}>
-              生成礼物截图 ({checkedKeys.size})
-            </Button>
-          )}
-        </div>
-      )}
+        )}
+        {isGiftTab && filtered.length > 0 && (
+          <Checkbox
+            checked={checkedKeys.size > 0 && checkedKeys.size === filtered.length}
+            indeterminate={checkedKeys.size > 0 && checkedKeys.size < filtered.length}
+            onChange={selectAll}
+          >
+            全选
+          </Checkbox>
+        )}
+        {isGiftTab && checkedKeys.size > 0 && (
+          <Button size="sm" appearance="primary" loading={generating} onClick={handleGenerateCard}>
+            生成礼物截图 ({checkedKeys.size})
+          </Button>
+        )}
+      </div>
       <div className="events-container" ref={containerRef}>
         {filtered.length === 0 ? (
           <div className="empty">等待接收消息...</div>

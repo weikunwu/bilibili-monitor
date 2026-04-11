@@ -8,7 +8,7 @@ import { localToUTC, fmtDate } from './lib/formatters'
 import { MAX_EVENTS, TAB_ALL, TAB_BLINDBOX, TAB_TOOLS, EVENT_DANMAKU, EVENT_GIFT, EVENT_SUPERCHAT, EVENT_GUARD } from './lib/constants'
 import { StatsGrid } from './components/StatsGrid'
 import { TabBar } from './components/TabBar'
-import { Controls } from './components/Controls'
+
 import { EventList } from './components/EventList'
 import { ToolsPanel } from './components/ToolsPanel'
 import { BlindBoxPanel } from './components/BlindBoxPanel'
@@ -179,17 +179,14 @@ function RoomPage({ rooms, currentUser }: {
     }
     return (
       <>
-        <Controls
-          autoScroll={autoScroll}
-          showAutoScroll={activeTab === TAB_ALL || activeTab === EVENT_DANMAKU}
-          defaultRange={todayRange()}
-          onAutoScrollChange={setAutoScroll}
-          onQueryRange={handleQueryRange}
-        />
         <EventList
           events={events}
           activeTab={activeTab}
           autoScroll={autoScroll}
+          showAutoScroll={activeTab === TAB_ALL || activeTab === EVENT_DANMAKU}
+          onAutoScrollChange={setAutoScroll}
+          defaultRange={todayRange()}
+          onQueryRange={handleQueryRange}
           onGenerateGiftImage={(userName) => giftModalRef.current?.showGiftImage(roomId, userName)}
           onGenerateBlindBoxImage={(userName) => giftModalRef.current?.showGiftImage(roomId, userName, true)}
           onShowCardPreview={(title, url) => giftModalRef.current?.showPreview(title, url)}

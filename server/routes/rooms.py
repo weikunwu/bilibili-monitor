@@ -42,7 +42,7 @@ async def get_rooms(request: Request):
                 "live_status": c.live_status if c._running else 0,
                 "ruid": c.ruid,
                 "followers": c.followers,
-                "guard_count": c.guard_count,
+
                 "area_name": c.area_name,
                 "parent_area_name": c.parent_area_name,
                 "announcement": c.announcement,
@@ -54,7 +54,7 @@ async def get_rooms(request: Request):
             result.append({
                 "room_id": room_id, "real_room_id": room_id,
                 "streamer_name": "", "streamer_avatar": "", "room_title": "",
-                "live_status": 0, "ruid": 0, "followers": 0, "guard_count": 0,
+                "live_status": 0, "ruid": 0, "followers": 0,
                 "area_name": "", "parent_area_name": "", "announcement": "",
                 "bot_uid": 0, "bot_name": "", "active": bool(active),
             })

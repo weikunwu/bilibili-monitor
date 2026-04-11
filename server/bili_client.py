@@ -31,7 +31,7 @@ class BiliLiveClient:
         self.live_status = 0
         self.popularity = 0
         self.followers = 0
-        self.guard_count = 0
+
         self.area_name = ""
         self.parent_area_name = ""
         self.announcement = ""
@@ -91,8 +91,7 @@ class BiliLiveClient:
                                     self.streamer_name = info_data.get("uname", "")
                                     self.streamer_avatar = info_data.get("face", "")
                                     self.followers = name_data["data"].get("follower_num", 0)
-                                    self.guard_count = name_data["data"].get("guard", {}).get("num", 0) if name_data["data"].get("guard") else 0
-                                    log.info(f"主播: {self.streamer_name} 粉丝: {self.followers} 舰长: {self.guard_count}")
+                                    log.info(f"主播: {self.streamer_name} 粉丝: {self.followers}")
                         except Exception:
                             pass
                     self._info_fetched = True

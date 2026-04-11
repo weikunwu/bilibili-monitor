@@ -37,7 +37,7 @@ export interface Room {
   live_status: number
   ruid: number
   followers: number
-  guard_count: number
+
   area_name: string
   parent_area_name: string
   announcement: string
