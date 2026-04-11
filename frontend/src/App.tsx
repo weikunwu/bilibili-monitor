@@ -186,6 +186,7 @@ function RoomPage({ rooms, currentUser }: {
           onQueryRange={handleQueryRange}
           onGenerateGiftImage={(userName) => giftModalRef.current?.showGiftImage(roomId, userName)}
           onGenerateBlindBoxImage={(userName) => giftModalRef.current?.showGiftImage(roomId, userName, true)}
+          onShowCardPreview={(title, url) => giftModalRef.current?.showPreview(title, url)}
         />
       )
     }

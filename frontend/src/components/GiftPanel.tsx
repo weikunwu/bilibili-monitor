@@ -2,10 +2,11 @@ import { useState, useMemo, useEffect, useCallback } from 'react'
 import { CheckPicker, DateRangePicker, Checkbox, Table } from 'rsuite'
 import type { DateRange } from 'rsuite/DateRangePicker'
 
-import type { LiveEvent } from '../types'
+import type { LiveEvent, GiftUser } from '../types'
 import { formatTime, formatCoin, fixUrl } from '../lib/formatters'
 import { GenerateImageButton } from './GenerateImageButton'
 import { EVENT_GIFT } from '../lib/constants'
+import { generateGiftCard } from '../lib/giftCard'
 
 const { Column, HeaderCell, Cell } = Table
 
@@ -15,6 +16,7 @@ interface Props {
   onQueryRange: (from: string, to: string) => void
   onGenerateGiftImage: (userName: string) => Promise<void> | void
   onGenerateBlindBoxImage?: (userName: string) => Promise<void> | void
+  onShowCardPreview?: (title: string, imgUrl: string) => void
 }
 
 function fmtDate(d: Date): string {
@@ -67,7 +69,7 @@ function useIsMobile(breakpoint = 768) {
 
 export function GiftPanel({
   events, defaultRange, onQueryRange,
-  onGenerateGiftImage, onGenerateBlindBoxImage,
+  onGenerateGiftImage, onGenerateBlindBoxImage, onShowCardPreview,
 }: Props) {
   const isMobile = useIsMobile()
   const [selectedUsers, setSelectedUsers] = useState<string[]>([])
@@ -106,6 +108,54 @@ export function GiftPanel({
     )
   }, [filtered])
 
+  const handleGenerateCard = useCallback(async () => {
+    const checked = filtered.filter((ev) => checkedKeys.has(ev._key))
+    if (checked.length === 0) return
+    // aggregate checked events by user
+    const map: Record<string, GiftUser> = {}
+    for (const ev of checked) {
+      const key = ev.user_name || ''
+      const extra = ev.extra || {}
+      if (!map[key]) {
+        map[key] = {
+          user_name: key, avatar: extra.avatar || '',
+          gifts: {}, gift_imgs: {}, gift_actions: {}, gift_coins: {}, gift_ids: {},
+          guard_level: 0, total_coin: 0,
+        }
+      }
+      const u = map[key]
+      if (!u.avatar && extra.avatar) u.avatar = extra.avatar
+      const name = extra.gift_name || ev.content || ''
+      const num = extra.num || 1
+      const coin = extra.total_coin || 0
+      u.gifts[name] = (u.gifts[name] || 0) + num
+      u.gift_coins[name] = (u.gift_coins[name] || 0) + coin
+      u.total_coin += coin
+      if (extra.gift_img && !u.gift_imgs[name]) u.gift_imgs[name] = extra.gift_img
+      if (extra.action && !u.gift_actions[name]) u.gift_actions[name] = extra.action
+      if (extra.gift_id && !u.gift_ids[name]) u.gift_ids[name] = extra.gift_id
+    }
+    const users = Object.values(map).sort((a, b) => b.total_coin - a.total_coin)
+    try { await document.fonts.load('italic 800 30px "Baloo 2"') } catch { /* ok */ }
+    const canvases: HTMLCanvasElement[] = []
+    for (const u of users) {
+      const c = document.createElement('canvas')
+      await generateGiftCard(c, u)
+      canvases.push(c)
+    }
+    const totalHeight = canvases.reduce((h, c) => h + c.height, 0)
+    const maxWidth = Math.max(...canvases.map((c) => c.width))
+    const merged = document.createElement('canvas')
+    merged.width = maxWidth
+    merged.height = totalHeight
+    const ctx = merged.getContext('2d')!
+    let y = 0
+    for (const c of canvases) { ctx.drawImage(c, 0, y); y += c.height }
+    const url = merged.toDataURL('image/png')
+    const names = users.map((u) => u.user_name)
+    onShowCardPreview?.(`${names.join(', ')} - 礼物截图`, url)
+  }, [filtered, checkedKeys])
+
   return (
     <div className="gift-panel">
       <div className="event-filter">
@@ -120,6 +170,11 @@ export function GiftPanel({
             countable
             w={200}
           />
+        )}
+        {checkedKeys.size > 0 && (
+          <GenerateImageButton size="sm" appearance="primary" onClick={handleGenerateCard}>
+            生成礼物截图 ({checkedKeys.size})
+          </GenerateImageButton>
         )}
         <span style={{ flex: 1 }} />
         <DateRangePicker

@@ -1,5 +1,5 @@
-import { useEffect, useRef } from 'react'
-import { Checkbox, DateRangePicker } from 'rsuite'
+import { useState, useEffect, useRef, useMemo } from 'react'
+import { Checkbox, CheckPicker, DateRangePicker } from 'rsuite'
 import type { DateRange } from 'rsuite/DateRangePicker'
 
 import type { LiveEvent, TabType } from '../types'
@@ -79,9 +79,16 @@ export function EventList({
   onGenerateGiftImage, onGenerateBlindBoxImage,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const [selectedUsers, setSelectedUsers] = useState<string[]>([])
+
+  const userOptions = useMemo(() => {
+    const names = new Set(events.map((ev) => ev.user_name).filter(Boolean) as string[])
+    return Array.from(names).map((n) => ({ label: n, value: n }))
+  }, [events])
 
   const filtered = events.filter((ev) => {
     if (activeTab !== TAB_ALL && ev.event_type !== activeTab) return false
+    if (selectedUsers.length > 0 && !selectedUsers.includes(ev.user_name || '')) return false
     return true
   })
 
@@ -101,6 +108,18 @@ export function EventList({
           >
             自动滚动
           </Checkbox>
+        )}
+        {userOptions.length > 0 && (
+          <CheckPicker
+            data={userOptions}
+            value={selectedUsers}
+            onChange={setSelectedUsers}
+            placeholder="筛选用户"
+            size="sm"
+            searchable
+            countable
+            w={200}
+          />
         )}
         <span style={{ flex: 1 }} />
         <DateRangePicker
