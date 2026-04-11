@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Button, ButtonGroup, Input, InputGroup, Tag, Divider } from 'rsuite'
 import SearchIcon from '@rsuite/icons/Search'
 import { fetchBlindBoxSummary, type BlindBoxUser } from '../api/client'
+import { formatGold } from '../lib/formatters'
 
 interface Props {
   roomId: number
@@ -13,11 +14,6 @@ const PERIODS = [
   { key: 'this_month', label: '本月' },
   { key: 'last_month', label: '上月' },
 ]
-
-function formatCoin(coin: number): string {
-  if (coin >= 10000) return (coin / 10000).toFixed(1).replace(/\.0$/, '') + '万'
-  return coin.toLocaleString()
-}
 
 export function BlindBoxPanel({ roomId }: Props) {
   const [period, setPeriod] = useState('today')
@@ -79,11 +75,11 @@ export function BlindBoxPanel({ roomId }: Props) {
             <div className="blind-box-user-info">
               <span className="blind-box-username">{u.user_name}</span>
               <span className="blind-box-stats">
-                开盒 {u.total_boxes} 次 · 花费 {formatCoin(u.total_cost)} · 价值 {formatCoin(u.total_value)}
+                开盒 {u.total_boxes} 次 · 花费 {formatGold(u.total_cost)} · 价值 {formatGold(u.total_value)}
               </span>
             </div>
             <Tag color={u.profit >= 0 ? 'green' : 'red'} size="lg">
-              {u.profit >= 0 ? '+' : ''}{formatCoin(u.profit)}
+              {u.profit >= 0 ? '+' : ''}{formatGold(u.profit)}
             </Tag>
           </div>
 
@@ -94,7 +90,7 @@ export function BlindBoxPanel({ roomId }: Props) {
                 <span className="blind-box-type-stats">
                   {box.count} 次 ·{' '}
                   <Tag size="sm" color={box.profit >= 0 ? 'green' : 'red'}>
-                    {box.profit >= 0 ? '+' : ''}{formatCoin(box.profit)}
+                    {box.profit >= 0 ? '+' : ''}{formatGold(box.profit)}
                   </Tag>
                 </span>
               </div>
@@ -103,7 +99,7 @@ export function BlindBoxPanel({ roomId }: Props) {
                   <div key={i} className="blind-box-gift">
                     {gift.img && <img className="blind-box-gift-img" src={gift.img} referrerPolicy="no-referrer" alt="" />}
                     <span className="blind-box-gift-count">x{gift.count}</span>
-                    <span className="blind-box-gift-value">{formatCoin(gift.value)}</span>
+                    <span className="blind-box-gift-value">{formatGold(gift.value)}</span>
                   </div>
                 ))}
               </div>

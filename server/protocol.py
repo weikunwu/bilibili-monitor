@@ -126,7 +126,7 @@ def handle_message(msg: dict) -> Optional[dict]:
         blind_price = 0
         if blind and isinstance(blind, dict):
             blind_name = blind.get("gift_name") or blind.get("original_gift_name") or ""
-            blind_price = data.get("discount_price", 0) or blind.get("original_gift_price", 0)
+            blind_price = blind.get("original_gift_price", 0)
         action = data.get("action", "投喂")
         gift_name = data.get("giftName", "")
         if blind_name:
