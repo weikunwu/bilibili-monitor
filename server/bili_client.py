@@ -291,7 +291,7 @@ class BiliLiveClient:
         except Exception as e:
             log.warning(f"[发弹幕] 异常: {e}")
 
-    async def handle_blind_box_query(self, user_name: str | None, period: str = "today"):
+    async def handle_blind_box_query(self, user_name, period: str = "today"):
         """Query blind box stats and reply via danmaku. user_name=None for all users (streamer)."""
         from .routes.events import _beijing_time_range
         import sqlite3

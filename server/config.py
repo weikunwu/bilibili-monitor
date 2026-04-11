@@ -4,8 +4,17 @@ import logging
 import os
 from pathlib import Path
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+LOG_FORMAT = "%(asctime)s UTC [%(levelname)s] %(message)s"
+logging.basicConfig(level=logging.INFO, format=LOG_FORMAT)
 log = logging.getLogger("bilibili-monitor")
+
+# Unify uvicorn loggers to same format
+for _name in ("uvicorn", "uvicorn.access", "uvicorn.error"):
+    _logger = logging.getLogger(_name)
+    _logger.handlers.clear()
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(logging.Formatter(LOG_FORMAT))
+    _logger.addHandler(_handler)
 
 BASE_DIR = Path(__file__).parent.parent
 DATA_DIR = Path(os.environ.get("DATA_DIR", str(BASE_DIR)))
