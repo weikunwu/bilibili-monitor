@@ -123,10 +123,10 @@ def handle_message(msg: dict) -> Optional[dict]:
         gift_gif = gift_info.get("gif", "")
         blind = data.get("blind_gift") or {}
         blind_name = ""
+        blind_price = 0
         if blind and isinstance(blind, dict):
             blind_name = blind.get("gift_name") or blind.get("original_gift_name") or ""
-            if blind_name:
-                log.info(f"[BLIND_DEBUG] blind_gift={json.dumps(blind, ensure_ascii=False)} discount_price={data.get('discount_price')}")
+            blind_price = data.get("discount_price", 0) or blind.get("original_gift_price", 0)
         action = data.get("action", "投喂")
         gift_name = data.get("giftName", "")
         if blind_name:
@@ -144,7 +144,7 @@ def handle_message(msg: dict) -> Optional[dict]:
                 "coin_type": data.get("coin_type", ""), "total_coin": price * num,
                 "price": data.get("price", 0), "action": action, "blind_name": blind_name,
                 "avatar": data.get("face", ""), "gift_img": gift_img, "gift_gif": gift_gif,
-                "guard_level": data.get("guard_level", 0),
+                "guard_level": data.get("guard_level", 0), "blind_price": blind_price,
             },
         }
         log.info(f"[礼物] {data.get('uname')} {action} {gift_name} x{num}")

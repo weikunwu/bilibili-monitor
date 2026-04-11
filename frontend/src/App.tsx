@@ -11,6 +11,7 @@ import { TabBar } from './components/TabBar'
 import { Controls } from './components/Controls'
 import { EventList } from './components/EventList'
 import { ToolsPanel } from './components/ToolsPanel'
+import { BlindBoxPanel } from './components/BlindBoxPanel'
 import { AdminPanel } from './components/AdminPanel'
 import { QrLoginModal } from './components/QrLoginModal'
 import { GiftImageModal, type GiftImageModalRef } from './components/GiftImageModal'
@@ -27,7 +28,7 @@ function todayRange(): DateRange {
   ]
 }
 
-const VALID_TABS: TabType[] = ['all', 'danmaku', 'gift', 'superchat', 'guard', 'tools']
+const VALID_TABS: TabType[] = ['all', 'danmaku', 'gift', 'superchat', 'guard', 'blindbox', 'tools']
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null)
@@ -170,6 +171,9 @@ function RoomPage({ rooms, currentUser }: {
   }
 
   function renderContent() {
+    if (activeTab === 'blindbox') {
+      return <BlindBoxPanel roomId={roomId} />
+    }
     if (activeTab === 'tools') {
       return <ToolsPanel roomId={roomId} />
     }

@@ -179,6 +179,103 @@ async def gift_summary(
     return {"date": display_date, "users": result}
 
 
+def _beijing_time_range(period: str) -> tuple[str, str, str]:
+    """Return (utc_start, utc_end, display_label) for a given period in Beijing time."""
+    beijing_tz = timezone(timedelta(hours=8))
+    now_bj = datetime.now(beijing_tz)
+    if period == "yesterday":
+        day = now_bj - timedelta(days=1)
+        start = day.replace(hour=0, minute=0, second=0, microsecond=0)
+        end = start + timedelta(days=1)
+        label = start.strftime("%Y-%m-%d")
+    elif period == "this_month":
+        start = now_bj.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        end = now_bj.replace(hour=23, minute=59, second=59, microsecond=0) + timedelta(seconds=1)
+        label = start.strftime("%Y-%m")
+    elif period == "last_month":
+        first_this = now_bj.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        last_month_end = first_this
+        last_month_start = (first_this - timedelta(days=1)).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        start = last_month_start
+        end = last_month_end
+        label = start.strftime("%Y-%m")
+    else:  # today
+        start = now_bj.replace(hour=0, minute=0, second=0, microsecond=0)
+        end = start + timedelta(days=1)
+        label = start.strftime("%Y-%m-%d")
+    utc_start = start.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    utc_end = end.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    return utc_start, utc_end, label
+
+
+@router.get("/api/blind-box-summary")
+async def blind_box_summary(
+    room_id: int = Query(...),
+    period: str = Query("today"),
+    user_name: Optional[str] = Query(None),
+    _=Depends(require_room_access),
+):
+    utc_start, utc_end, label = _beijing_time_range(period)
+    conn = sqlite3.connect(str(DB_PATH))
+    where = "event_type='gift' AND room_id=? AND timestamp >= ? AND timestamp < ? AND extra_json LIKE '%blind_name%' AND extra_json NOT LIKE '%\"blind_name\": \"\"%'"
+    params: list = [room_id, utc_start, utc_end]
+    if user_name:
+        where += " AND user_name=?"
+        params.append(user_name)
+    rows = conn.execute(f"SELECT user_name, user_id, extra_json FROM events WHERE {where}", params).fetchall()
+    conn.close()
+
+    users: dict[str, dict] = {}
+    for uname, uid, extra_json in rows:
+        try:
+            extra = json.loads(extra_json)
+        except (json.JSONDecodeError, TypeError):
+            continue
+        blind_name = extra.get("blind_name", "")
+        if not blind_name:
+            continue
+        key = f"{uid}_{uname}"
+        if key not in users:
+            users[key] = {
+                "user_name": uname, "user_id": uid,
+                "avatar": extra.get("avatar", ""),
+                "total_boxes": 0, "total_cost": 0, "total_value": 0,
+                "boxes": {},
+            }
+        if extra.get("avatar"):
+            users[key]["avatar"] = extra["avatar"]
+        num = extra.get("num", 1)
+        price = extra.get("price", 0)
+        blind_price = extra.get("blind_price", 0)
+        gift_name = extra.get("gift_name", "")
+
+        users[key]["total_boxes"] += num
+        users[key]["total_cost"] += blind_price * num
+        users[key]["total_value"] += price * num
+
+        box_key = blind_name
+        if box_key not in users[key]["boxes"]:
+            users[key]["boxes"][box_key] = {"name": blind_name, "count": 0, "cost": 0, "value": 0, "gifts": {}}
+        users[key]["boxes"][box_key]["count"] += num
+        users[key]["boxes"][box_key]["cost"] += blind_price * num
+        users[key]["boxes"][box_key]["value"] += price * num
+
+        if gift_name not in users[key]["boxes"][box_key]["gifts"]:
+            users[key]["boxes"][box_key]["gifts"][gift_name] = {"count": 0, "value": 0, "img": extra.get("gift_img", "")}
+        users[key]["boxes"][box_key]["gifts"][gift_name]["count"] += num
+        users[key]["boxes"][box_key]["gifts"][gift_name]["value"] += price * num
+
+    result = sorted(users.values(), key=lambda x: x["total_boxes"], reverse=True)
+    for u in result:
+        u["profit"] = u["total_value"] - u["total_cost"]
+        for box in u["boxes"].values():
+            box["profit"] = box["value"] - box["cost"]
+            box["gifts"] = sorted(box["gifts"].values(), key=lambda x: x["value"], reverse=True)
+        u["boxes"] = list(u["boxes"].values())
+
+    return {"period": label, "users": result}
+
+
 @router.get("/api/gift-gif")
 async def get_gift_gif(gift_id: int = Query(...)):
     conn = sqlite3.connect(str(DB_PATH))

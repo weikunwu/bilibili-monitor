@@ -7,6 +7,7 @@ const TAB_LIST: { type: TabType; label: string }[] = [
   { type: 'gift', label: '礼物' },
   { type: 'superchat', label: '醒目留言' },
   { type: 'guard', label: '上舰' },
+  { type: 'blindbox', label: '盲盒' },
   { type: 'tools', label: '工具' },
 ]
 

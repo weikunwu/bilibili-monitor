@@ -64,7 +64,7 @@ export interface Command {
   config: Record<string, unknown>
 }
 
-export type TabType = 'all' | 'danmaku' | 'gift' | 'superchat' | 'guard' | 'tools' | 'admin'
+export type TabType = 'all' | 'danmaku' | 'gift' | 'superchat' | 'guard' | 'blindbox' | 'tools' | 'admin'
 
 export type ConnectionStatus = 'connected' | 'disconnected' | 'connecting'
 

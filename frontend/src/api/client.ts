@@ -152,6 +152,43 @@ export async function fetchGiftSummary(
   return res.json()
 }
 
+export interface BlindBoxGift {
+  count: number
+  value: number
+  img: string
+}
+
+export interface BlindBoxType {
+  name: string
+  count: number
+  cost: number
+  value: number
+  profit: number
+  gifts: BlindBoxGift[]
+}
+
+export interface BlindBoxUser {
+  user_name: string
+  user_id: number
+  avatar: string
+  total_boxes: number
+  total_cost: number
+  total_value: number
+  profit: number
+  boxes: BlindBoxType[]
+}
+
+export async function fetchBlindBoxSummary(
+  roomId: number,
+  period: string,
+  userName?: string,
+): Promise<{ period: string; users: BlindBoxUser[] }> {
+  let url = `/api/blind-box-summary?room_id=${roomId}&period=${period}`
+  if (userName) url += `&user_name=${encodeURIComponent(userName)}`
+  const res = await fetch(url)
+  return res.json()
+}
+
 export async function fetchGiftGif(giftId: number): Promise<{ gif: string }> {
   const res = await fetch(`/api/gift-gif?gift_id=${giftId}`)
   return res.json()
