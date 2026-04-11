@@ -87,8 +87,8 @@ class BiliLiveClient:
                                     info_data = master.get("info", {})
                                     self.streamer_name = info_data.get("uname", "")
                                     self.streamer_avatar = info_data.get("face", "")
-                                    self.followers = info_data.get("fans", 0)
-                                    self.guard_count = master.get("guard", {}).get("num", 0) if master.get("guard") else 0
+                                    self.followers = name_data["data"].get("follower_num", 0)
+                                    self.guard_count = name_data["data"].get("guard", {}).get("num", 0) if name_data["data"].get("guard") else 0
                                     log.info(f"主播: {self.streamer_name} 粉丝: {self.followers} 舰长: {self.guard_count}")
                         except Exception:
                             pass

@@ -1,9 +1,12 @@
 """房间和指令 API"""
 
-from fastapi import APIRouter, Query, Request
+import asyncio
+
+from fastapi import APIRouter, Depends, Query, Request, HTTPException
 from fastapi.responses import HTMLResponse
 
-from ..db import get_room_commands, save_command_state, get_command
+from ..db import get_room_commands, save_command_state, get_command, set_room_active
+from ..auth import require_room_access
 
 router = APIRouter()
 
@@ -27,6 +30,7 @@ async def get_rooms(request: Request):
             "parent_area_name": c.parent_area_name,
             "announcement": c.announcement,
             "bot_uid": c.uid if c.cookies.get("SESSDATA") else 0,
+            "active": c._running,
         }
         for c in bili_clients.values()
         if allowed is None or c.room_id in allowed
@@ -36,6 +40,35 @@ async def get_rooms(request: Request):
 @router.get("/api/commands")
 async def list_commands(room_id: int = Query(...)):
     return get_room_commands(room_id)
+
+
+@router.post("/api/rooms/{room_id}/stop")
+async def stop_room(room_id: int, _=Depends(require_room_access)):
+    from ..app import bili_clients
+
+    if room_id not in bili_clients:
+        raise HTTPException(404, "房间不存在")
+
+    client = bili_clients[room_id]
+    client.stop()
+    set_room_active(room_id, False)
+    return {"ok": True, "room_id": room_id}
+
+
+@router.post("/api/rooms/{room_id}/start")
+async def start_room(room_id: int, _=Depends(require_room_access)):
+    from ..app import bili_clients
+
+    if room_id not in bili_clients:
+        raise HTTPException(404, "房间不存在")
+
+    client = bili_clients[room_id]
+    if client._running:
+        raise HTTPException(400, "房间已在运行中")
+
+    set_room_active(room_id, True)
+    asyncio.create_task(client.run())
+    return {"ok": True, "room_id": room_id}
 
 
 @router.post("/api/commands/{cmd_id}/toggle")

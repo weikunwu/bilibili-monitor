@@ -42,6 +42,7 @@ export default function App() {
         <HomePage
           rooms={rooms}
           currentUser={currentUser}
+          onRoomsChanged={() => fetchRooms().then(setRooms)}
         />
       } />
       <Route path="/room/:roomId" element={
@@ -59,7 +60,7 @@ export default function App() {
   )
 }
 
-function HomePage({ rooms, currentUser }: { rooms: Room[]; currentUser: CurrentUser | null }) {
+function HomePage({ rooms, currentUser, onRoomsChanged }: { rooms: Room[]; currentUser: CurrentUser | null; onRoomsChanged: () => void }) {
   const navigate = useNavigate()
 
   return (
@@ -74,7 +75,7 @@ function HomePage({ rooms, currentUser }: { rooms: Room[]; currentUser: CurrentU
           退出登录
         </button>
       </div>
-      <RoomList rooms={rooms} onSelectRoom={(id) => navigate(`/room/${id}/all`)} />
+      <RoomList rooms={rooms} onSelectRoom={(id) => navigate(`/room/${id}/all`)} onRoomsChanged={onRoomsChanged} />
     </div>
   )
 }
@@ -149,6 +150,11 @@ function RoomPage({ rooms, currentUser, onRoomsChanged }: {
 
   const isAdmin = currentUser?.role === 'admin'
   const currentRoom = rooms.find((r) => r.room_id === roomId)
+
+  // rooms already filtered by backend permissions — if not found, no access
+  if (rooms.length > 0 && !currentRoom) {
+    return <Navigate to="/" replace />
+  }
 
   function renderContent() {
     if (activeTab === 'admin' && isAdmin) {

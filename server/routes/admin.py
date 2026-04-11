@@ -3,19 +3,18 @@
 import asyncio
 import sqlite3
 
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Depends, Request, HTTPException
 
 from ..config import DB_PATH
 from ..auth import require_admin
 from ..crypto import hash_password, load_cookies
 from ..db import set_room_active
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_admin)])
 
 
 @router.get("/api/admin/users")
-async def list_users(request: Request):
-    require_admin(request)
+async def list_users():
     conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
     rows = conn.execute("SELECT id, email, role, created_at FROM users").fetchall()
@@ -31,7 +30,6 @@ async def list_users(request: Request):
 
 @router.post("/api/admin/users")
 async def create_user(request: Request):
-    require_admin(request)
     body = await request.json()
     email = body["email"].strip().lower()
     password = body["password"]
@@ -52,8 +50,7 @@ async def create_user(request: Request):
 
 
 @router.delete("/api/admin/users/{user_id}")
-async def delete_user(user_id: int, request: Request):
-    require_admin(request)
+async def delete_user(user_id: int):
     conn = sqlite3.connect(str(DB_PATH))
     conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
     conn.execute("DELETE FROM user_rooms WHERE user_id = ?", (user_id,))
@@ -65,7 +62,6 @@ async def delete_user(user_id: int, request: Request):
 
 @router.post("/api/admin/users/{user_id}/rooms")
 async def assign_rooms(user_id: int, request: Request):
-    require_admin(request)
     body = await request.json()
     room_ids = body["room_ids"]
     conn = sqlite3.connect(str(DB_PATH))
@@ -81,7 +77,6 @@ async def assign_rooms(user_id: int, request: Request):
 
 @router.post("/api/admin/rooms")
 async def add_room(request: Request):
-    require_admin(request)
     from ..app import bili_clients, broadcast_event
     from ..bili_client import BiliLiveClient
 
@@ -108,8 +103,7 @@ async def add_room(request: Request):
 
 
 @router.delete("/api/admin/rooms/{room_id}")
-async def remove_room(room_id: int, request: Request):
-    require_admin(request)
+async def remove_room(room_id: int):
     from ..app import bili_clients
 
     if room_id not in bili_clients:

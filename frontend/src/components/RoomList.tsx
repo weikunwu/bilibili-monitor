@@ -1,9 +1,10 @@
-import { MdCircle, MdPlayArrow } from 'react-icons/md'
+import { MdCircle, MdPlayArrow, MdStop } from 'react-icons/md'
 import type { Room } from '../types'
 
 interface Props {
   rooms: Room[]
   onSelectRoom: (roomId: number) => void
+  onRoomsChanged?: () => void
 }
 
 function formatFans(n: number): string {
@@ -11,7 +12,14 @@ function formatFans(n: number): string {
   return n.toLocaleString()
 }
 
-export function RoomList({ rooms, onSelectRoom }: Props) {
+export function RoomList({ rooms, onSelectRoom, onRoomsChanged }: Props) {
+  const handleToggle = async (e: React.MouseEvent, room: Room) => {
+    e.stopPropagation()
+    const action = room.active ? 'stop' : 'start'
+    await fetch(`/api/rooms/${room.room_id}/${action}`, { method: 'POST' })
+    onRoomsChanged?.()
+  }
+
   return (
     <div className="room-list">
       <h2>房间列表</h2>
@@ -22,12 +30,20 @@ export function RoomList({ rooms, onSelectRoom }: Props) {
             className="room-card"
             onClick={() => onSelectRoom(r.room_id)}
           >
-            {/* Header: name + room id + status badges */}
+            {/* Header: room title + room id + status badges */}
             <div className="rc-header">
-              <span className="rc-name">{r.streamer_name || `房间 ${r.room_id}`}</span>
-              <span className="rc-room-id">房间 {r.room_id}</span>
-              <span className="rc-badge rc-badge-running"><MdCircle size={8} /> 运行中</span>
-              {r.live_status === 1 && <span className="rc-badge rc-badge-live"><MdPlayArrow size={14} /> 直播中</span>}
+              <div className="rc-header-left">
+                <span className="rc-name">{r.room_title || `房间 ${r.room_id}`}</span>
+                <span className="rc-room-id">房间 {r.room_id}</span>
+              </div>
+              <div className="rc-header-badges">
+                {r.active ? (
+                  <span className="rc-badge rc-badge-running" onClick={(e) => handleToggle(e, r)} title="点击停止监控"><MdStop size={12} /> 运行中</span>
+                ) : (
+                  <span className="rc-badge rc-badge-stopped" onClick={(e) => handleToggle(e, r)} title="点击启动监控"><MdPlayArrow size={12} /> 已停止</span>
+                )}
+                {r.live_status === 1 && <span className="rc-badge rc-badge-live"><MdCircle size={8} /> 直播中</span>}
+              </div>
             </div>
 
             {/* Streamer info + area/announcement */}

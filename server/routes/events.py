@@ -8,13 +8,12 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional
 
 import aiohttp
-from fastapi import APIRouter, Query
-from fastapi.responses import StreamingResponse
-
-from fastapi.responses import Response
+from fastapi import APIRouter, Depends, Query
+from fastapi.responses import Response, StreamingResponse
 
 from ..config import DB_PATH, BASE_DIR, HEADERS, log
 from ..bili_api import gift_price_cache, gift_gif_cache
+from ..auth import require_room_access
 
 router = APIRouter()
 
@@ -52,20 +51,18 @@ def _today_utc_range(tz_offset: Optional[int] = None) -> tuple[str, str]:
 
 @router.get("/api/events")
 async def get_events(
+    room_id: int = Query(...),
     type: Optional[str] = Query(None),
     limit: int = Query(200, ge=1, le=5000),
     offset: int = Query(0, ge=0),
     time_from: Optional[str] = Query(None),
     time_to: Optional[str] = Query(None),
-    room_id: Optional[int] = Query(None),
+    _=Depends(require_room_access),
 ):
     conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
-    conditions = []
-    params: list = []
-    if room_id:
-        conditions.append("room_id=?")
-        params.append(room_id)
+    conditions = ["room_id=?"]
+    params: list = [room_id]
     if type:
         conditions.append("event_type=?")
         params.append(type)
@@ -85,17 +82,16 @@ async def get_events(
 
 
 @router.get("/api/stats")
-async def get_stats(room_id: Optional[int] = Query(None)):
+async def get_stats(room_id: int = Query(...), _=Depends(require_room_access)):
     from ..app import bili_clients
     conn = sqlite3.connect(str(DB_PATH))
-    rf = "AND room_id=?" if room_id else ""
-    rp = [room_id] if room_id else []
-    total = conn.execute(f"SELECT COUNT(*) FROM events WHERE 1=1 {rf}", rp).fetchone()[0]
-    danmaku_count = conn.execute(f"SELECT COUNT(*) FROM events WHERE event_type='danmaku' {rf}", rp).fetchone()[0]
-    gift_count = conn.execute(f"SELECT COUNT(*) FROM events WHERE event_type='gift' {rf}", rp).fetchone()[0]
-    sc_count = conn.execute(f"SELECT COUNT(*) FROM events WHERE event_type='superchat' {rf}", rp).fetchone()[0]
-    guard_count = conn.execute(f"SELECT COUNT(*) FROM events WHERE event_type='guard' {rf}", rp).fetchone()[0]
-    sc_rows = conn.execute(f"SELECT extra_json FROM events WHERE event_type='superchat' {rf}", rp).fetchall()
+    rp = [room_id]
+    total = conn.execute("SELECT COUNT(*) FROM events WHERE room_id=?", rp).fetchone()[0]
+    danmaku_count = conn.execute("SELECT COUNT(*) FROM events WHERE event_type='danmaku' AND room_id=?", rp).fetchone()[0]
+    gift_count = conn.execute("SELECT COUNT(*) FROM events WHERE event_type='gift' AND room_id=?", rp).fetchone()[0]
+    sc_count = conn.execute("SELECT COUNT(*) FROM events WHERE event_type='superchat' AND room_id=?", rp).fetchone()[0]
+    guard_count = conn.execute("SELECT COUNT(*) FROM events WHERE event_type='guard' AND room_id=?", rp).fetchone()[0]
+    sc_rows = conn.execute("SELECT extra_json FROM events WHERE event_type='superchat' AND room_id=?", rp).fetchall()
     sc_total = 0
     for row in sc_rows:
         try:
@@ -104,11 +100,7 @@ async def get_stats(room_id: Optional[int] = Query(None)):
         except Exception:
             pass
     conn.close()
-    pop = 0
-    if room_id and room_id in bili_clients:
-        pop = bili_clients[room_id].popularity
-    elif bili_clients:
-        pop = list(bili_clients.values())[0].popularity
+    pop = bili_clients[room_id].popularity if room_id in bili_clients else 0
     return {
         "total": total, "danmaku": danmaku_count, "gift": gift_count,
         "superchat": sc_count, "guard": guard_count, "sc_total_price": sc_total,

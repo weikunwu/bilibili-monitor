@@ -85,6 +85,13 @@ def require_admin(request: Request):
         raise HTTPException(status_code=403, detail="需要管理员权限")
 
 
+def require_room_access(request: Request, room_id: int = None):
+    """FastAPI Depends: 检查当前用户是否有该房间的权限"""
+    allowed = getattr(request.state, "allowed_rooms", None)
+    if allowed is not None and room_id is not None and room_id not in allowed:
+        raise HTTPException(status_code=403, detail="无权限访问该房间")
+
+
 # ── Rate limiting ──
 _login_attempts: dict[str, tuple[int, float]] = defaultdict(lambda: (0, 0.0))
 _MAX_LOGIN_ATTEMPTS = 5
