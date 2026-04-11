@@ -321,7 +321,7 @@ class BiliLiveClient:
 
         yuan = abs(profit) / 1000
         yuan_str = f"{yuan:.1f}".rstrip('0').rstrip('.')
-        result = f"赚{yuan_str}元" if profit >= 0 else f"亏{yuan_str}元"
+        result = "不亏不赚" if profit == 0 else f"赚{yuan_str}元" if profit > 0 else f"亏{yuan_str}元"
         msg = f"{user_name} {period_label}盲盒开了{total_boxes}个，{result}"
         await self.send_danmaku(msg)
 
