@@ -11,7 +11,6 @@ from .config import (
     HEADER_SIZE, WS_OP_MESSAGE, WS_OP_HEARTBEAT_REPLY, WS_OP_AUTH_REPLY,
     PROTO_RAW_JSON, PROTO_ZLIB, PROTO_BROTLI, GUARD_LEVELS, log,
 )
-from .bili_api import gift_img_cache
 
 
 def make_packet(body: bytes, operation: int) -> bytes:
@@ -119,7 +118,7 @@ def handle_message(msg: dict) -> Optional[dict]:
     elif base_cmd == "SEND_GIFT":
         data = msg.get("data", {})
         gift_id = data.get("giftId", 0)
-        gift_img = gift_img_cache.get(gift_id, "")
+        gift_img = data.get("img_basic", "")
         blind = data.get("blind_gift") or {}
         blind_name = ""
         if blind and isinstance(blind, dict):

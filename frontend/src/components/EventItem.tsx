@@ -89,6 +89,9 @@ export const EventItem = memo(function EventItem({ event: ev, onGenerateGiftImag
       )}
       {ev.user_name && <span className="user">{ev.user_name}</span>}
       <span className="content">
+        {ev.event_type === 'gift' && extra.action && (
+          <span className="gift-action">{extra.action}</span>
+        )}
         {renderContent(ev)}
         {priceTag}
       </span>

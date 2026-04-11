@@ -13,7 +13,6 @@ from .config import (
 )
 
 # ── Caches ──
-gift_img_cache: dict[int, str] = {}
 gift_gif_cache: dict[int, str] = {}
 _wbi_key_cache = ""
 
@@ -52,11 +51,10 @@ async def load_gift_config(headers: dict):
                 data = await resp.json(content_type=None)
                 if data.get("code") == 0:
                     for g in data["data"].get("list", []):
-                        gift_img_cache[g["id"]] = g.get("img_basic", "")
                         gif_url = g.get("gif", "")
                         if gif_url:
                             gift_gif_cache[g["id"]] = gif_url
-                    log.info(f"加载礼物配置: {len(gift_img_cache)} 种礼物")
+                    log.info(f"加载礼物配置: {len(gift_gif_cache)} 种 GIF")
     except Exception as e:
         log.error(f"加载礼物配置失败: {e}")
 

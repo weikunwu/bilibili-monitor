@@ -42,6 +42,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 .event .content .emoticon-inline { height: 20px; width: auto; vertical-align: text-bottom; margin: 0 1px; }
 .event.superchat { border-left: 3px solid #ef5350; background: #1f1520; }
 .event.guard { border-left: 3px solid #ab47bc; background: #1a1528; }
+.event.gift .gift-action { color: #888; font-size: 12px; margin-right: 2px; }
 .event.gift .price-tag { color: #ffb74d; font-size: 12px; margin-left: 6px; }
 .event.superchat .price-tag { color: #ef5350; font-weight: 700; font-size: 13px; margin-left: 6px; }
 
