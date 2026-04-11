@@ -124,6 +124,7 @@ function RoomPage({ rooms, currentUser }: {
   const [stats, setStats] = useState<Stats | null>(null)
   const [events, setEvents] = useState<LiveEvent[]>([])
   const [autoScroll, setAutoScroll] = useLocalStorage('autoScroll', true)
+  const [dateRange, setDateRange] = useState<DateRange>(todayRange())
 
   const giftModalRef = useRef<GiftImageModalRef>(null)
   const roomIdRef = useRef(roomId)
@@ -156,7 +157,8 @@ function RoomPage({ rooms, currentUser }: {
     return () => clearInterval(interval)
   }, [roomId])
 
-  function handleQueryRange(from: string, to: string) {
+  function handleQueryRange(from: string, to: string, range: DateRange) {
+    setDateRange(range)
     fetchEvents(roomId, localToUTC(from), localToUTC(to)).then(setEvents)
   }
 
@@ -182,7 +184,7 @@ function RoomPage({ rooms, currentUser }: {
       return (
         <GiftPanel
           events={events}
-          defaultRange={todayRange()}
+          dateRange={dateRange}
           onQueryRange={handleQueryRange}
           onGenerateGiftImage={(userName) => giftModalRef.current?.showGiftImage(roomId, userName)}
           onGenerateBlindBoxImage={(userName) => giftModalRef.current?.showGiftImage(roomId, userName, true)}
@@ -197,11 +199,8 @@ function RoomPage({ rooms, currentUser }: {
         autoScroll={autoScroll}
         showAutoScroll={activeTab === TAB_ALL || activeTab === EVENT_DANMAKU}
         onAutoScrollChange={setAutoScroll}
-        defaultRange={todayRange()}
+        dateRange={dateRange}
         onQueryRange={handleQueryRange}
-        onGenerateGiftImage={(userName) => giftModalRef.current?.showGiftImage(roomId, userName)}
-        onGenerateBlindBoxImage={(userName) => giftModalRef.current?.showGiftImage(roomId, userName, true)}
-        onShowCardPreview={(title, url) => giftModalRef.current?.showPreview(title, url)}
       />
     )
   }

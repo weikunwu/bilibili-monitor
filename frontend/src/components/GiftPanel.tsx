@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
-import { CheckPicker, DateRangePicker, Checkbox, Table } from 'rsuite'
+import { CheckPicker, DateRangePicker, Checkbox, Table, Pagination } from 'rsuite'
 import type { DateRange } from 'rsuite/DateRangePicker'
 
 import type { LiveEvent, GiftUser } from '../types'
@@ -12,8 +12,8 @@ const { Column, HeaderCell, Cell } = Table
 
 interface Props {
   events: LiveEvent[]
-  defaultRange: DateRange | null
-  onQueryRange: (from: string, to: string) => void
+  dateRange: DateRange
+  onQueryRange: (from: string, to: string, range: DateRange) => void
   onGenerateGiftImage: (userName: string) => Promise<void> | void
   onGenerateBlindBoxImage?: (userName: string) => Promise<void> | void
   onShowCardPreview?: (title: string, imgUrl: string) => void
@@ -68,12 +68,14 @@ function useIsMobile(breakpoint = 768) {
 }
 
 export function GiftPanel({
-  events, defaultRange, onQueryRange,
+  events, dateRange, onQueryRange,
   onGenerateGiftImage, onGenerateBlindBoxImage, onShowCardPreview,
 }: Props) {
   const isMobile = useIsMobile()
   const [selectedUsers, setSelectedUsers] = useState<string[]>([])
   const [checkedKeys, setCheckedKeys] = useState<Set<string>>(new Set())
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(20)
 
   const giftEvents = useMemo(() =>
     events.filter((ev) => ev.event_type === EVENT_GIFT),
@@ -93,6 +95,7 @@ export function GiftPanel({
     : indexed
 
   const totalGold = filtered.reduce((s, ev) => s + (ev.extra?.total_coin || 0), 0)
+  const paged = filtered.slice((page - 1) * pageSize, page * pageSize)
 
   const toggleKey = useCallback((key: string) => {
     setCheckedKeys((prev) => {
@@ -163,7 +166,7 @@ export function GiftPanel({
       await generateGiftCard(c, u)
       canvases.push(c)
     }
-    const mergeGap = 2
+    const mergeGap = 0
     const totalHeight = canvases.reduce((h, c) => h + c.height, 0) + (canvases.length - 1) * mergeGap
     const maxWidth = Math.max(...canvases.map((c) => c.width))
     const merged = document.createElement('canvas')
@@ -205,10 +208,10 @@ export function GiftPanel({
           size="sm"
           appearance="subtle"
           ranges={predefinedRanges}
-          defaultValue={defaultRange}
+          value={dateRange}
           onChange={(range) => {
             if (!range) return
-            onQueryRange(fmtDate(range[0]), fmtDate(range[1]))
+            onQueryRange(fmtDate(range[0]), fmtDate(range[1]), range)
           }}
           placement="bottomEnd"
           style={{ width: 340 }}
@@ -220,11 +223,10 @@ export function GiftPanel({
       ) : (
         <div className="gift-table-wrap">
           <Table
-            data={filtered}
+            data={paged}
             autoHeight
             rowKey="_key"
             rowClassName={(rowData) => checkedKeys.has(rowData?._key) ? 'gift-row-checked' : ''}
-            onRowClick={(rowData) => toggleKey(rowData._key)}
           >
             <Column width={50} align="center">
               <HeaderCell>
@@ -320,7 +322,19 @@ export function GiftPanel({
           </Table>
 
           <div className="gift-table-footer">
-            共 {filtered.length} 条，合计: <span className="gift-total">{formatCoin(totalGold, 'gold')}</span>
+            <span>共 {filtered.length} 条，合计: <span className="gift-total">{formatCoin(totalGold, 'gold')}</span></span>
+            <Pagination
+              size="xs"
+              prev
+              next
+              total={filtered.length}
+              limit={pageSize}
+              activePage={page}
+              onChangePage={setPage}
+              onChangeLimit={(v) => { setPageSize(v); setPage(1) }}
+              limitOptions={[20, 50, 100]}
+              layout={['limit', '|', 'pager']}
+            />
           </div>
         </div>
       )}

@@ -2,13 +2,10 @@ import { type ReactNode, memo } from 'react'
 import { Tag, Checkbox } from 'rsuite'
 import type { LiveEvent } from '../types'
 import { formatTime, formatCoin, fixUrl } from '../lib/formatters'
-import { GenerateImageButton } from './GenerateImageButton'
 import { BADGE_NAMES, EVENT_GIFT, EVENT_SUPERCHAT, EVENT_GUARD } from '../lib/constants'
 
 interface Props {
   event: LiveEvent
-  onGenerateGiftImage: (userName: string) => Promise<void> | void
-  onGenerateBlindBoxImage?: (userName: string) => Promise<void> | void
   checked?: boolean
   onCheck?: () => void
 }
@@ -69,7 +66,7 @@ function renderContent(ev: LiveEvent): ReactNode {
   return <>{ev.content || ''}</>
 }
 
-export const EventItem = memo(function EventItem({ event: ev, onGenerateGiftImage, onGenerateBlindBoxImage, checked, onCheck }: Props) {
+export const EventItem = memo(function EventItem({ event: ev, checked, onCheck }: Props) {
   const extra = ev.extra || {}
   const face = extra.avatar || ''
 
@@ -102,18 +99,6 @@ export const EventItem = memo(function EventItem({ event: ev, onGenerateGiftImag
         {renderContent(ev)}
         {priceTag}
       </span>
-      {ev.event_type === EVENT_GIFT && ev.user_name && (
-        <>
-          <GenerateImageButton onClick={() => onGenerateGiftImage(ev.user_name!)}>
-            今日礼物
-          </GenerateImageButton>
-          {onGenerateBlindBoxImage && (
-            <GenerateImageButton onClick={() => onGenerateBlindBoxImage(ev.user_name!)}>
-              今日盲盒
-            </GenerateImageButton>
-          )}
-        </>
-      )}
     </div>
   )
 })

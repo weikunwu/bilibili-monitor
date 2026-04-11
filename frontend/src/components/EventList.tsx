@@ -10,13 +10,10 @@ interface Props {
   events: LiveEvent[]
   activeTab: TabType
   autoScroll: boolean
-  defaultRange: DateRange | null
+  dateRange: DateRange
   showAutoScroll?: boolean
   onAutoScrollChange: (v: boolean) => void
-  onQueryRange: (from: string, to: string) => void
-  onGenerateGiftImage: (userName: string) => Promise<void> | void
-  onGenerateBlindBoxImage?: (userName: string) => Promise<void> | void
-  onShowCardPreview?: (title: string, imgUrl: string) => void
+  onQueryRange: (from: string, to: string, range: DateRange) => void
 }
 
 function getDateStr(ts: string): string {
@@ -74,9 +71,8 @@ const predefinedRanges = [
 ]
 
 export function EventList({
-  events, activeTab, autoScroll, defaultRange, showAutoScroll = true,
+  events, activeTab, autoScroll, dateRange, showAutoScroll = true,
   onAutoScrollChange, onQueryRange,
-  onGenerateGiftImage, onGenerateBlindBoxImage,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [selectedUsers, setSelectedUsers] = useState<string[]>([])
@@ -129,10 +125,10 @@ export function EventList({
           size="sm"
           appearance="subtle"
           ranges={predefinedRanges}
-          defaultValue={defaultRange}
+          value={dateRange}
           onChange={(range) => {
             if (!range) return
-            onQueryRange(fmtDate(range[0]), fmtDate(range[1]))
+            onQueryRange(fmtDate(range[0]), fmtDate(range[1]), range)
           }}
           placement="bottomEnd"
           style={{ width: 340 }}
@@ -154,11 +150,7 @@ export function EventList({
                     <span>{formatDateLabel(dateStr)}</span>
                   </div>
                 )}
-                <EventItem
-                  event={ev}
-                  onGenerateGiftImage={onGenerateGiftImage}
-                  onGenerateBlindBoxImage={onGenerateBlindBoxImage}
-                />
+                <EventItem event={ev} />
               </div>
             )
           })

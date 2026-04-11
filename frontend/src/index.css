@@ -142,7 +142,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 .gift-panel { padding: 0; }
 .gift-table-wrap { padding: 0 24px 16px; }
 .gift-row-checked { background: rgba(251, 114, 153, 0.06) !important; }
-.gift-table-footer { padding: 12px; text-align: right; color: #888; font-size: 14px; border-top: 1px solid #2a2a4a; }
+.gift-table-footer { padding: 12px; color: #888; font-size: 14px; border-top: 1px solid #2a2a4a; display: flex; align-items: center; justify-content: space-between; }
 
 .gift-user-cell { display: flex; align-items: center; gap: 8px; }
 .gift-user-avatar { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
