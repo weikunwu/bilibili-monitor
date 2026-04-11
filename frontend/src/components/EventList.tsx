@@ -4,6 +4,7 @@ import { CheckPicker, Checkbox, Button } from 'rsuite'
 import type { LiveEvent, TabType, GiftUser } from '../types'
 import { EventItem } from './EventItem'
 import { generateGiftCard } from '../lib/giftCard'
+import { TAB_ALL, EVENT_GIFT, EVENT_DANMAKU } from '../lib/constants'
 
 interface Props {
   events: LiveEvent[]
@@ -71,19 +72,19 @@ export function EventList({
   const [checkedKeys, setCheckedKeys] = useState<Set<string>>(new Set())
   const [generating, setGenerating] = useState(false)
 
-  const isGiftTab = activeTab === 'gift'
+  const isGiftTab = activeTab === EVENT_GIFT
 
   const giftUsers = useMemo(() => {
     const names = new Set<string>()
     for (const ev of events) {
-      if (ev.event_type === 'gift' && ev.user_name) names.add(ev.user_name)
+      if (ev.event_type === EVENT_GIFT && ev.user_name) names.add(ev.user_name)
     }
     return Array.from(names).sort().map((n) => ({ label: n, value: n }))
   }, [events])
 
   const filtered = events.filter((ev) => {
-    if (activeTab !== 'all' && ev.event_type !== activeTab) return false
-    if (selectedUsers.length > 0 && activeTab === 'gift' && !selectedUsers.includes(ev.user_name || '')) return false
+    if (activeTab !== TAB_ALL && ev.event_type !== activeTab) return false
+    if (selectedUsers.length > 0 && activeTab === EVENT_GIFT && !selectedUsers.includes(ev.user_name || '')) return false
     return true
   })
 
@@ -145,7 +146,7 @@ export function EventList({
   }, [filtered, checkedKeys])
 
   useEffect(() => {
-    if (autoScroll && (activeTab === 'all' || activeTab === 'danmaku') && containerRef.current) {
+    if (autoScroll && (activeTab === TAB_ALL || activeTab === EVENT_DANMAKU) && containerRef.current) {
       containerRef.current.scrollTop = containerRef.current.scrollHeight
     }
   }, [filtered.length, autoScroll])
@@ -175,7 +176,7 @@ export function EventList({
             size="sm"
             searchable
             countable
-            style={{ width: 200, minWidth: 200, maxWidth: 200 }}
+            w={200}
           />
           {checkedKeys.size > 0 && (
             <Button size="sm" appearance="primary" loading={generating} onClick={handleGenerateCard}>

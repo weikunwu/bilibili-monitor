@@ -1,14 +1,15 @@
 import { Tabs } from 'rsuite'
 import type { TabType } from '../types'
+import { TAB_ALL, EVENT_DANMAKU, EVENT_GIFT, EVENT_SUPERCHAT, EVENT_GUARD, TAB_BLINDBOX, TAB_TOOLS } from '../lib/constants'
 
 const TAB_LIST: { type: TabType; label: string }[] = [
-  { type: 'all', label: '全部' },
-  { type: 'danmaku', label: '弹幕' },
-  { type: 'gift', label: '礼物' },
-  { type: 'superchat', label: '醒目留言' },
-  { type: 'guard', label: '上舰' },
-  { type: 'blindbox', label: '盲盒' },
-  { type: 'tools', label: '工具' },
+  { type: TAB_ALL, label: '全部' },
+  { type: EVENT_DANMAKU, label: '弹幕' },
+  { type: EVENT_GIFT, label: '礼物' },
+  { type: EVENT_SUPERCHAT, label: '醒目留言' },
+  { type: EVENT_GUARD, label: '上舰' },
+  { type: TAB_BLINDBOX, label: '盲盒' },
+  { type: TAB_TOOLS, label: '工具' },
 ]
 
 interface Props {

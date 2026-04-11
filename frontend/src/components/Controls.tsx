@@ -3,6 +3,7 @@ import type { DateRange } from 'rsuite/DateRangePicker'
 
 interface Props {
   autoScroll: boolean
+  showAutoScroll?: boolean
   defaultRange: DateRange | null
   onAutoScrollChange: (v: boolean) => void
   onQueryRange: (from: string, to: string) => void
@@ -54,7 +55,7 @@ const predefinedRanges = [
 ]
 
 export function Controls({
-  autoScroll, defaultRange,
+  autoScroll, showAutoScroll = true, defaultRange,
   onAutoScrollChange, onQueryRange,
 }: Props) {
 
@@ -66,12 +67,14 @@ export function Controls({
 
   return (
     <div className="controls">
-      <Checkbox
-        checked={autoScroll}
-        onChange={(_, checked) => onAutoScrollChange(checked)}
-      >
-        自动滚动
-      </Checkbox>
+      {showAutoScroll && (
+        <Checkbox
+          checked={autoScroll}
+          onChange={(_, checked) => onAutoScrollChange(checked)}
+        >
+          自动滚动
+        </Checkbox>
+      )}
       <div className="time-range">
         <DateRangePicker
           format="yyyy-MM-dd HH:mm:ss"

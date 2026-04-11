@@ -2,7 +2,7 @@ import { type ReactNode, memo } from 'react'
 import { Tag, Button, Checkbox } from 'rsuite'
 import type { LiveEvent } from '../types'
 import { formatTime, formatCoin, fixUrl } from '../lib/formatters'
-import { BADGE_NAMES } from '../lib/constants'
+import { BADGE_NAMES, EVENT_GIFT, EVENT_SUPERCHAT, EVENT_GUARD } from '../lib/constants'
 
 interface Props {
   event: LiveEvent
@@ -73,11 +73,11 @@ export const EventItem = memo(function EventItem({ event: ev, onGenerateGiftImag
   const face = extra.avatar || ''
 
   let priceTag: ReactNode = null
-  if (ev.event_type === 'gift' && extra.total_coin) {
+  if (ev.event_type === EVENT_GIFT && extra.total_coin) {
     priceTag = <span className="price-tag">{formatCoin(extra.total_coin, extra.coin_type)}</span>
-  } else if (ev.event_type === 'superchat' && extra.price) {
+  } else if (ev.event_type === EVENT_SUPERCHAT && extra.price) {
     priceTag = <span className="price-tag">¥{extra.price}</span>
-  } else if (ev.event_type === 'guard' && extra.guard_name) {
+  } else if (ev.event_type === EVENT_GUARD && extra.guard_name) {
     priceTag = <span className="price-tag">{extra.guard_name}</span>
   }
 
@@ -95,13 +95,13 @@ export const EventItem = memo(function EventItem({ event: ev, onGenerateGiftImag
       )}
       {ev.user_name && <span className="user">{ev.user_name}</span>}
       <span className="content">
-        {ev.event_type === 'gift' && extra.action && (
+        {ev.event_type === EVENT_GIFT && extra.action && (
           <span className="gift-action">{extra.action}</span>
         )}
         {renderContent(ev)}
         {priceTag}
       </span>
-      {ev.event_type === 'gift' && ev.user_name && (
+      {ev.event_type === EVENT_GIFT && ev.user_name && (
         <>
           <Button size="sm" appearance="ghost" onClick={() => onGenerateGiftImage(ev.user_name!)}>
             今日礼物

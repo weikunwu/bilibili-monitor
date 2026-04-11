@@ -5,7 +5,7 @@ import { fetchRooms, fetchStats, fetchEvents, fetchMe, type CurrentUser } from '
 import { useWebSocket } from './hooks/useWebSocket'
 import { useLocalStorage } from './hooks/useLocalStorage'
 import { localToUTC, fmtDate } from './lib/formatters'
-import { MAX_EVENTS } from './lib/constants'
+import { MAX_EVENTS, TAB_ALL, TAB_BLINDBOX, TAB_TOOLS, EVENT_DANMAKU, EVENT_GIFT, EVENT_SUPERCHAT, EVENT_GUARD } from './lib/constants'
 import { StatsGrid } from './components/StatsGrid'
 import { TabBar } from './components/TabBar'
 import { Controls } from './components/Controls'
@@ -28,7 +28,7 @@ function todayRange(): DateRange {
   ]
 }
 
-const VALID_TABS: TabType[] = ['all', 'danmaku', 'gift', 'superchat', 'guard', 'blindbox', 'tools']
+const VALID_TABS: TabType[] = [TAB_ALL, EVENT_DANMAKU, EVENT_GIFT, EVENT_SUPERCHAT, EVENT_GUARD, TAB_BLINDBOX, TAB_TOOLS]
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null)
@@ -118,7 +118,7 @@ function RoomPage({ rooms, currentUser }: {
   const { roomId: roomIdStr, tab: tabStr } = useParams()
   const navigate = useNavigate()
   const roomId = Number(roomIdStr)
-  const activeTab = (VALID_TABS.includes(tabStr as TabType) ? tabStr : 'all') as TabType
+  const activeTab = (VALID_TABS.includes(tabStr as TabType) ? tabStr : TAB_ALL) as TabType
 
   const [stats, setStats] = useState<Stats | null>(null)
   const [events, setEvents] = useState<LiveEvent[]>([])
@@ -181,6 +181,7 @@ function RoomPage({ rooms, currentUser }: {
       <>
         <Controls
           autoScroll={autoScroll}
+          showAutoScroll={activeTab === TAB_ALL || activeTab === EVENT_DANMAKU}
           defaultRange={todayRange()}
           onAutoScrollChange={setAutoScroll}
           onQueryRange={handleQueryRange}

@@ -1,5 +1,18 @@
 export const MAX_EVENTS = 1000
 
+// Event types
+export const EVENT_DANMAKU = 'danmaku' as const
+export const EVENT_GIFT = 'gift' as const
+export const EVENT_SUPERCHAT = 'superchat' as const
+export const EVENT_GUARD = 'guard' as const
+export const EVENT_INFO = 'info' as const
+
+// Tab types
+export const TAB_ALL = 'all' as const
+export const TAB_BLINDBOX = 'blindbox' as const
+export const TAB_TOOLS = 'tools' as const
+export const TAB_ADMIN = 'admin' as const
+
 export const BADGE_NAMES: Record<string, string> = {
   danmaku: '弹幕',
   gift: '礼物',
@@ -24,6 +37,6 @@ export const CARD_TPL_URLS: Record<string, string> = {
 export const PERIODS = [
   { key: 'today', label: '今日' },
   { key: 'yesterday', label: '昨日' },
-  { key: 'this_month', label: '本月' },
+  { key: 'this_month', label: '今月' },
   { key: 'last_month', label: '上月' },
 ] as const
