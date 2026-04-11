@@ -333,7 +333,7 @@ class BiliLiveClient:
             boxes[blind_name]["value"] += extra.get("price", 0) * num
 
         def fmt_profit(p: int) -> str:
-            y = abs(p) / 1000
+            y = abs(p) / 10
             s = f"{y:.1f}".rstrip('0').rstrip('.')
             return "不亏不赚" if p == 0 else f"赚{s}元" if p > 0 else f"亏{s}元"
 

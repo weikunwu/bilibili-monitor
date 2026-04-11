@@ -22,7 +22,7 @@ export function StatsGrid({ stats }: { stats: Stats | null }) {
       </div>
       <div className="stat-card sc-total">
         <div className="label">SC 总额</div>
-        <div className="value">{s?.sc_total_price ?? 0} 电池</div>
+        <div className="value">¥{((s?.sc_total_price ?? 0) / 10).toFixed(1).replace(/\.0$/, '')}</div>
       </div>
     </div>
   )

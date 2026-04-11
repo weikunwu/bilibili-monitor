@@ -11,12 +11,9 @@ export function formatTime(ts: string): string {
 export function formatCoin(battery: number, coinType?: string): string {
   if (!battery) return ''
   if (coinType === 'silver') return ''
-  return battery.toFixed(0) + ' 电池'
-}
-
-export function formatGold(battery: number): string {
   const sign = battery < 0 ? '-' : ''
-  return sign + Math.abs(battery).toFixed(0) + ' 电池'
+  const yuan = Math.abs(battery) / 10
+  return sign + '¥' + yuan.toFixed(1).replace(/\.0$/, '')
 }
 
 export function fmtDate(d: Date): string {

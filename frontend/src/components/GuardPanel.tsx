@@ -256,7 +256,7 @@ export function GuardPanel({
                       {GUARD_NAMES[level] || extra.guard_name || '舰长'}
                       {(extra.num || 1) > 1 ? ` x${extra.num}` : ''}
                       {isMobile && extra.price ? (
-                        <span className="gift-item-coin">{extra.price} 电池</span>
+                        <span className="gift-item-coin">¥{(extra.price / 10).toFixed(1).replace(/\.0$/, '')}</span>
                       ) : null}
                     </span>
                   )
@@ -270,7 +270,7 @@ export function GuardPanel({
                 <Cell>
                   {(rowData: LiveEvent) => (
                     rowData.extra?.price
-                      ? <span className="gift-total">{rowData.extra.price} 电池</span>
+                      ? <span className="gift-total">¥{(rowData.extra.price / 10).toFixed(1).replace(/\.0$/, '')}</span>
                       : null
                   )}
                 </Cell>

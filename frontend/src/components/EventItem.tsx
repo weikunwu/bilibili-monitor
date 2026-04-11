@@ -74,7 +74,7 @@ export const EventItem = memo(function EventItem({ event: ev, checked, onCheck }
   if (ev.event_type === EVENT_GIFT && extra.total_coin) {
     priceTag = <span className="price-tag">{formatCoin(extra.total_coin, extra.coin_type)}</span>
   } else if (ev.event_type === EVENT_SUPERCHAT && extra.price) {
-    priceTag = <span className="price-tag">{extra.price} 电池</span>
+    priceTag = <span className="price-tag">¥{(extra.price / 10).toFixed(1).replace(/\.0$/, '')}</span>
   } else if (ev.event_type === EVENT_GUARD && extra.guard_name) {
     priceTag = <span className="price-tag">{extra.guard_name}</span>
   }
