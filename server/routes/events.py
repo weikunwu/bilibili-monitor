@@ -12,7 +12,6 @@ from fastapi import APIRouter, Depends, Query
 from fastapi.responses import Response, StreamingResponse
 
 from ..config import DB_PATH, BASE_DIR, HEADERS, log
-from ..bili_api import gift_gif_cache
 from ..auth import require_room_access
 from ..manager import manager
 
@@ -138,9 +137,9 @@ def _build_gift_users(rows) -> dict:
         gid = extra.get("gift_id", 0)
         if gid and gift_name not in users[key]["gift_ids"]:
             users[key]["gift_ids"][gift_name] = gid
-            gif_url = gift_gif_cache.get(gid, "")
-            if gif_url:
-                users[key].setdefault("gift_gifs", {})[gift_name] = gif_url
+        gif_url = extra.get("gift_gif", "")
+        if gif_url and gift_name not in users[key].get("gift_gifs", {}):
+            users[key].setdefault("gift_gifs", {})[gift_name] = gif_url
         gl = extra.get("guard_level", 0)
         if gl and (not users[key]["guard_level"] or gl < users[key]["guard_level"]):
             users[key]["guard_level"] = gl
@@ -182,7 +181,19 @@ async def gift_summary(
 
 @router.get("/api/gift-gif")
 async def get_gift_gif(gift_id: int = Query(...)):
-    gif_url = gift_gif_cache.get(gift_id, "")
+    conn = sqlite3.connect(str(DB_PATH))
+    row = conn.execute(
+        "SELECT extra_json FROM events WHERE event_type='gift' AND extra_json LIKE ? LIMIT 1",
+        (f'%"gift_id": {gift_id}%',),
+    ).fetchone()
+    conn.close()
+    gif_url = ""
+    if row:
+        try:
+            extra = json.loads(row[0])
+            gif_url = extra.get("gift_gif", "")
+        except (json.JSONDecodeError, TypeError):
+            pass
     return {"gift_id": gift_id, "gif": gif_url}
 
 
@@ -207,9 +218,7 @@ async def gift_gif_card(
     if not u:
         return {"error": "未找到用户礼物数据"}
 
-    gift_ids = u.get("gift_ids", {})
-    gid = gift_ids.get(gift_name, 0)
-    gif_url = gift_gif_cache.get(gid, "")
+    gif_url = u.get("gift_gifs", {}).get(gift_name, "")
     if not gif_url:
         return {"error": "该礼物没有动态图"}
 

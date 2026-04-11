@@ -11,7 +11,6 @@ from .config import (
     HEADER_SIZE, WS_OP_MESSAGE, WS_OP_HEARTBEAT_REPLY, WS_OP_AUTH_REPLY,
     PROTO_RAW_JSON, PROTO_ZLIB, PROTO_BROTLI, GUARD_LEVELS, log,
 )
-from .bili_api import gift_img_cache
 
 
 def make_packet(body: bytes, operation: int) -> bytes:
@@ -119,9 +118,9 @@ def handle_message(msg: dict) -> Optional[dict]:
     elif base_cmd == "SEND_GIFT":
         data = msg.get("data", {})
         gift_id = data.get("giftId", 0)
-        gift_img = data.get("img_basic", "") or gift_img_cache.get(gift_id, "")
-        if not gift_img:
-            log.info(f"[GIFT_IMG_DEBUG] {data.get('giftName')} id={data.get('giftId')} full_data={json.dumps(data, ensure_ascii=False)}")
+        gift_info = data.get("gift_info", {})
+        gift_img = gift_info.get("img_basic", "")
+        gift_gif = gift_info.get("gif", "")
         blind = data.get("blind_gift") or {}
         blind_name = ""
         if blind and isinstance(blind, dict):
@@ -142,7 +141,7 @@ def handle_message(msg: dict) -> Optional[dict]:
                 "gift_name": gift_name, "gift_id": gift_id, "num": num,
                 "coin_type": data.get("coin_type", ""), "total_coin": price * num,
                 "price": data.get("price", 0), "action": action, "blind_name": blind_name,
-                "avatar": data.get("face", ""), "gift_img": gift_img,
+                "avatar": data.get("face", ""), "gift_img": gift_img, "gift_gif": gift_gif,
                 "guard_level": data.get("guard_level", 0),
             },
         }

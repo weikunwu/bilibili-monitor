@@ -29,7 +29,6 @@ PROTO_BROTLI = 3
 DANMU_CONF_API = "https://api.live.bilibili.com/room/v1/Danmu/getConf"
 DANMU_INFO_API = "https://api.live.bilibili.com/xlive/web-room/v1/index/getDanmuInfo"
 ROOM_INFO_API = "https://api.live.bilibili.com/room/v1/Room/get_info"
-GIFT_CONFIG_API = "https://api.live.bilibili.com/xlive/web-room/v1/giftPanel/giftConfig"
 SEND_GIFT_API = "https://api.live.bilibili.com/gift/v2/Live/send"
 NAV_API = "https://api.bilibili.com/x/web-interface/nav"
 QR_GENERATE_API = "https://passport.bilibili.com/x/passport-login/web/qrcode/generate"

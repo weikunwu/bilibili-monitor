@@ -7,10 +7,9 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from .config import BASE_DIR, HEADERS, log
+from .config import BASE_DIR, log
 from .db import init_db, cleanup_old_events, seed_rooms
 from .auth import AuthMiddleware, get_session_user, get_user_allowed_rooms, handle_login, handle_logout
-from .bili_api import load_gift_config
 from .manager import manager
 from .routes import events, rooms, bot, admin
 
@@ -96,8 +95,6 @@ async def main(room_ids: list[int], port: int):
     if room_ids:
         seed_rooms(room_ids)
     manager.load_all()
-
-    await load_gift_config(HEADERS)
 
     config = uvicorn.Config(app, host="0.0.0.0", port=port, log_level="info")
     server = uvicorn.Server(config)

@@ -8,13 +8,10 @@ from urllib.parse import urlencode
 import aiohttp
 
 from .config import (
-    HEADERS, NAV_API, WBI_KEY_INDEX_TABLE,
-    GIFT_CONFIG_API, log,
+    HEADERS, NAV_API, WBI_KEY_INDEX_TABLE, log,
 )
 
 # ── Caches ──
-gift_img_cache: dict[int, str] = {}
-gift_gif_cache: dict[int, str] = {}
 _wbi_key_cache = ""
 
 
@@ -45,19 +42,5 @@ def wbi_sign(params: dict, wbi_key: str) -> dict:
     return params
 
 
-async def load_gift_config(headers: dict):
-    try:
-        async with aiohttp.ClientSession(headers=headers) as session:
-            async with session.get(GIFT_CONFIG_API, params={"platform": "pc"}) as resp:
-                data = await resp.json(content_type=None)
-                if data.get("code") == 0:
-                    for g in data["data"].get("list", []):
-                        gift_img_cache[g["id"]] = g.get("img_basic", "")
-                        gif_url = g.get("gif", "")
-                        if gif_url:
-                            gift_gif_cache[g["id"]] = gif_url
-                    log.info(f"加载礼物配置: {len(gift_img_cache)} 种礼物, {len(gift_gif_cache)} 种 GIF")
-    except Exception as e:
-        log.error(f"加载礼物配置失败: {e}")
 
 
