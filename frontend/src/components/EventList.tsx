@@ -31,16 +31,20 @@ function formatDateLabel(dateStr: string): string {
   return dateStr
 }
 
-function buildGiftUserFromEvents(events: LiveEvent[]): GiftUser | null {
-  if (events.length === 0) return null
-  const u: GiftUser = {
-    user_name: '', avatar: '',
-    gifts: {}, gift_imgs: {}, gift_actions: {}, gift_coins: {}, gift_ids: {},
-    guard_level: 0, total_coin: 0,
-  }
+function buildGiftUsersFromEvents(events: LiveEvent[]): GiftUser[] {
+  if (events.length === 0) return []
+  const map: Record<string, GiftUser> = {}
   for (const ev of events) {
     const extra = ev.extra || {}
-    if (!u.user_name && ev.user_name) u.user_name = ev.user_name
+    const key = ev.user_name || ''
+    if (!map[key]) {
+      map[key] = {
+        user_name: key, avatar: extra.avatar || '',
+        gifts: {}, gift_imgs: {}, gift_actions: {}, gift_coins: {}, gift_ids: {},
+        guard_level: 0, total_coin: 0,
+      }
+    }
+    const u = map[key]
     if (!u.avatar && extra.avatar) u.avatar = extra.avatar
     const name = extra.gift_name || ev.content || ''
     const num = extra.num || 1
@@ -55,7 +59,7 @@ function buildGiftUserFromEvents(events: LiveEvent[]): GiftUser | null {
       u.guard_level = extra.guard_level
     }
   }
-  return u
+  return Object.values(map)
 }
 
 export function EventList({
@@ -104,15 +108,35 @@ export function EventList({
 
   const handleGenerateCard = useCallback(async () => {
     const selected = filtered.filter((ev, i) => checkedKeys.has(eventKey(ev, i)))
-    const giftUser = buildGiftUserFromEvents(selected)
-    if (!giftUser) return
+    const giftUsers = buildGiftUsersFromEvents(selected)
+    if (giftUsers.length === 0) return
     setGenerating(true)
     try {
       try { await document.fonts.load('italic 800 30px "Baloo 2"') } catch { /* ok */ }
-      const canvas = document.createElement('canvas')
-      await generateGiftCard(canvas, giftUser)
-      const url = canvas.toDataURL('image/png')
-      const names = [...new Set(selected.map((e) => e.user_name).filter(Boolean))]
+
+      // Generate a card for each user
+      const canvases: HTMLCanvasElement[] = []
+      for (const u of giftUsers) {
+        const c = document.createElement('canvas')
+        await generateGiftCard(c, u)
+        canvases.push(c)
+      }
+
+      // Stitch vertically
+      const totalHeight = canvases.reduce((h, c) => h + c.height, 0)
+      const maxWidth = Math.max(...canvases.map((c) => c.width))
+      const merged = document.createElement('canvas')
+      merged.width = maxWidth
+      merged.height = totalHeight
+      const ctx = merged.getContext('2d')!
+      let y = 0
+      for (const c of canvases) {
+        ctx.drawImage(c, 0, y)
+        y += c.height
+      }
+
+      const url = merged.toDataURL('image/png')
+      const names = giftUsers.map((u) => u.user_name)
       const title = `${names.join(', ')} - 礼物截图`
       onShowCardPreview?.(title, url)
     } finally {
@@ -150,7 +174,7 @@ export function EventList({
             placeholder="筛选用户"
             size="sm"
             searchable
-            style={{ width: 250 }}
+            style={{ width: 250, flexShrink: 0 }}
           />
           {checkedKeys.size > 0 && (
             <Button size="sm" appearance="primary" loading={generating} onClick={handleGenerateCard}>
