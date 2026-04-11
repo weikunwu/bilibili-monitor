@@ -105,8 +105,6 @@ def handle_message(msg: dict) -> Optional[dict]:
                         "width": val.get("width", 0),
                         "height": val.get("height", 0),
                     }
-            if not raw_emots and "[" in text:
-                log.info(f"[DEBUG emots] info[0][15]={json.dumps(extra_data, ensure_ascii=False)[:300]}")
         event = {
             "timestamp": now,
             "event_type": "danmaku",

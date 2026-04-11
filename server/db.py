@@ -36,11 +36,6 @@ def init_db():
             active INTEGER NOT NULL DEFAULT 0
         )
     """)
-    # Migration: add active column if missing
-    cols = [r[1] for r in conn.execute("PRAGMA table_info(rooms)").fetchall()]
-    if "active" not in cols:
-        conn.execute("ALTER TABLE rooms ADD COLUMN active INTEGER NOT NULL DEFAULT 0")
-
     conn.execute("""
         CREATE TABLE IF NOT EXISTS commands (
             id TEXT PRIMARY KEY,
@@ -132,23 +127,10 @@ def cleanup_old_events():
     conn = sqlite3.connect(str(DB_PATH))
     cutoff = (datetime.now(timezone.utc) - timedelta(days=90)).strftime("%Y-%m-%d %H:%M:%S")
     deleted = conn.execute("DELETE FROM events WHERE timestamp < ?", (cutoff,)).rowcount
-    # Remove enter/like events and silver gifts — no longer persisted
-    deleted_el = conn.execute("DELETE FROM events WHERE event_type IN ('enter', 'like')").rowcount
-    deleted_combo = conn.execute("DELETE FROM events WHERE event_type='gift' AND extra_json LIKE '%\"combo\": true%'").rowcount
-    # Migrate "face" → "avatar" in extra_json
-    migrated = conn.execute(
-        "UPDATE events SET extra_json = REPLACE(extra_json, '\"face\":', '\"avatar\":') WHERE extra_json LIKE '%\"face\":%'"
-    ).rowcount
     conn.commit()
     conn.close()
     if deleted:
         log.info(f"清理过期事件: 删除 {deleted} 条 (早于 {cutoff})")
-    if deleted_el:
-        log.info(f"清理进场/点赞事件: 删除 {deleted_el} 条")
-    if deleted_combo:
-        log.info(f"清理连击重复事件: 删除 {deleted_combo} 条")
-    if migrated:
-        log.info(f"迁移 face→avatar: 更新 {migrated} 条")
 
 
 def save_event(event: dict):
