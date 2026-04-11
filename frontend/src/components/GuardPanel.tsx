@@ -3,19 +3,19 @@ import { CheckPicker, DateRangePicker, Checkbox, Table, Pagination } from 'rsuit
 import type { DateRange } from 'rsuite/DateRangePicker'
 
 import type { LiveEvent, GiftUser } from '../types'
-import { formatTime, formatCoin, fixUrl } from '../lib/formatters'
+import { formatTime, fixUrl } from '../lib/formatters'
 import { GenerateImageButton } from './GenerateImageButton'
-import { EVENT_GIFT } from '../lib/constants'
+import { EVENT_GUARD } from '../lib/constants'
 import { generateGiftCard } from '../lib/giftCard'
 
 const { Column, HeaderCell, Cell } = Table
+
+const GUARD_NAMES: Record<number, string> = { 1: '总督', 2: '提督', 3: '舰长' }
 
 interface Props {
   events: LiveEvent[]
   dateRange: DateRange
   onQueryRange: (from: string, to: string, range: DateRange) => void
-  onGenerateGiftImage: (userName: string) => Promise<void> | void
-  onGenerateBlindBoxImage?: (userName: string) => Promise<void> | void
   onShowCardPreview?: (title: string, imgUrl: string) => void
 }
 
@@ -67,9 +67,8 @@ function useIsMobile(breakpoint = 768) {
   return mobile
 }
 
-export function GiftPanel({
-  events, dateRange, onQueryRange,
-  onGenerateGiftImage, onGenerateBlindBoxImage, onShowCardPreview,
+export function GuardPanel({
+  events, dateRange, onQueryRange, onShowCardPreview,
 }: Props) {
   const isMobile = useIsMobile()
   const [selectedUsers, setSelectedUsers] = useState<string[]>([])
@@ -77,24 +76,23 @@ export function GiftPanel({
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
 
-  const giftEvents = useMemo(() =>
-    events.filter((ev) => ev.event_type === EVENT_GIFT),
+  const guardEvents = useMemo(() =>
+    events.filter((ev) => ev.event_type === EVENT_GUARD),
     [events])
 
   const userOptions = useMemo(() => {
-    const names = new Set(giftEvents.map((ev) => ev.user_name || ''))
+    const names = new Set(guardEvents.map((ev) => ev.user_name || ''))
     return Array.from(names).filter(Boolean).map((n) => ({ label: n, value: n }))
-  }, [giftEvents])
+  }, [guardEvents])
 
   const indexed = useMemo(() =>
-    giftEvents.map((ev, i) => ({ ...ev, _key: `${ev.timestamp}-${i}` })),
-    [giftEvents])
+    guardEvents.map((ev, i) => ({ ...ev, _key: `${ev.timestamp}-${i}` })),
+    [guardEvents])
 
   const filtered = selectedUsers.length > 0
     ? indexed.filter((ev) => selectedUsers.includes(ev.user_name || ''))
     : indexed
 
-  const totalGold = filtered.reduce((s, ev) => s + (ev.extra?.total_coin || 0), 0)
   const paged = filtered.slice((page - 1) * pageSize, page * pageSize)
 
   const toggleKey = useCallback((key: string) => {
@@ -114,7 +112,6 @@ export function GiftPanel({
   const handleGenerateCard = useCallback(async () => {
     const checked = filtered.filter((ev) => checkedKeys.has(ev._key))
     if (checked.length === 0) return
-    // aggregate checked events by user
     const map: Record<string, GiftUser> = {}
     for (const ev of checked) {
       const key = ev.user_name || ''
@@ -129,35 +126,12 @@ export function GiftPanel({
       const u = map[key]
       if (!u.avatar && extra.avatar) u.avatar = extra.avatar
       if (extra.guard_level && extra.guard_level > u.guard_level) u.guard_level = extra.guard_level
-      const name = extra.gift_name || ev.content || ''
+      const name = extra.guard_name || ev.content || ''
       const num = extra.num || 1
-      const coin = extra.total_coin || 0
+      const price = (extra.price || 0) * 1000
       u.gifts[name] = (u.gifts[name] || 0) + num
-      u.gift_coins[name] = (u.gift_coins[name] || 0) + coin
-      u.total_coin += coin
-      if (extra.gift_img && !u.gift_imgs[name]) u.gift_imgs[name] = extra.gift_img
-      if (extra.action && !u.gift_actions[name]) u.gift_actions[name] = extra.action
-      if (extra.gift_id && !u.gift_ids[name]) u.gift_ids[name] = extra.gift_id
-    }
-    // sort gifts within each user by tier: gold > pink > purple > blue
-    function tierOrder(coin: number): number {
-      const yuan = coin / 1000
-      if (yuan >= 1000) return 0
-      if (yuan >= 500) return 1
-      if (yuan >= 100) return 2
-      return 3
-    }
-    for (const u of Object.values(map)) {
-      const sorted = Object.keys(u.gifts).sort((a, b) => {
-        const ta = tierOrder(u.gift_coins[a] || 0)
-        const tb = tierOrder(u.gift_coins[b] || 0)
-        return ta !== tb ? ta - tb : (u.gift_coins[b] || 0) - (u.gift_coins[a] || 0)
-      })
-      const g: Record<string, number> = {}
-      const c: Record<string, number> = {}
-      for (const n of sorted) { g[n] = u.gifts[n]; c[n] = u.gift_coins[n] }
-      u.gifts = g
-      u.gift_coins = c
+      u.gift_coins[name] = (u.gift_coins[name] || 0) + price
+      u.total_coin += price
     }
     const users = Object.values(map).sort((a, b) => b.total_coin - a.total_coin)
     try { await document.fonts.load('italic 800 30px "Baloo 2"') } catch { /* ok */ }
@@ -178,7 +152,7 @@ export function GiftPanel({
     for (const c of canvases) { ctx.drawImage(c, 0, y); y += c.height + mergeGap }
     const url = merged.toDataURL('image/png')
     const names = users.map((u) => u.user_name)
-    onShowCardPreview?.(`${names.join(', ')} - 礼物截图`, url)
+    onShowCardPreview?.(`${names.join(', ')} - 上舰截图`, url)
   }, [filtered, checkedKeys])
 
   return (
@@ -198,7 +172,7 @@ export function GiftPanel({
         )}
         {checkedKeys.size > 0 && (
           <GenerateImageButton size="sm" appearance="primary" onClick={handleGenerateCard}>
-            生成礼物截图 ({checkedKeys.size})
+            生成上舰截图 ({checkedKeys.size})
           </GenerateImageButton>
         )}
         <span style={{ flex: 1 }} />
@@ -220,7 +194,7 @@ export function GiftPanel({
       </div>
 
       {filtered.length === 0 ? (
-        <div className="empty">暂无礼物数据</div>
+        <div className="empty">暂无上舰数据</div>
       ) : (
         <div className="gift-table-wrap">
           <Table
@@ -271,17 +245,15 @@ export function GiftPanel({
             </Column>
 
             <Column flexGrow={2}>
-              <HeaderCell>礼物</HeaderCell>
+              <HeaderCell>类型</HeaderCell>
               <Cell>
                 {(rowData: LiveEvent) => {
                   const extra = rowData.extra || {}
+                  const level = extra.guard_level || 3
                   return (
-                    <span className="gift-item">
-                      {extra.gift_img && <img className="gift-item-img" src={fixUrl(extra.gift_img)} alt="" />}
-                      {extra.gift_name || rowData.content} x{extra.num || 1}
-                      {isMobile && extra.total_coin ? (
-                        <span className="gift-item-coin">{formatCoin(extra.total_coin, extra.coin_type)}</span>
-                      ) : null}
+                    <span className={`guard-level guard-level-${level}`}>
+                      {GUARD_NAMES[level] || extra.guard_name || '舰长'}
+                      {(extra.num || 1) > 1 ? ` x${extra.num}` : ''}
                     </span>
                   )
                 }}
@@ -290,40 +262,20 @@ export function GiftPanel({
 
             {!isMobile && (
               <Column flexGrow={1} align="right">
-                <HeaderCell>价值</HeaderCell>
+                <HeaderCell>价格</HeaderCell>
                 <Cell>
                   {(rowData: LiveEvent) => (
-                    rowData.extra?.total_coin
-                      ? <span className="gift-total">{formatCoin(rowData.extra.total_coin, rowData.extra.coin_type)}</span>
+                    rowData.extra?.price
+                      ? <span className="gift-total">¥{rowData.extra.price}</span>
                       : null
                   )}
-                </Cell>
-              </Column>
-            )}
-
-            {!isMobile && (
-              <Column flexGrow={3}>
-                <HeaderCell>操作</HeaderCell>
-                <Cell>
-                  {(rowData: LiveEvent) => rowData.user_name ? (
-                    <div className="gift-actions">
-                      <GenerateImageButton size="sm" onClick={() => onGenerateGiftImage(rowData.user_name!)}>
-                        今日礼物
-                      </GenerateImageButton>
-                      {onGenerateBlindBoxImage && (
-                        <GenerateImageButton size="sm" onClick={() => onGenerateBlindBoxImage(rowData.user_name!)}>
-                          今日盲盒
-                        </GenerateImageButton>
-                      )}
-                    </div>
-                  ) : null}
                 </Cell>
               </Column>
             )}
           </Table>
 
           <div className="gift-table-footer">
-            <span>共 {filtered.length} 条，合计: <span className="gift-total">{formatCoin(totalGold, 'gold')}</span></span>
+            <span>共 {filtered.length} 条</span>
             <Pagination
               size="xs"
               prev

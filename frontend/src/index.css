@@ -157,6 +157,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 
 .gift-actions { display: flex; gap: 4px; }
 
+.guard-level { font-weight: 600; }
+.guard-level-1 { color: #e23d3d; }
+.guard-level-2 { color: #a852e0; }
+.guard-level-3 { color: #4fc3f7; }
+
 /* ── Mobile responsive ── */
 @media (max-width: 768px) {
   .rc-footer { flex-direction: column; align-items: flex-start; }
@@ -175,8 +180,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
   .tabs { padding: 0 8px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .tab { padding: 8px 12px; font-size: 13px; white-space: nowrap; }
 
-  .event-filter { padding: 6px 12px; gap: 8px; }
+  .event-filter { padding: 6px 12px; gap: 8px; flex-wrap: wrap; }
   .event-filter .rs-picker-daterange { width: 100% !important; }
+
+  .gift-table-wrap { padding: 0 8px 8px; }
+  .gift-table-footer { flex-wrap: wrap; gap: 8px; padding: 8px; font-size: 12px; }
 
   .events-container { padding: 4px 8px; max-height: calc(100vh - 300px); }
   .event { padding: 6px 8px; gap: 6px; font-size: 13px; flex-wrap: wrap; }
