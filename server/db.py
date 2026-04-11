@@ -24,10 +24,6 @@ def init_db():
             extra_json TEXT
         )
     """)
-    try:
-        conn.execute("ALTER TABLE events ADD COLUMN room_id INTEGER DEFAULT 0")
-    except Exception:
-        pass
     conn.execute("CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_events_ts ON events(timestamp DESC)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_events_room ON events(room_id)")
@@ -39,10 +35,6 @@ def init_db():
             bot_cookie TEXT DEFAULT NULL
         )
     """)
-    try:
-        conn.execute("ALTER TABLE rooms ADD COLUMN bot_cookie TEXT DEFAULT NULL")
-    except Exception:
-        pass
 
     conn.execute("""
         CREATE TABLE IF NOT EXISTS commands (

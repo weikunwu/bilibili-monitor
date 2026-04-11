@@ -9,7 +9,7 @@ import sqlite3
 
 from cryptography.fernet import Fernet
 
-from .config import DB_PATH, COOKIE_FILE, log
+from .config import DB_PATH, log
 
 
 def _get_fernet() -> Fernet:
@@ -51,16 +51,4 @@ def load_cookies(room_id: int = 0) -> dict:
                 return cookies
     except Exception:
         log.warning(f"无法读取 cookies (房间 {room_id})")
-    # 兼容旧的 cookies.json 文件
-    if room_id and COOKIE_FILE.exists():
-        try:
-            with open(COOKIE_FILE, "rb") as f:
-                encrypted = f.read()
-            cookies = json.loads(_get_fernet().decrypt(encrypted))
-            if cookies.get("SESSDATA"):
-                log.info(f"从 cookies.json 迁移到数据库 (房间 {room_id})")
-                save_cookies(cookies, room_id)
-                return cookies
-        except Exception:
-            pass
     return {}

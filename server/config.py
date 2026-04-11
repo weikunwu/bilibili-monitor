@@ -11,7 +11,6 @@ BASE_DIR = Path(__file__).parent.parent
 DATA_DIR = Path(os.environ.get("DATA_DIR", str(BASE_DIR)))
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = DATA_DIR / "gifts.db"
-COOKIE_FILE = DATA_DIR / "cookies.json"  # legacy fallback
 
 # ── Protocol constants ──
 HEADER_SIZE = 16
