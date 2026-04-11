@@ -5,7 +5,6 @@ import { useWebSocket } from './hooks/useWebSocket'
 import { useLocalStorage } from './hooks/useLocalStorage'
 import { localToUTC, fmtDate } from './lib/formatters'
 import { MAX_EVENTS } from './lib/constants'
-import { Header } from './components/Header'
 import { StatsGrid } from './components/StatsGrid'
 import { TabBar } from './components/TabBar'
 import { Controls } from './components/Controls'
@@ -14,6 +13,7 @@ import { ToolsPanel } from './components/ToolsPanel'
 import { AdminPanel } from './components/AdminPanel'
 import { QrLoginModal } from './components/QrLoginModal'
 import { GiftImageModal, type GiftImageModalRef } from './components/GiftImageModal'
+import { RoomList } from './components/RoomList'
 import type { DateRange } from 'rsuite/DateRangePicker'
 
 function todayRange(): DateRange {
@@ -53,10 +53,7 @@ export default function App() {
 
   useEffect(() => {
     fetchMe().then(setCurrentUser)
-    fetchRooms().then((r) => {
-      setRooms(r)
-      if (r.length > 0) setCurrentRoomId(r[0].room_id)
-    })
+    fetchRooms().then(setRooms)
   }, [])
 
   useEffect(() => {
@@ -71,7 +68,6 @@ export default function App() {
       setBotUid(d.logged_in ? d.uid : null)
     }).catch(() => {})
 
-    // Default: load today's events
     loadTodayEvents(currentRoomId)
 
     return () => clearInterval(interval)
@@ -90,9 +86,16 @@ export default function App() {
     fetchEvents(currentRoomId, localToUTC(from), localToUTC(to)).then(setEvents)
   }
 
-  function handleRoomChange(roomId: number) {
+  function handleSelectRoom(roomId: number) {
     setCurrentRoomId(roomId)
     setEvents([])
+    setActiveTab('all')
+  }
+
+  function handleBackToRooms() {
+    setCurrentRoomId(null)
+    setEvents([])
+    setStats(null)
   }
 
   function handleBotClick() {
@@ -105,10 +108,31 @@ export default function App() {
   }
 
   const isAdmin = currentUser?.role === 'admin'
+  const currentRoom = rooms.find((r) => r.room_id === currentRoomId)
 
+  // Room selection page
+  if (!currentRoomId) {
+    return (
+      <div>
+        <div className="header">
+          <h1>B站直播监控</h1>
+          <span style={{ flex: 1 }} />
+          {currentUser && (
+            <span style={{ fontSize: 12, color: '#888' }}>{currentUser.email}</span>
+          )}
+          <button className="login-btn" style={{ background: '#555' }} onClick={() => authLogout().then(() => location.reload())}>
+            退出登录
+          </button>
+        </div>
+        <RoomList rooms={rooms} onSelectRoom={handleSelectRoom} />
+      </div>
+    )
+  }
+
+  // Room detail page
   function renderContent() {
     if (activeTab === 'admin' && isAdmin) {
-      return <AdminPanel rooms={rooms} onRoomsChanged={() => fetchRooms().then((r) => { setRooms(r) })} />
+      return <AdminPanel rooms={rooms} onRoomsChanged={() => fetchRooms().then(setRooms)} />
     }
     if (activeTab === 'tools') {
       return <ToolsPanel roomId={currentRoomId} />
@@ -133,16 +157,28 @@ export default function App() {
 
   return (
     <>
-      <Header
-        rooms={rooms}
-        currentRoomId={currentRoomId}
-        onRoomChange={handleRoomChange}
-        connectionStatus={connectionStatus}
-        botUid={botUid}
-        onBotClick={handleBotClick}
-        onLogout={() => authLogout().then(() => location.reload())}
-        currentUser={currentUser}
-      />
+      <div className="header">
+        <button className="back-btn" onClick={handleBackToRooms}>← 房间</button>
+        <h1>{currentRoom?.streamer_name || currentRoomId}</h1>
+        <span className="room-info">({currentRoomId})</span>
+        <button
+          className={`login-btn ${botUid ? 'logged-in' : ''}`}
+          onClick={handleBotClick}
+        >
+          {botUid ? `机器人已绑定 (${botUid})` : '绑定机器人'}
+        </button>
+        <span className={`status`}>
+          <span className={`dot ${connectionStatus}`} />
+          {connectionStatus === 'connected' ? '已连接' : connectionStatus === 'connecting' ? '连接中' : '未连接'}
+        </span>
+        <span style={{ flex: 1 }} />
+        {currentUser && (
+          <span style={{ fontSize: 12, color: '#888' }}>{currentUser.email}</span>
+        )}
+        <button className="login-btn" style={{ background: '#555' }} onClick={() => authLogout().then(() => location.reload())}>
+          退出登录
+        </button>
+      </div>
 
       <StatsGrid stats={stats} />
       <TabBar active={activeTab} onChange={setActiveTab} isAdmin={isAdmin} />
