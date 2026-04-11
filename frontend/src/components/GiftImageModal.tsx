@@ -5,6 +5,7 @@ import { generateGiftCard } from '../lib/giftCard'
 
 export interface GiftImageModalRef {
   showGiftImage: (roomId: number, userName: string, blindOnly?: boolean) => void
+  showPreview: (title: string, imgUrl: string) => void
 }
 
 export const GiftImageModal = forwardRef<GiftImageModalRef>(function GiftImageModal(_, ref) {
@@ -25,6 +26,11 @@ export const GiftImageModal = forwardRef<GiftImageModalRef>(function GiftImageMo
 
       setTitle(`${u.user_name} - ${data.date} ${blindOnly ? '盲盒' : '礼物'}`)
       setImgUrl(url)
+      setIsOpen(true)
+    },
+    showPreview(title: string, imgUrl: string) {
+      setTitle(title)
+      setImgUrl(imgUrl)
       setIsOpen(true)
     },
   }))

@@ -1,5 +1,5 @@
 import { type ReactNode, memo } from 'react'
-import { Tag, Button } from 'rsuite'
+import { Tag, Button, Checkbox } from 'rsuite'
 import type { LiveEvent } from '../types'
 import { formatTime, formatCoin, fixUrl } from '../lib/formatters'
 import { BADGE_NAMES } from '../lib/constants'
@@ -8,6 +8,8 @@ interface Props {
   event: LiveEvent
   onGenerateGiftImage: (userName: string) => void
   onGenerateBlindBoxImage?: (userName: string) => void
+  checked?: boolean
+  onCheck?: () => void
 }
 
 const TAG_COLORS: Record<string, 'red' | 'orange' | 'yellow' | 'green' | 'blue' | 'violet' | 'cyan'> = {
@@ -66,7 +68,7 @@ function renderContent(ev: LiveEvent): ReactNode {
   return <>{ev.content || ''}</>
 }
 
-export const EventItem = memo(function EventItem({ event: ev, onGenerateGiftImage, onGenerateBlindBoxImage }: Props) {
+export const EventItem = memo(function EventItem({ event: ev, onGenerateGiftImage, onGenerateBlindBoxImage, checked, onCheck }: Props) {
   const extra = ev.extra || {}
   const face = extra.avatar || ''
 
@@ -81,6 +83,9 @@ export const EventItem = memo(function EventItem({ event: ev, onGenerateGiftImag
 
   return (
     <div className={`event ${ev.event_type}`}>
+      {onCheck !== undefined && (
+        <Checkbox checked={checked} onChange={onCheck} className="event-checkbox" />
+      )}
       <span className="time">{formatTime(ev.timestamp)}</span>
       <Tag size="sm" color={TAG_COLORS[ev.event_type]}>
         {BADGE_NAMES[ev.event_type] || ev.event_type}
@@ -101,7 +106,7 @@ export const EventItem = memo(function EventItem({ event: ev, onGenerateGiftImag
           <Button size="sm" appearance="ghost" onClick={() => onGenerateGiftImage(ev.user_name!)}>
             今日礼物
           </Button>
-          {extra.blind_name && onGenerateBlindBoxImage && (
+          {onGenerateBlindBoxImage && (
             <Button size="sm" appearance="ghost" onClick={() => onGenerateBlindBoxImage(ev.user_name!)}>
               今日盲盒
             </Button>

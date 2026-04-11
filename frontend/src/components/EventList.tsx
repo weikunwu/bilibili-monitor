@@ -1,5 +1,6 @@
 import { useEffect, useRef, useMemo, useState, useCallback } from 'react'
-import { TagPicker, Checkbox, Button } from 'rsuite'
+import { CheckPicker, Checkbox, Button } from 'rsuite'
+
 import type { LiveEvent, TabType, GiftUser } from '../types'
 import { EventItem } from './EventItem'
 import { generateGiftCard } from '../lib/giftCard'
@@ -10,6 +11,7 @@ interface Props {
   autoScroll: boolean
   onGenerateGiftImage: (userName: string) => void
   onGenerateBlindBoxImage?: (userName: string) => void
+  onShowCardPreview?: (title: string, imgUrl: string) => void
 }
 
 function getDateStr(ts: string): string {
@@ -58,7 +60,7 @@ function buildGiftUserFromEvents(events: LiveEvent[]): GiftUser | null {
 
 export function EventList({
   events, activeTab, autoScroll,
-  onGenerateGiftImage, onGenerateBlindBoxImage,
+  onGenerateGiftImage, onGenerateBlindBoxImage, onShowCardPreview,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [selectedUsers, setSelectedUsers] = useState<string[]>([])
@@ -110,11 +112,9 @@ export function EventList({
       const canvas = document.createElement('canvas')
       await generateGiftCard(canvas, giftUser)
       const url = canvas.toDataURL('image/png')
-      // Download
-      const a = document.createElement('a')
-      a.download = `gift-card-${new Date().toISOString().slice(0, 10)}.png`
-      a.href = url
-      a.click()
+      const names = [...new Set(selected.map((e) => e.user_name).filter(Boolean))]
+      const title = `${names.join(', ')} - 礼物截图`
+      onShowCardPreview?.(title, url)
     } finally {
       setGenerating(false)
     }
@@ -134,29 +134,28 @@ export function EventList({
     <>
       {isGiftTab && (
         <div className="event-filter">
-          <TagPicker
+          {filtered.length > 0 && (
+            <Checkbox
+              checked={checkedKeys.size > 0 && checkedKeys.size === filtered.length}
+              indeterminate={checkedKeys.size > 0 && checkedKeys.size < filtered.length}
+              onChange={selectAll}
+            >
+              全选
+            </Checkbox>
+          )}
+          <CheckPicker
             data={giftUsers}
             value={selectedUsers}
             onChange={setSelectedUsers}
             placeholder="筛选用户"
             size="sm"
-            style={{ minWidth: 200 }}
+            searchable
+            style={{ width: 250 }}
           />
-          {filtered.length > 0 && (
-            <>
-              <Checkbox
-                checked={checkedKeys.size > 0 && checkedKeys.size === filtered.length}
-                indeterminate={checkedKeys.size > 0 && checkedKeys.size < filtered.length}
-                onChange={selectAll}
-              >
-                全选
-              </Checkbox>
-              {checkedKeys.size > 0 && (
-                <Button size="sm" appearance="primary" loading={generating} onClick={handleGenerateCard}>
-                  生成礼物卡片 ({checkedKeys.size})
-                </Button>
-              )}
-            </>
+          {checkedKeys.size > 0 && (
+            <Button size="sm" appearance="primary" loading={generating} onClick={handleGenerateCard}>
+              生成礼物截图 ({checkedKeys.size})
+            </Button>
           )}
         </div>
       )}
@@ -176,20 +175,12 @@ export function EventList({
                     <span>{formatDateLabel(dateStr)}</span>
                   </div>
                 )}
-                <div className="event-row">
-                  {isGiftTab && (
-                    <Checkbox
-                      checked={checkedKeys.has(key)}
-                      onChange={() => toggleCheck(key)}
-                      className="event-checkbox"
-                    />
-                  )}
-                  <EventItem
-                    event={ev}
-                    onGenerateGiftImage={onGenerateGiftImage}
-                    onGenerateBlindBoxImage={onGenerateBlindBoxImage}
-                  />
-                </div>
+                <EventItem
+                  event={ev}
+                  onGenerateGiftImage={onGenerateGiftImage}
+                  onGenerateBlindBoxImage={onGenerateBlindBoxImage}
+                  {...(isGiftTab ? { checked: checkedKeys.has(key), onCheck: () => toggleCheck(key) } : {})}
+                />
               </div>
             )
           })
