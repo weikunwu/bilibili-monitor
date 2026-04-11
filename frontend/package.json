@@ -10,7 +10,11 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "flatpickr": "^4.6.13",
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@mui/material": "^9.0.0",
+    "@mui/x-date-pickers": "^9.0.0",
+    "dayjs": "^1.11.20",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"
   },
