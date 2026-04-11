@@ -11,10 +11,30 @@ import aiohttp
 from fastapi import APIRouter, Query
 from fastapi.responses import StreamingResponse
 
+from fastapi.responses import Response
+
 from ..config import DB_PATH, BASE_DIR, HEADERS, log
 from ..bili_api import gift_price_cache, gift_gif_cache, guard_cache
 
 router = APIRouter()
+
+
+@router.get("/api/proxy-image")
+async def proxy_image(url: str = Query(...)):
+    """代理 B站 CDN 图片，解决前端 CORS 问题"""
+    if not url.startswith("https://") and not url.startswith("http://"):
+        return Response(status_code=400)
+    try:
+        async with aiohttp.ClientSession(headers=HEADERS) as session:
+            async with session.get(url) as resp:
+                content_type = resp.headers.get("Content-Type", "image/png")
+                data = await resp.read()
+                return Response(content=data, media_type=content_type, headers={
+                    "Cache-Control": "public, max-age=86400",
+                    "Access-Control-Allow-Origin": "*",
+                })
+    except Exception:
+        return Response(status_code=502)
 
 
 def _today_utc_range(tz_offset: Optional[int] = None) -> tuple[str, str]:
