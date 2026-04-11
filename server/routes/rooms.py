@@ -30,6 +30,7 @@ async def get_rooms(request: Request):
             "parent_area_name": c.parent_area_name,
             "announcement": c.announcement,
             "bot_uid": c.uid if c.cookies.get("SESSDATA") else 0,
+            "bot_name": c.bot_name if c.cookies.get("SESSDATA") else "",
             "active": c._running,
         }
         for c in bili_clients.values()

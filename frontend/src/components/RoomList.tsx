@@ -37,11 +37,6 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged }: Props) {
                 <span className="rc-room-id">房间 {r.room_id}</span>
               </div>
               <div className="rc-header-badges">
-                {r.active ? (
-                  <span className="rc-badge rc-badge-running" onClick={(e) => handleToggle(e, r)} title="点击停止监控"><MdStop size={12} /> 运行中</span>
-                ) : (
-                  <span className="rc-badge rc-badge-stopped" onClick={(e) => handleToggle(e, r)} title="点击启动监控"><MdPlayArrow size={12} /> 已停止</span>
-                )}
                 {r.live_status === 1 && <span className="rc-badge rc-badge-live"><MdCircle size={8} /> 直播中</span>}
               </div>
             </div>
@@ -80,14 +75,24 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged }: Props) {
               </div>
             </div>
 
-            {/* Bot status */}
+            {/* Footer: bot + monitor status */}
             <div className="rc-footer">
-              <span className="rc-detail-label">机器人</span>
-              {r.bot_uid ? (
-                <span className="rc-bot-status active">已绑定 (UID: {r.bot_uid})</span>
-              ) : (
-                <span className="rc-bot-status">未绑定</span>
-              )}
+              <div className="rc-footer-item">
+                <span className="rc-detail-label">机器人</span>
+                {r.bot_uid ? (
+                  <span className="rc-bot-status active">{r.bot_name || 'Unknown'} (UID: {r.bot_uid})</span>
+                ) : (
+                  <span className="rc-bot-status">未绑定</span>
+                )}
+              </div>
+              <div className="rc-footer-item">
+                <span className="rc-detail-label">监控</span>
+                {r.active ? (
+                  <span className="rc-badge rc-badge-running" onClick={(e) => handleToggle(e, r)} title="点击停止监控"><MdStop size={12} /> 运行中</span>
+                ) : (
+                  <span className="rc-badge rc-badge-stopped" onClick={(e) => handleToggle(e, r)} title="点击启动监控"><MdPlayArrow size={12} /> 已停止</span>
+                )}
+              </div>
             </div>
           </div>
         ))}

@@ -42,6 +42,7 @@ export interface Room {
   parent_area_name: string
   announcement: string
   bot_uid: number
+  bot_name: string
   active: boolean
 }
 

@@ -22,6 +22,7 @@ class BiliLiveClient:
         self.on_event = on_event
         self.cookies = cookies or {}
         self.uid = int(self.cookies.get("DedeUserID", 0))
+        self.bot_name = ""
         self.ruid = 0
         self.room_title = ""
         self.streamer_name = ""
@@ -58,7 +59,8 @@ class BiliLiveClient:
                     data = await resp.json(content_type=None)
                     if data.get("code") == 0:
                         self.uid = data["data"].get("mid", 0)
-                        log.info(f"已登录用户: {data['data'].get('uname', '?')} (UID: {self.uid})")
+                        self.bot_name = data["data"].get("uname", "")
+                        log.info(f"已登录用户: {self.bot_name} (UID: {self.uid})")
 
     async def get_room_info(self):
         async with aiohttp.ClientSession(headers=self._make_cookie_header()) as session:
