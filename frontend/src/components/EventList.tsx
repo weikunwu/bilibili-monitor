@@ -152,7 +152,7 @@ export function EventList({
 
   useEffect(() => {
     setCheckedKeys(new Set())
-  }, [activeTab])
+  }, [activeTab, selectedUsers, events])
 
   return (
     <>
@@ -174,7 +174,8 @@ export function EventList({
             placeholder="筛选用户"
             size="sm"
             searchable
-            style={{ width: 250, flexShrink: 0 }}
+            countable
+            style={{ width: 200, minWidth: 200, maxWidth: 200 }}
           />
           {checkedKeys.size > 0 && (
             <Button size="sm" appearance="primary" loading={generating} onClick={handleGenerateCard}>
