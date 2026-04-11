@@ -39,7 +39,7 @@ async def get_rooms(request: Request):
                 "streamer_name": c.streamer_name,
                 "streamer_avatar": c.streamer_avatar,
                 "room_title": c.room_title,
-                "live_status": c.live_status,
+                "live_status": c.live_status if c._running else 0,
                 "ruid": c.ruid,
                 "followers": c.followers,
                 "guard_count": c.guard_count,

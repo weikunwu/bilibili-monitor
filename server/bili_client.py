@@ -197,6 +197,13 @@ class BiliLiveClient:
                                 if cmd == "_HEARTBEAT_REPLY":
                                     self.popularity = pkt.get("popularity", 0)
                                     continue
+                                base_cmd = cmd.split(":")[0]
+                                if base_cmd == "LIVE":
+                                    self.live_status = 1
+                                    continue
+                                if base_cmd == "PREPARING":
+                                    self.live_status = 0
+                                    continue
                                 event = handle_message(pkt)
                                 if event:
                                     event["room_id"] = self.real_room_id
