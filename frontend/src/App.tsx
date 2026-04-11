@@ -15,6 +15,7 @@ import { AdminPanel } from './components/AdminPanel'
 import { QrLoginModal } from './components/QrLoginModal'
 import { GiftImageModal, type GiftImageModalRef } from './components/GiftImageModal'
 import { RoomList } from './components/RoomList'
+import { Dropdown } from 'rsuite'
 import type { DateRange } from 'rsuite/DateRangePicker'
 
 function todayRange(): DateRange {
@@ -70,11 +71,10 @@ function HomePage({ rooms, currentUser, onRoomsChanged }: { rooms: Room[]; curre
         <h1>B站直播监控</h1>
         <span style={{ flex: 1 }} />
         {currentUser && (
-          <span style={{ fontSize: 12, color: '#888' }}>{currentUser.email}</span>
+          <Dropdown title={currentUser.email} placement="bottomEnd" size="xs">
+            <Dropdown.Item onSelect={() => authLogout().then(() => location.reload())}>退出登录</Dropdown.Item>
+          </Dropdown>
         )}
-        <button className="login-btn" style={{ background: '#555' }} onClick={() => authLogout().then(() => location.reload())}>
-          退出登录
-        </button>
       </div>
       <RoomList
         rooms={rooms}
@@ -213,11 +213,10 @@ function RoomPage({ rooms, currentUser, onRoomsChanged }: {
         </span>
         <span style={{ flex: 1 }} />
         {currentUser && (
-          <span style={{ fontSize: 12, color: '#888' }}>{currentUser.email}</span>
+          <Dropdown title={currentUser.email} placement="bottomEnd" size="xs">
+            <Dropdown.Item onSelect={() => authLogout().then(() => location.reload())}>退出登录</Dropdown.Item>
+          </Dropdown>
         )}
-        <button className="login-btn" style={{ background: '#555' }} onClick={() => authLogout().then(() => location.reload())}>
-          退出登录
-        </button>
       </div>
 
       <StatsGrid stats={stats} />
