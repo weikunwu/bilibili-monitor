@@ -320,7 +320,7 @@ class BiliLiveClient:
         for r in rows:
             try:
                 extra = json.loads(r[0])
-            except:
+            except (json.JSONDecodeError, TypeError):
                 continue
             num = extra.get("num", 1)
             blind_name = extra.get("blind_name", "")
