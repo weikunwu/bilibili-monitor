@@ -1,6 +1,5 @@
 import { DateRangePicker, Checkbox } from 'rsuite'
 import type { DateRange } from 'rsuite/DateRangePicker'
-import 'rsuite/DateRangePicker/styles/index.css'
 
 interface Props {
   autoScroll: boolean

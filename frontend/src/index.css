@@ -24,12 +24,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 .stat-card.popularity .value { color: #4dd0e1; }
 .stat-card.sc-total .value { color: #ff7043; }
 
-/* rsuite Tabs overrides */
-.tabs-bar { padding: 0 24px; background: #12121f; }
-.tabs-bar .rs-tab { color: #888 !important; }
-.tabs-bar .rs-tab:hover { color: #bbb !important; }
-.tabs-bar .rs-tab-active { color: #fb7299 !important; }
-.tabs-bar .rs-tabs-subtle .rs-tab-active { border-color: #fb7299 !important; }
 
 .events-container { padding: 8px 24px; overflow-y: auto; max-height: calc(100vh - 260px); }
 .date-separator { display: flex; align-items: center; gap: 12px; margin: 12px 0 8px; color: #666; font-size: 12px; }
@@ -62,73 +56,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 .time-range .btn-primary:hover { background: #e0607e; }
 .time-range .sep { color: #555; font-size: 12px; }
 
-/* ── rsuite DateRangePicker dark overrides ── */
-.rs-picker-subtle .rs-btn,
-.rs-picker-subtle .rs-picker-toggle {
-  background: #1a1a2e !important;
-  border: 1px solid #2a2a4a !important;
-  color: #ccc !important;
-  font-size: 12px !important;
-  border-radius: 6px !important;
-}
-.rs-picker-subtle .rs-picker-toggle:hover,
-.rs-picker-subtle .rs-picker-toggle-active {
-  border-color: #fb7299 !important;
-}
-.rs-picker-subtle .rs-picker-toggle-caret,
-.rs-picker-subtle .rs-picker-toggle-clean {
-  color: #888 !important;
-}
-.rs-picker-daterange-panel,
-.rs-picker-popup {
-  background: #1a1a2e !important;
-  border: 1px solid #2a2a4a !important;
-  color: #ccc !important;
-  z-index: 300 !important;
-}
-.rs-picker-popup .rs-calendar-table-cell-content {
-  color: #ccc;
-}
-.rs-picker-popup .rs-calendar-table-cell-selected .rs-calendar-table-cell-content {
-  background: #fb7299 !important;
-  color: #fff !important;
-}
-.rs-picker-popup .rs-calendar-table-cell-in-range::before {
-  background: #fb729933 !important;
-}
-.rs-picker-popup .rs-calendar-header-title,
-.rs-picker-popup .rs-calendar-header-backward,
-.rs-picker-popup .rs-calendar-header-forward {
-  color: #ccc !important;
-}
-.rs-picker-popup .rs-btn-primary {
-  background: #fb7299 !important;
-}
-.rs-picker-popup .rs-btn-primary:hover {
-  background: #e0607e !important;
-}
-.rs-picker-popup .rs-calendar-table-header-cell-content {
-  color: #888;
-}
-.rs-picker-popup .rs-calendar-table-cell-disabled .rs-calendar-table-cell-content {
-  color: #444;
-}
-
-
-
-/* rsuite global dark overrides */
-.rs-modal-content { background: #1a1a2e !important; border: 1px solid #2a2a4a; }
-.rs-modal-header .rs-modal-title { color: #fb7299 !important; }
-.rs-modal-header .rs-modal-header-close { color: #888 !important; }
-.rs-btn-primary { background: #fb7299 !important; }
-.rs-btn-primary:hover { background: #e0607e !important; }
-.rs-checkbox-checker label { color: #ccc !important; }
-.rs-input { background: #0f0f1a !important; border-color: #2a2a4a !important; color: #ccc !important; }
-.rs-input:focus { border-color: #fb7299 !important; }
-.rs-picker-select .rs-picker-toggle { background: #0f0f1a !important; border-color: #2a2a4a !important; color: #ccc !important; }
-.rs-toggle-checked .rs-toggle-presentation { background: #fb7299 !important; }
-.rs-divider { border-color: #2a2a4a !important; }
-.rs-message { font-size: 13px; }
 
 /* QR login styles (inside rsuite Modal) */
 .qr-container { background: #fff; border-radius: 12px; padding: 16px; display: inline-block; margin-bottom: 16px; }
@@ -185,7 +112,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 .profile-avatar-btn { width: 32px; height: 32px; border-radius: 50%; border: none; color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: opacity 0.2s; flex-shrink: 0; }
 .profile-avatar-btn:hover { opacity: 0.85; }
 .profile-popover { min-width: 220px; }
-.profile-popover .rs-popover-content { padding: 12px; }
 .profile-popover-header { display: flex; align-items: center; gap: 12px; }
 .profile-avatar-lg { width: 40px; height: 40px; border-radius: 50%; color: #fff; font-size: 18px; font-weight: 600; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .profile-info { min-width: 0; }
@@ -193,8 +119,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 .profile-role-badge { display: inline-block; font-size: 11px; padding: 1px 8px; border-radius: 10px; margin-top: 4px; }
 .profile-role-badge.admin { background: rgba(251, 114, 153, 0.15); color: #fb7299; }
 .profile-role-badge.user { background: rgba(100, 181, 246, 0.15); color: #64b5f6; }
-.profile-logout-btn { justify-content: flex-start !important; color: #999 !important; }
-.profile-logout-btn:hover { color: #ef5350 !important; }
 
 /* ── Mobile responsive ── */
 @media (max-width: 768px) {

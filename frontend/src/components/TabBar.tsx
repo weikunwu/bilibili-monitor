@@ -19,7 +19,7 @@ interface Props {
 
 export function TabBar({ active, onChange, isAdmin }: Props) {
   return (
-    <Tabs activeKey={active} onSelect={(key) => key && onChange(key as TabType)} className="tabs-bar">
+    <Tabs activeKey={active} onSelect={(key) => key && onChange(key as TabType)}>
       {TAB_LIST.filter((t) => !t.adminOnly || isAdmin).map((t) => (
         <Tabs.Tab key={t.type} eventKey={t.type} title={t.label} />
       ))}

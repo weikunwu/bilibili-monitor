@@ -1,5 +1,8 @@
-import { MdCircle, MdPlayArrow, MdStop, MdSwapHoriz } from 'react-icons/md'
-import { IconButton, ButtonGroup } from 'rsuite'
+import { MdCircle } from 'react-icons/md'
+import { Button, ButtonToolbar } from 'rsuite'
+import PlayOutlineIcon from '@rsuite/icons/PlayOutline'
+import CloseOutlineIcon from '@rsuite/icons/CloseOutline'
+import ChangeListIcon from '@rsuite/icons/ChangeList'
 import type { Room } from '../types'
 
 interface Props {
@@ -88,20 +91,20 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot }: Pro
                 )}
               </div>
               <div className="rc-footer-actions">
-                <ButtonGroup size="xs">
+                <ButtonToolbar>
                   {r.active ? (
-                    <IconButton icon={<MdStop />} color="red" appearance="ghost" size="xs" onClick={(e) => { e.stopPropagation(); handleToggle(e, r) }}>
+                    <Button size="xs" color="red" appearance="ghost" startIcon={<CloseOutlineIcon />} onClick={(e) => { e.stopPropagation(); handleToggle(e, r) }}>
                       停止
-                    </IconButton>
+                    </Button>
                   ) : (
-                    <IconButton icon={<MdPlayArrow />} color="green" appearance="ghost" size="xs" onClick={(e) => { e.stopPropagation(); handleToggle(e, r) }}>
+                    <Button size="xs" color="green" appearance="ghost" startIcon={<PlayOutlineIcon />} onClick={(e) => { e.stopPropagation(); handleToggle(e, r) }}>
                       启动
-                    </IconButton>
+                    </Button>
                   )}
-                  <IconButton icon={<MdSwapHoriz />} appearance="ghost" size="xs" onClick={(e) => { e.stopPropagation(); onBindBot?.(r.room_id) }}>
+                  <Button size="xs" appearance="ghost" startIcon={<ChangeListIcon />} onClick={(e) => { e.stopPropagation(); onBindBot?.(r.room_id) }}>
                     {r.bot_uid ? '更换' : '绑定'}
-                  </IconButton>
-                </ButtonGroup>
+                  </Button>
+                </ButtonToolbar>
               </div>
             </div>
           </div>
