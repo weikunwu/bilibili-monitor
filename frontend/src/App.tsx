@@ -3,7 +3,7 @@ import type { LiveEvent, TabType, Room, Stats } from './types'
 import { fetchRooms, fetchStats, fetchEvents, fetchBotStatus, botLogout, authLogout, fetchMe, type CurrentUser } from './api/client'
 import { useWebSocket } from './hooks/useWebSocket'
 import { useLocalStorage } from './hooks/useLocalStorage'
-import { localToUTC, fmtDate, pad } from './lib/formatters'
+import { localToUTC, fmtDate } from './lib/formatters'
 import { MAX_EVENTS } from './lib/constants'
 import { Header } from './components/Header'
 import { StatsGrid } from './components/StatsGrid'
@@ -14,6 +14,15 @@ import { ToolsPanel } from './components/ToolsPanel'
 import { AdminPanel } from './components/AdminPanel'
 import { QrLoginModal } from './components/QrLoginModal'
 import { GiftImageModal, type GiftImageModalRef } from './components/GiftImageModal'
+import type { DateRange } from 'rsuite/DateRangePicker'
+
+function todayRange(): DateRange {
+  const now = new Date()
+  return [
+    new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0),
+    new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59),
+  ]
+}
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null)
@@ -22,8 +31,6 @@ export default function App() {
   const [stats, setStats] = useState<Stats | null>(null)
   const [events, setEvents] = useState<LiveEvent[]>([])
   const [activeTab, setActiveTab] = useState<TabType>('all')
-  const [activePreset, setActivePreset] = useState('live')
-  const [isLiveMode, setIsLiveMode] = useState(true)
   const [botUid, setBotUid] = useState<number | null>(null)
   const [qrModalOpen, setQrModalOpen] = useState(false)
 
@@ -34,11 +41,8 @@ export default function App() {
   const giftModalRef = useRef<GiftImageModalRef>(null)
   const currentRoomIdRef = useRef(currentRoomId)
   currentRoomIdRef.current = currentRoomId
-  const isLiveModeRef = useRef(isLiveMode)
-  isLiveModeRef.current = isLiveMode
 
   const onWsEvent = useCallback((ev: LiveEvent) => {
-    if (!isLiveModeRef.current) return
     const roomId = currentRoomIdRef.current
     if (roomId && ev.room_id && ev.room_id !== roomId) return
     setEvents((prev) => {
@@ -69,51 +73,22 @@ export default function App() {
       setBotUid(d.logged_in ? d.uid : null)
     }).catch(() => {})
 
-    loadLiveEvents(currentRoomId)
+    // Default: load today's events
+    loadTodayEvents(currentRoomId)
 
     return () => clearInterval(interval)
   }, [currentRoomId])
 
-  async function loadLiveEvents(roomId: number) {
-    const d = new Date()
-    d.setHours(d.getHours() - 1)
-    const liveFrom = `${fmtDate(d)} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
-    const data = await fetchEvents(roomId, localToUTC(liveFrom))
-    setEvents(data)
-    setIsLiveMode(true)
-    setActivePreset('live')
-  }
-
-  function handlePresetChange(preset: string) {
-    if (!currentRoomId) return
-    setActivePreset(preset)
-
-    if (preset === 'live') {
-      loadLiveEvents(currentRoomId)
-      return
-    }
-
+  async function loadTodayEvents(roomId: number) {
     const now = new Date()
-    let from: string
-    if (preset === 'today') {
-      from = fmtDate(now) + ' 00:00:00'
-    } else if (preset === 'week') {
-      const d = new Date(now)
-      d.setDate(d.getDate() - d.getDay() + 1)
-      from = fmtDate(d) + ' 00:00:00'
-    } else {
-      from = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-01 00:00:00`
-    }
+    const from = fmtDate(now) + ' 00:00:00'
     const to = fmtDate(now) + ' 23:59:59'
-
-    setIsLiveMode(false)
-    fetchEvents(currentRoomId, localToUTC(from), localToUTC(to)).then(setEvents)
+    const data = await fetchEvents(roomId, localToUTC(from), localToUTC(to))
+    setEvents(data)
   }
 
   function handleQueryRange(from: string, to: string) {
     if (!currentRoomId) return
-    setActivePreset('')
-    setIsLiveMode(false)
     fetchEvents(currentRoomId, localToUTC(from), localToUTC(to)).then(setEvents)
   }
 
@@ -146,11 +121,10 @@ export default function App() {
           autoScroll={autoScroll}
           showEnter={showEnter}
           showLike={showLike}
-          activePreset={activePreset}
+          defaultRange={todayRange()}
           onAutoScrollChange={setAutoScroll}
           onShowEnterChange={setShowEnter}
           onShowLikeChange={setShowLike}
-          onPresetChange={handlePresetChange}
           onQueryRange={handleQueryRange}
         />
         <EventList

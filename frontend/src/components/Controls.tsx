@@ -6,11 +6,10 @@ interface Props {
   autoScroll: boolean
   showEnter: boolean
   showLike: boolean
-  activePreset: string
+  defaultRange: DateRange | null
   onAutoScrollChange: (v: boolean) => void
   onShowEnterChange: (v: boolean) => void
   onShowLikeChange: (v: boolean) => void
-  onPresetChange: (preset: string) => void
   onQueryRange: (from: string, to: string) => void
 }
 
@@ -19,18 +18,53 @@ function fmt(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 }
 
+const predefinedRanges = [
+  {
+    label: '今日',
+    value: () => {
+      const now = new Date()
+      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0)
+      const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59)
+      return [start, end] as DateRange
+    },
+  },
+  {
+    label: '昨日',
+    value: () => {
+      const now = new Date()
+      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 0, 0, 0)
+      const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59)
+      return [start, end] as DateRange
+    },
+  },
+  {
+    label: '本周',
+    value: () => {
+      const now = new Date()
+      const day = now.getDay() || 7
+      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - day + 1, 0, 0, 0)
+      const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59)
+      return [start, end] as DateRange
+    },
+  },
+  {
+    label: '本月',
+    value: () => {
+      const now = new Date()
+      const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0)
+      const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59)
+      return [start, end] as DateRange
+    },
+  },
+]
+
 export function Controls({
-  autoScroll, showEnter, showLike, activePreset,
+  autoScroll, showEnter, showLike, defaultRange,
   onAutoScrollChange, onShowEnterChange, onShowLikeChange,
-  onPresetChange, onQueryRange,
+  onQueryRange,
 }: Props) {
 
-  const presets = ['live', 'today', 'week', 'month']
-  const presetLabels: Record<string, string> = {
-    live: '实时', today: '今日', week: '本周', month: '本月',
-  }
-
-  function handleRangeOk(range: DateRange | null) {
+  function handleRangeChange(range: DateRange | null) {
     if (!range) return
     const [from, to] = range
     onQueryRange(fmt(from), fmt(to))
@@ -51,24 +85,16 @@ export function Controls({
         {' '}显示点赞
       </label>
       <div className="time-range">
-        {presets.map((p) => (
-          <button
-            key={p}
-            className={`btn preset ${activePreset === p ? 'active' : ''}`}
-            onClick={() => onPresetChange(p)}
-          >
-            {presetLabels[p]}
-          </button>
-        ))}
-        <span className="sep">|</span>
         <DateRangePicker
           format="yyyy-MM-dd HH:mm:ss"
-          showMeridian={false}
           character=" ~ "
           placeholder="选择时间范围"
           size="sm"
           appearance="subtle"
-          onOk={handleRangeOk}
+          ranges={predefinedRanges}
+          defaultValue={defaultRange}
+          onChange={handleRangeChange}
+          placement="bottomEnd"
           style={{ width: 340 }}
         />
       </div>
