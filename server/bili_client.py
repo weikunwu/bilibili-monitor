@@ -265,7 +265,7 @@ class BiliLiveClient:
             return
         csrf = self.cookies.get("bili_jct", "")
         # B站弹幕限制20字，超长分段发送
-        chunks = [msg[i:i+20] for i in range(0, len(msg), 20)]
+        chunks = [msg[i:i+40] for i in range(0, len(msg), 40)]
         try:
             async with aiohttp.ClientSession(headers=self._make_cookie_header()) as session:
                 for chunk in chunks:
@@ -307,23 +307,34 @@ class BiliLiveClient:
         total_boxes = 0
         total_cost = 0
         total_value = 0
+        boxes: dict[str, dict] = {}
         for r in rows:
             try:
                 extra = json.loads(r[0])
             except:
                 continue
             num = extra.get("num", 1)
+            blind_name = extra.get("blind_name", "")
             total_boxes += num
             total_cost += extra.get("blind_price", 0) * num
             total_value += extra.get("price", 0) * num
+            if blind_name not in boxes:
+                boxes[blind_name] = {"count": 0, "cost": 0, "value": 0}
+            boxes[blind_name]["count"] += num
+            boxes[blind_name]["cost"] += extra.get("blind_price", 0) * num
+            boxes[blind_name]["value"] += extra.get("price", 0) * num
+
+        def fmt_profit(p: int) -> str:
+            y = abs(p) / 1000
+            s = f"{y:.1f}".rstrip('0').rstrip('.')
+            return "不亏不赚" if p == 0 else f"赚{s}元" if p > 0 else f"亏{s}元"
 
         profit = total_value - total_cost
-
-        yuan = abs(profit) / 1000
-        yuan_str = f"{yuan:.1f}".rstrip('0').rstrip('.')
-        result = "不亏不赚" if profit == 0 else f"赚{yuan_str}元" if profit > 0 else f"亏{yuan_str}元"
-        msg = f"{user_name} {period_label}盲盒开了{total_boxes}个，{result}"
+        msg = f"{user_name}，{period_label}盲盒{total_boxes}个，{fmt_profit(profit)}"
         await self.send_danmaku(msg)
+
+        for name, b in boxes.items():
+            await self.send_danmaku(f"{name}{b['count']}个，{fmt_profit(b['value'] - b['cost'])}")
 
     def stop(self):
         self._running = False
