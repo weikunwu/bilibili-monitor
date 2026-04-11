@@ -135,7 +135,7 @@ export default function App() {
 
   function renderContent() {
     if (activeTab === 'admin' && isAdmin) {
-      return <AdminPanel rooms={rooms} />
+      return <AdminPanel rooms={rooms} onRoomsChanged={() => fetchRooms().then((r) => { setRooms(r) })} />
     }
     if (activeTab === 'tools') {
       return <ToolsPanel roomId={currentRoomId} />

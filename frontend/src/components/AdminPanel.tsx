@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react'
 import type { Room } from '../types'
-import { fetchUsers, createUser, deleteUser, assignUserRooms, type UserInfo } from '../api/client'
+import { fetchUsers, createUser, deleteUser, assignUserRooms, addRoom, removeRoom, type UserInfo } from '../api/client'
 
 interface Props {
   rooms: Room[]
+  onRoomsChanged: () => void
 }
 
-export function AdminPanel({ rooms }: Props) {
+export function AdminPanel({ rooms, onRoomsChanged }: Props) {
   const [users, setUsers] = useState<UserInfo[]>([])
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -14,6 +15,9 @@ export function AdminPanel({ rooms }: Props) {
   const [error, setError] = useState('')
   const [editingUser, setEditingUser] = useState<number | null>(null)
   const [editRooms, setEditRooms] = useState<number[]>([])
+  const [newRoomId, setNewRoomId] = useState('')
+  const [roomError, setRoomError] = useState('')
+  const [roomLoading, setRoomLoading] = useState(false)
 
   useEffect(() => { loadUsers() }, [])
 
@@ -61,8 +65,69 @@ export function AdminPanel({ rooms }: Props) {
     )
   }
 
+  async function handleAddRoom(e: React.FormEvent) {
+    e.preventDefault()
+    setRoomError('')
+    const id = parseInt(newRoomId.trim(), 10)
+    if (!id || isNaN(id)) {
+      setRoomError('请输入有效房间号')
+      return
+    }
+    setRoomLoading(true)
+    try {
+      await addRoom(id)
+      setNewRoomId('')
+      onRoomsChanged()
+    } catch (err) {
+      setRoomError((err as Error).message)
+    } finally {
+      setRoomLoading(false)
+    }
+  }
+
+  async function handleRemoveRoom(roomId: number) {
+    if (!confirm(`确定删除房间 ${roomId}？`)) return
+    try {
+      await removeRoom(roomId)
+      onRoomsChanged()
+    } catch (err) {
+      setRoomError((err as Error).message)
+    }
+  }
+
   return (
     <div style={{ padding: '16px 24px' }}>
+      {/* ── Room management ── */}
+      <h3 style={{ color: '#fb7299', marginBottom: 16, fontSize: 16 }}>房间管理</h3>
+      <form onSubmit={handleAddRoom} style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+        <input
+          type="text"
+          placeholder="房间号"
+          value={newRoomId}
+          onChange={(e) => setNewRoomId(e.target.value)}
+          required
+          style={{ ...inputStyle, width: 160 }}
+        />
+        <button type="submit" disabled={roomLoading} style={btnStyle}>
+          {roomLoading ? '连接中...' : '添加房间'}
+        </button>
+      </form>
+      {roomError && <div style={{ color: '#ef5350', fontSize: 13, marginBottom: 12 }}>{roomError}</div>}
+      {rooms.map((r) => (
+        <div key={r.room_id} className="cmd-item">
+          <div className="cmd-info">
+            <div className="cmd-name">{r.streamer_name || r.room_id}</div>
+            <div className="cmd-desc">房间号: {r.room_id}{r.real_room_id !== r.room_id ? ` (真实ID: ${r.real_room_id})` : ''} | 人气: {r.popularity}</div>
+          </div>
+          <button onClick={() => handleRemoveRoom(r.room_id)} style={{ ...smallBtnStyle, background: '#c0392b' }}>
+            删除
+          </button>
+        </div>
+      ))}
+
+      <div style={{ borderTop: '1px solid #2a2a4a', margin: '24px 0 16px' }} />
+
+      {/* ── User management ── */}
       <h3 style={{ color: '#fb7299', marginBottom: 16, fontSize: 16 }}>用户管理</h3>
 
       {/* Create user form */}

@@ -68,6 +68,58 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 .time-range .preset:hover { border-color: #fb7299; color: #fb7299; }
 .time-range .preset.active { background: #fb729922; border-color: #fb7299; color: #fb7299; }
 .time-range .sep { color: #555; font-size: 12px; }
+
+/* ── rsuite DateRangePicker dark overrides ── */
+.rs-picker-subtle .rs-btn,
+.rs-picker-subtle .rs-picker-toggle {
+  background: #1a1a2e !important;
+  border: 1px solid #2a2a4a !important;
+  color: #ccc !important;
+  font-size: 12px !important;
+  border-radius: 6px !important;
+}
+.rs-picker-subtle .rs-picker-toggle:hover,
+.rs-picker-subtle .rs-picker-toggle-active {
+  border-color: #fb7299 !important;
+}
+.rs-picker-subtle .rs-picker-toggle-caret,
+.rs-picker-subtle .rs-picker-toggle-clean {
+  color: #888 !important;
+}
+.rs-picker-daterange-panel,
+.rs-picker-popup {
+  background: #1a1a2e !important;
+  border: 1px solid #2a2a4a !important;
+  color: #ccc !important;
+  z-index: 300 !important;
+}
+.rs-picker-popup .rs-calendar-table-cell-content {
+  color: #ccc;
+}
+.rs-picker-popup .rs-calendar-table-cell-selected .rs-calendar-table-cell-content {
+  background: #fb7299 !important;
+  color: #fff !important;
+}
+.rs-picker-popup .rs-calendar-table-cell-in-range::before {
+  background: #fb729933 !important;
+}
+.rs-picker-popup .rs-calendar-header-title,
+.rs-picker-popup .rs-calendar-header-backward,
+.rs-picker-popup .rs-calendar-header-forward {
+  color: #ccc !important;
+}
+.rs-picker-popup .rs-btn-primary {
+  background: #fb7299 !important;
+}
+.rs-picker-popup .rs-btn-primary:hover {
+  background: #e0607e !important;
+}
+.rs-picker-popup .rs-calendar-table-header-cell-content {
+  color: #888;
+}
+.rs-picker-popup .rs-calendar-table-cell-disabled .rs-calendar-table-cell-content {
+  color: #444;
+}
 .gen-img-btn { cursor: pointer; margin-left: 4px; padding: 2px 8px; font-size: 11px; flex-shrink: 0; background: rgba(255,255,255,0.15); border-radius: 4px; color: #ddd; transition: background 0.2s; font-family: -apple-system, "PingFang SC", sans-serif; }
 .gen-img-btn:hover { background: rgba(255,255,255,0.3); }
 .gift-btns { display: flex; gap: 4px; margin-left: auto; flex-shrink: 0; }

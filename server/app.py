@@ -9,9 +9,9 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from .config import BASE_DIR, HEADERS, log
-from .db import init_db, cleanup_old_events
+from .db import init_db, cleanup_old_events, seed_rooms, get_active_rooms
 from .auth import AuthMiddleware, get_session_user, get_user_allowed_rooms, handle_login, handle_logout
-from .bili_api import load_gift_config, load_guard_list
+from .bili_api import load_gift_config
 from .bili_client import BiliLiveClient
 from .crypto import load_cookies
 from .routes import events, rooms, bot, admin
@@ -103,11 +103,14 @@ async def main(room_ids: list[int], port: int):
     init_db()
     cleanup_old_events()
 
-    await load_gift_config(HEADERS)
-    for rid in room_ids:
-        await load_guard_list(rid, HEADERS)
+    # Seed CLI rooms into DB, then load all active rooms
+    if room_ids:
+        seed_rooms(room_ids)
+    active_rooms = get_active_rooms()
 
-    for rid in room_ids:
+    await load_gift_config(HEADERS)
+
+    for rid in active_rooms:
         cookies = load_cookies(rid)
         client = BiliLiveClient(rid, on_event=broadcast_event, cookies=cookies)
         bili_clients[rid] = client
@@ -115,7 +118,7 @@ async def main(room_ids: list[int], port: int):
     config = uvicorn.Config(app, host="0.0.0.0", port=port, log_level="info")
     server = uvicorn.Server(config)
 
-    log.info(f"启动监控: 房间 {room_ids} | Web: http://localhost:{port}")
+    log.info(f"启动监控: 房间 {active_rooms} | Web: http://localhost:{port}")
 
     await asyncio.gather(
         server.serve(),

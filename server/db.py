@@ -32,9 +32,14 @@ def init_db():
         CREATE TABLE IF NOT EXISTS rooms (
             room_id INTEGER PRIMARY KEY,
             settings_json TEXT NOT NULL DEFAULT '{}',
-            bot_cookie TEXT DEFAULT NULL
+            bot_cookie TEXT DEFAULT NULL,
+            active INTEGER NOT NULL DEFAULT 0
         )
     """)
+    # Migration: add active column if missing
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(rooms)").fetchall()]
+    if "active" not in cols:
+        conn.execute("ALTER TABLE rooms ADD COLUMN active INTEGER NOT NULL DEFAULT 0")
 
     conn.execute("""
         CREATE TABLE IF NOT EXISTS commands (
@@ -91,6 +96,34 @@ def init_db():
             )
             log.info(f"创建管理员账号: {admin_email}")
 
+    conn.commit()
+    conn.close()
+
+
+def seed_rooms(room_ids: list[int]):
+    """将命令行传入的房间号写入 DB 并标记为 active（仅插入不存在的）"""
+    conn = sqlite3.connect(str(DB_PATH))
+    for rid in room_ids:
+        conn.execute(
+            "INSERT OR IGNORE INTO rooms (room_id, active) VALUES (?, 1)",
+            (rid,),
+        )
+        conn.execute("UPDATE rooms SET active=1 WHERE room_id=?", (rid,))
+    conn.commit()
+    conn.close()
+
+
+def get_active_rooms() -> list[int]:
+    conn = sqlite3.connect(str(DB_PATH))
+    rows = conn.execute("SELECT room_id FROM rooms WHERE active=1").fetchall()
+    conn.close()
+    return [r[0] for r in rows]
+
+
+def set_room_active(room_id: int, active: bool):
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.execute("INSERT OR IGNORE INTO rooms (room_id, active) VALUES (?, ?)", (room_id, int(active)))
+    conn.execute("UPDATE rooms SET active=? WHERE room_id=?", (int(active), room_id))
     conn.commit()
     conn.close()
 

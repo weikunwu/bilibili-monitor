@@ -8,7 +8,7 @@ from urllib.parse import urlencode
 import aiohttp
 
 from .config import (
-    HEADERS, NAV_API, WBI_KEY_INDEX_TABLE, ROOM_INFO_API,
+    HEADERS, NAV_API, WBI_KEY_INDEX_TABLE,
     GIFT_CONFIG_API, log,
 )
 
@@ -16,8 +16,6 @@ from .config import (
 gift_img_cache: dict[int, str] = {}
 gift_price_cache: dict[int, int] = {}
 gift_gif_cache: dict[int, str] = {}
-guard_cache: dict[int, dict[int, int]] = {}
-
 _wbi_key_cache = ""
 
 
@@ -65,31 +63,3 @@ async def load_gift_config(headers: dict):
         log.error(f"加载礼物配置失败: {e}")
 
 
-async def load_guard_list(room_id: int, headers: dict):
-    try:
-        async with aiohttp.ClientSession(headers=headers) as session:
-            async with session.get(ROOM_INFO_API, params={"room_id": room_id}) as resp:
-                data = await resp.json(content_type=None)
-                if data.get("code") != 0:
-                    return
-                ruid = data["data"]["uid"]
-
-            guards = {}
-            for page in range(1, 10):
-                async with session.get(
-                    "https://api.live.bilibili.com/xlive/app-room/v2/guardTab/topList",
-                    params={"roomid": room_id, "ruid": ruid, "page": page, "page_size": 50},
-                ) as resp:
-                    data = await resp.json(content_type=None)
-                    if data.get("code") != 0:
-                        break
-                    d = data["data"]
-                    for g in d.get("top3", []) + d.get("list", []):
-                        guards[g["uid"]] = g["guard_level"]
-                    if not d.get("list"):
-                        break
-
-            guard_cache[room_id] = guards
-            log.info(f"加载大航海列表 (房间 {room_id}): {len(guards)} 人")
-    except Exception as e:
-        log.error(f"加载大航海列表失败 (房间 {room_id}): {e}")

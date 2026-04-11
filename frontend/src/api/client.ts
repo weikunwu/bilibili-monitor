@@ -112,6 +112,27 @@ export async function assignUserRooms(userId: number, roomIds: number[]): Promis
   })
 }
 
+export async function addRoom(roomId: number): Promise<{ ok: boolean; room_id: number; streamer_name: string }> {
+  const res = await fetch('/api/admin/rooms', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ room_id: roomId }),
+  })
+  if (!res.ok) {
+    const d = await res.json()
+    throw new Error(d.detail || '添加失败')
+  }
+  return res.json()
+}
+
+export async function removeRoom(roomId: number): Promise<void> {
+  const res = await fetch(`/api/admin/rooms/${roomId}`, { method: 'DELETE' })
+  if (!res.ok) {
+    const d = await res.json()
+    throw new Error(d.detail || '删除失败')
+  }
+}
+
 export async function fetchCommands(roomId: number): Promise<Command[]> {
   const res = await fetch(`/api/commands?room_id=${roomId}`)
   return res.json()

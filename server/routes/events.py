@@ -14,7 +14,7 @@ from fastapi.responses import StreamingResponse
 from fastapi.responses import Response
 
 from ..config import DB_PATH, BASE_DIR, HEADERS, log
-from ..bili_api import gift_price_cache, gift_gif_cache, guard_cache
+from ..bili_api import gift_price_cache, gift_gif_cache
 
 router = APIRouter()
 
@@ -162,17 +162,6 @@ def _build_gift_users(rows) -> dict:
                 u["gift_coins"][gift_name] = real_price * num
             u["total_coin"] += u["gift_coins"].get(gift_name, 0)
 
-    # Guard fallback
-    for u in users.values():
-        if not u["guard_level"]:
-            for user_name_r, user_id, _ in rows:
-                if user_name_r == u["user_name"]:
-                    for room_guards in guard_cache.values():
-                        gl = room_guards.get(user_id, 0)
-                        if gl:
-                            u["guard_level"] = gl
-                            break
-                    break
     return users
 
 
