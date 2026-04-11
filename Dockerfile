@@ -17,6 +17,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt Pillow
 
 COPY monitor.py .
+COPY server/ server/
 COPY static/ static/
 COPY --from=frontend /app/frontend/dist frontend/dist
 

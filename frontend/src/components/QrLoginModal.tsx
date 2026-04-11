@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { fetchQrCode, pollQrLogin } from '../api/client'
 
 interface Props {
@@ -14,6 +14,18 @@ export function QrLoginModal({ isOpen, roomId, onClose, onSuccess }: Props) {
   const [statusClass, setStatusClass] = useState('')
   const qrKeyRef = useRef<string | null>(null)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
+  const onSuccessRef = useRef(onSuccess)
+  onSuccessRef.current = onSuccess
+
+  const cleanup = useCallback(() => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current)
+      timerRef.current = null
+    }
+    qrKeyRef.current = null
+  }, [])
 
   useEffect(() => {
     if (!isOpen || !roomId) return
@@ -21,7 +33,7 @@ export function QrLoginModal({ isOpen, roomId, onClose, onSuccess }: Props) {
     setStatus('加载中...')
     setStatusClass('')
     setQrUrl('')
-    qrKeyRef.current = null
+    cleanup()
 
     fetchQrCode(roomId).then((d) => {
       if (d.error) {
@@ -40,15 +52,15 @@ export function QrLoginModal({ isOpen, roomId, onClose, onSuccess }: Props) {
           if (r.code === 0) {
             setStatus(`绑定成功! UID: ${r.uid}`)
             setStatusClass('success')
-            if (timerRef.current) clearInterval(timerRef.current)
-            onSuccess(r.uid!)
-            setTimeout(onClose, 1500)
+            cleanup()
+            onSuccessRef.current(r.uid!)
+            setTimeout(() => onCloseRef.current(), 1500)
           } else if (r.code === 86090) {
             setStatus('已扫码，请在手机上确认...')
           } else if (r.code === 86038) {
             setStatus('二维码已过期，请重新打开')
             setStatusClass('error')
-            if (timerRef.current) clearInterval(timerRef.current)
+            cleanup()
           }
         } catch { /* ignore */ }
       }, 2000)
@@ -57,10 +69,9 @@ export function QrLoginModal({ isOpen, roomId, onClose, onSuccess }: Props) {
       setStatusClass('error')
     })
 
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current)
-    }
-  }, [isOpen, roomId, onClose, onSuccess])
+    return cleanup
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, roomId])
 
   if (!isOpen) return null
 
