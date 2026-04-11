@@ -64,7 +64,7 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot }: Pro
                 <div className="rc-streamer-info">
                   <div className="rc-streamer-name">{r.streamer_name}</div>
                   <div className="rc-streamer-meta">
-                    粉丝: {formatFans(r.followers)} · UID: {r.ruid} · 舰长: {r.guard_count}
+                    粉丝: {formatFans(r.followers)} · UID: {r.ruid}
                   </div>
                 </div>
               </div>
