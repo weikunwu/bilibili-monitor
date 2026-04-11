@@ -62,7 +62,7 @@ function renderContent(ev: LiveEvent): ReactNode {
 
 export const EventItem = memo(function EventItem({ event: ev, onGenerateGiftImage }: Props) {
   const extra = ev.extra || {}
-  const face = extra.face || ''
+  const face = extra.avatar || ''
 
   let priceTag: ReactNode = null
   if (ev.event_type === 'gift' && extra.total_coin) {

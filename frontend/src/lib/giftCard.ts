@@ -39,7 +39,7 @@ export async function generateGiftCard(canvas: HTMLCanvasElement, u: GiftUser) {
   ctx.clearRect(0, 0, W, H)
 
   const [avatar, guardFrame, ...giftImgObjs] = await Promise.all([
-    loadImage(u.face || '', true),
+    loadImage(u.avatar || '', true),
     u.guard_level > 0 ? loadImage(GUARD_FRAME_URLS[u.guard_level]) : Promise.resolve(null),
     ...gifts.map(([name]) => loadImage(giftImgs[name] || '', true)),
   ])

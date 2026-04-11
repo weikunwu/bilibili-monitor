@@ -135,6 +135,10 @@ def cleanup_old_events():
     # Remove enter/like events and silver gifts — no longer persisted
     deleted_el = conn.execute("DELETE FROM events WHERE event_type IN ('enter', 'like')").rowcount
     deleted_combo = conn.execute("DELETE FROM events WHERE event_type='gift' AND extra_json LIKE '%\"combo\": true%'").rowcount
+    # Migrate "face" → "avatar" in extra_json
+    migrated = conn.execute(
+        "UPDATE events SET extra_json = REPLACE(extra_json, '\"face\":', '\"avatar\":') WHERE extra_json LIKE '%\"face\":%'"
+    ).rowcount
     conn.commit()
     conn.close()
     if deleted:
@@ -143,6 +147,8 @@ def cleanup_old_events():
         log.info(f"清理进场/点赞事件: 删除 {deleted_el} 条")
     if deleted_combo:
         log.info(f"清理连击重复事件: 删除 {deleted_combo} 条")
+    if migrated:
+        log.info(f"迁移 face→avatar: 更新 {migrated} 条")
 
 
 def save_event(event: dict):

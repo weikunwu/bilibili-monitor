@@ -144,7 +144,7 @@ def handle_message(msg: dict) -> Optional[dict]:
                 "gift_name": gift_name, "gift_id": gift_id, "num": num,
                 "coin_type": data.get("coin_type", ""), "total_coin": real_total_coin,
                 "price": data.get("price", 0), "action": action, "blind_name": blind_name,
-                "face": data.get("face", ""), "gift_img": gift_img,
+                "avatar": data.get("face", ""), "gift_img": gift_img,
                 "guard_level": data.get("guard_level", 0),
             },
         }
@@ -161,7 +161,7 @@ def handle_message(msg: dict) -> Optional[dict]:
             "extra": {
                 "price": data.get("price", 0), "duration": data.get("time", 0),
                 "background_color": data.get("background_color", ""),
-                "face": user_info.get("face", ""),
+                "avatar": user_info.get("face", ""),
             },
         }
         log.info(f"[SC|¥{data.get('price', 0)}] {user_info.get('uname', '')}: {data.get('message', '')}")

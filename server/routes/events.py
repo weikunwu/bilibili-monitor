@@ -118,12 +118,12 @@ async def get_stats(room_id: Optional[int] = Query(None)):
 
 def _build_gift_users(rows) -> dict:
     users: dict = {}
-    for user_name_r, user_id, extra_json in rows:
+    for user_name, user_id, extra_json in rows:
         extra = json.loads(extra_json)
-        key = user_name_r or str(user_id)
+        key = user_name or str(user_id)
         if key not in users:
             users[key] = {
-                "user_name": user_name_r, "face": extra.get("face", ""),
+                "user_name": user_name, "avatar": extra.get("avatar", ""),
                 "gifts": {}, "gift_coins": {}, "gift_imgs": {}, "gift_actions": {},
                 "guard_level": 0, "total_coin": 0, "gift_ids": {},
             }
@@ -133,8 +133,8 @@ def _build_gift_users(rows) -> dict:
         tc = extra.get("total_coin", 0)
         users[key]["total_coin"] += tc
         users[key]["gift_coins"][gift_name] = users[key]["gift_coins"].get(gift_name, 0) + tc
-        if not users[key]["face"] and extra.get("face"):
-            users[key]["face"] = extra["face"]
+        if not users[key]["avatar"] and extra.get("avatar"):
+            users[key]["avatar"] = extra["avatar"]
         gift_img = extra.get("gift_img", "")
         if gift_img and gift_name not in users[key]["gift_imgs"]:
             users[key]["gift_imgs"][gift_name] = gift_img
@@ -236,10 +236,10 @@ async def gift_gif_card(
 
     avatar_size = 56 * S
     avatar_img = None
-    if u.get("face"):
+    if u.get("avatar"):
         try:
             async with aiohttp.ClientSession(headers=HEADERS) as session:
-                async with session.get(u["face"]) as resp:
+                async with session.get(u["avatar"]) as resp:
                     avatar_img = PILImage.open(io.BytesIO(await resp.read())).convert("RGBA").resize((avatar_size, avatar_size))
         except Exception:
             pass

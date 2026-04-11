@@ -10,7 +10,7 @@ export interface LiveEvent {
 }
 
 export interface EventExtra {
-  face?: string
+  avatar?: string
   total_coin?: number
   coin_type?: string
   price?: number
@@ -32,11 +32,14 @@ export interface Room {
   room_id: number
   real_room_id: number
   streamer_name: string
+  streamer_avatar: string
   room_title: string
+  live_status: number
   ruid: number
   followers: number
   guard_count: number
   area_name: string
+  parent_area_name: string
   announcement: string
   bot_uid: number
 }
@@ -65,7 +68,7 @@ export type ConnectionStatus = 'connected' | 'disconnected' | 'connecting'
 
 export interface GiftUser {
   user_name: string
-  face: string
+  avatar: string
   gifts: Record<string, number>
   gift_imgs: Record<string, string>
   gift_actions: Record<string, string>
