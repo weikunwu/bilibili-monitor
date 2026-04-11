@@ -118,7 +118,11 @@ def handle_message(msg: dict) -> Optional[dict]:
     elif base_cmd == "SEND_GIFT":
         data = msg.get("data", {})
         gift_id = data.get("giftId", 0)
-        gift_img = data.get("img_basic", "")
+        gift_img = data.get("img_basic", "") or data.get("face", "") and ""
+        # Log image-related fields for debugging
+        img_fields = {k: v for k, v in data.items() if "img" in k.lower() or "icon" in k.lower() or "pic" in k.lower() or "face" in k.lower() or "url" in k.lower()}
+        if not data.get("img_basic"):
+            log.info(f"[GIFT_IMG_DEBUG] {data.get('giftName')} id={data.get('giftId')} img_fields={img_fields}")
         blind = data.get("blind_gift") or {}
         blind_name = ""
         if blind and isinstance(blind, dict):
