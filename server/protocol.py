@@ -121,7 +121,7 @@ def handle_message(msg: dict) -> Optional[dict]:
         gift_id = data.get("giftId", 0)
         gift_img = data.get("img_basic", "") or gift_img_cache.get(gift_id, "")
         if not gift_img:
-            log.info(f"[GIFT_IMG_DEBUG] {data.get('giftName')} id={data.get('giftId')} all_keys={list(data.keys())}")
+            log.info(f"[GIFT_IMG_DEBUG] {data.get('giftName')} id={data.get('giftId')} full_data={json.dumps(data, ensure_ascii=False)[:1000]}")
         blind = data.get("blind_gift") or {}
         blind_name = ""
         if blind and isinstance(blind, dict):
