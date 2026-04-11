@@ -51,8 +51,8 @@ export const GiftImageModal = forwardRef<GiftImageModalRef>(function GiftImageMo
       </Modal.Body>
       <Modal.Footer>
         <ButtonGroup>
-          <Button size="sm" appearance="primary" onClick={download}>保存图片</Button>
-          <Button size="sm" appearance="subtle" onClick={() => setIsOpen(false)}>关闭</Button>
+          <Button size="sm" appearance="primary" onClick={download} style={{ minWidth: 80 }}>保存图片</Button>
+          <Button size="sm" appearance="subtle" onClick={() => setIsOpen(false)} style={{ minWidth: 80 }}>关闭</Button>
         </ButtonGroup>
       </Modal.Footer>
     </Modal>

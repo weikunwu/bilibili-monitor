@@ -334,6 +334,7 @@ export function GiftPanel({
               onChangeLimit={(v) => { setPageSize(v); setPage(1) }}
               limitOptions={[20, 50, 100]}
               layout={['limit', '|', 'pager']}
+              locale={{ limit: '{0} 条/页' }}
             />
           </div>
         </div>
