@@ -1,7 +1,8 @@
 @import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@700;800&display=swap');
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f0f1a; color: #e0e0e0; min-height: 100vh; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f0f1a; color: #e0e0e0; height: 100vh; overflow: hidden; }
+#root { display: flex; flex-direction: column; height: 100vh; }
 
 .header { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); padding: 16px 24px; display: flex; align-items: center; gap: 16px; border-bottom: 1px solid #2a2a4a; position: sticky; top: 0; z-index: 100; }
 .header h1 { font-size: 20px; color: #fb7299; margin: 0; }
@@ -15,14 +16,14 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 .dot.connecting { background: #ffc107; animation: pulse 1s infinite; }
 @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
 
-.room-layout { display: flex; height: calc(100vh - 53px); overflow: hidden; }
+.room-layout { display: flex; flex: 1; overflow: hidden; }
 .room-sidebar { flex-shrink: 0; border-right: 1px solid #2a2a4a; width: 200px; }
 .room-sidebar .rs-sidenav { background: transparent; }
 .room-sidebar .rs-nav-item { font-size: 14px; }
-.room-content { flex: 1; overflow: auto; min-width: 0; }
+.room-content { flex: 1; overflow: auto; min-width: 0; display: flex; flex-direction: column; }
 
 
-.events-container { padding: 8px 24px; overflow-y: auto; max-height: calc(100vh - 260px); }
+.events-container { padding: 8px 24px; overflow-y: auto; flex: 1; }
 .date-separator { display: flex; align-items: center; gap: 12px; margin: 12px 0 8px; color: #666; font-size: 12px; }
 .date-separator::before, .date-separator::after { content: ''; flex: 1; height: 1px; background: #2a2a4a; }
 .date-separator span { white-space: nowrap; }

@@ -11,6 +11,7 @@ import { TabSidebar } from './components/TabBar'
 import { EventList } from './components/EventList'
 import { GiftPanel } from './components/GiftPanel'
 import { GuardPanel } from './components/GuardPanel'
+import { SuperChatPanel } from './components/SuperChatPanel'
 import { ToolsPanel } from './components/ToolsPanel'
 import { BlindBoxPanel } from './components/BlindBoxPanel'
 import { AdminPanel } from './components/AdminPanel'
@@ -170,6 +171,15 @@ function RoomPage({ rooms, currentUser }: {
     }
     if (activeTab === 'tools') {
       return <ToolsPanel roomId={roomId} />
+    }
+    if (activeTab === EVENT_SUPERCHAT) {
+      return (
+        <SuperChatPanel
+          events={events}
+          dateRange={dateRange}
+          onQueryRange={handleQueryRange}
+        />
+      )
     }
     if (activeTab === EVENT_GUARD) {
       return (
