@@ -1,13 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Routes, Route, useParams, useNavigate, Navigate } from 'react-router-dom'
-import type { LiveEvent, TabType, Room, Stats } from './types'
-import { fetchRooms, fetchStats, fetchEvents, fetchMe, type CurrentUser } from './api/client'
+import type { LiveEvent, TabType, Room } from './types'
+import { fetchRooms, fetchEvents, fetchMe, type CurrentUser } from './api/client'
 import { useWebSocket } from './hooks/useWebSocket'
 import { useLocalStorage } from './hooks/useLocalStorage'
 import { localToUTC, fmtDate } from './lib/formatters'
 import { MAX_EVENTS, TAB_ALL, TAB_BLINDBOX, TAB_TOOLS, EVENT_DANMAKU, EVENT_GIFT, EVENT_SUPERCHAT, EVENT_GUARD } from './lib/constants'
-import { StatsGrid } from './components/StatsGrid'
-import { TabBar } from './components/TabBar'
+import { TabMenu, TabSidebar } from './components/TabBar'
 
 import { EventList } from './components/EventList'
 import { GiftPanel } from './components/GiftPanel'
@@ -122,7 +121,6 @@ function RoomPage({ rooms, currentUser }: {
   const roomId = Number(roomIdStr)
   const activeTab = (VALID_TABS.includes(tabStr as TabType) ? tabStr : TAB_ALL) as TabType
 
-  const [stats, setStats] = useState<Stats | null>(null)
   const [events, setEvents] = useState<LiveEvent[]>([])
   const [autoScroll, setAutoScroll] = useLocalStorage('autoScroll', true)
   const [dateRange, setDateRange] = useState<DateRange>(todayRange())
@@ -143,19 +141,11 @@ function RoomPage({ rooms, currentUser }: {
 
   useEffect(() => {
     setEvents([])
-    setStats(null)
-
-    fetchStats(roomId).then(setStats).catch(() => {})
-    const interval = setInterval(() => {
-      fetchStats(roomId).then(setStats).catch(() => {})
-    }, 10000)
 
     const now = new Date()
     const from = fmtDate(now) + ' 00:00:00'
     const to = fmtDate(now) + ' 23:59:59'
     fetchEvents(roomId, { timeFrom: localToUTC(from), timeTo: localToUTC(to) }).then(setEvents)
-
-    return () => clearInterval(interval)
   }, [roomId])
 
   function handleQueryRange(from: string, to: string, range: DateRange) {
@@ -219,7 +209,7 @@ function RoomPage({ rooms, currentUser }: {
   return (
     <>
       <div className="header">
-        <Button appearance="subtle" size="xs" onClick={() => navigate('/')}>← 房间</Button>
+        <TabMenu active={activeTab} onChange={handleTabChange} />
         <a className="room-link" href={`https://live.bilibili.com/${roomId}`} target="_blank" rel="noopener noreferrer">
           <h1>{currentRoom?.streamer_name || roomId}</h1>
         </a>
@@ -232,10 +222,10 @@ function RoomPage({ rooms, currentUser }: {
         {currentUser && <ProfileMenu user={currentUser} />}
       </div>
 
-      <StatsGrid stats={stats} />
-      <TabBar active={activeTab} onChange={handleTabChange} />
-
-      {renderContent()}
+      <div className="room-layout">
+        <TabSidebar active={activeTab} onChange={handleTabChange} />
+        <div className="room-content">{renderContent()}</div>
+      </div>
 
       <GiftImageModal ref={giftModalRef} />
     </>
