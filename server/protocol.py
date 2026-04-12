@@ -164,7 +164,7 @@ def handle_message(msg: dict) -> Optional[dict]:
             },
         }
         log.info(f"[SC|¥{data.get('price', 0)}] {user_info.get('uname', '')}: {data.get('message', '')}")
-        log.debug(f"[SC原始数据] {json.dumps(data, ensure_ascii=False)}")
+        log.info(f"[SC原始数据] {json.dumps(data, ensure_ascii=False)}")
         return event
 
     elif base_cmd == "GUARD_BUY":
@@ -178,7 +178,7 @@ def handle_message(msg: dict) -> Optional[dict]:
             "extra": {"guard_level": level, "guard_name": guard_name, "num": data.get("num", 1), "price": data.get("price", 0) / 100, "avatar": data.get("face", "")},
         }
         log.info(f"[上舰] {data.get('username', '')} 开通 {guard_name}")
-        log.debug(f"[上舰原始数据] {json.dumps(data, ensure_ascii=False)}")
+        log.info(f"[上舰原始数据] {json.dumps(data, ensure_ascii=False)}")
         return event
 
     return None
