@@ -349,7 +349,7 @@ export function GiftPanel({
               next
               ellipsis
               boundaryLinks
-              maxButtons={5}
+              maxButtons={isMobile ? 1 : 5}
               total={filtered.length}
               limit={pageSize}
               activePage={page}
