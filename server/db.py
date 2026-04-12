@@ -95,34 +95,9 @@ def init_db():
     conn.close()
 
 
-def seed_rooms(room_ids: list[int]):
-    """将命令行传入的房间号写入 DB 并标记为 active（仅插入不存在的）"""
-    conn = sqlite3.connect(str(DB_PATH))
-    for rid in room_ids:
-        conn.execute(
-            "INSERT OR IGNORE INTO rooms (room_id, active) VALUES (?, 1)",
-            (rid,),
-        )
-        conn.execute("UPDATE rooms SET active=1 WHERE room_id=?", (rid,))
-    conn.commit()
-    conn.close()
 
 
-def get_active_rooms() -> list[int]:
-    conn = sqlite3.connect(str(DB_PATH))
-    rows = conn.execute("SELECT room_id FROM rooms WHERE active=1").fetchall()
-    conn.close()
-    return [r[0] for r in rows]
-
-
-def get_all_rooms() -> list[int]:
-    conn = sqlite3.connect(str(DB_PATH))
-    rows = conn.execute("SELECT room_id FROM rooms").fetchall()
-    conn.close()
-    return [r[0] for r in rows]
-
-
-def get_all_rooms_with_active() -> list[tuple[int, int]]:
+def get_all_rooms() -> list[tuple[int, int]]:
     conn = sqlite3.connect(str(DB_PATH))
     rows = conn.execute("SELECT room_id, active FROM rooms").fetchall()
     conn.close()

@@ -8,7 +8,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from .config import BASE_DIR, log
-from .db import init_db, cleanup_old_events, seed_rooms
+from .db import init_db, cleanup_old_events
 from .auth import AuthMiddleware, get_session_user, get_user_allowed_rooms, handle_login, handle_logout
 from .manager import manager
 from .routes import events, rooms, bot, admin
@@ -88,12 +88,9 @@ async def websocket_endpoint(ws: WebSocket):
 
 # ── Main ──
 
-async def main(room_ids: list[int], port: int):
+async def main(port: int):
     init_db()
     cleanup_old_events()
-
-    if room_ids:
-        seed_rooms(room_ids)
     manager.load_all()
 
     config = uvicorn.Config(app, host="0.0.0.0", port=port, log_level="info")

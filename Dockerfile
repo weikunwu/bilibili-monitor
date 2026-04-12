@@ -23,4 +23,4 @@ COPY --from=frontend /app/frontend/dist frontend/dist
 
 EXPOSE 8080
 
-CMD ["sh", "-c", "python monitor.py --rooms \"${ROOMS:-1920456329,32365569}\" --port 8080"]
+CMD ["python", "monitor.py", "--port", "8080"]

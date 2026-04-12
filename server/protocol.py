@@ -164,6 +164,7 @@ def handle_message(msg: dict) -> Optional[dict]:
             },
         }
         log.info(f"[SC|¥{data.get('price', 0)}] {user_info.get('uname', '')}: {data.get('message', '')}")
+        log.debug(f"[SC原始数据] {json.dumps(data, ensure_ascii=False)}")
         return event
 
     elif base_cmd == "GUARD_BUY":

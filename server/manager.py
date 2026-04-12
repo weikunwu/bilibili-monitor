@@ -7,7 +7,7 @@ from fastapi import WebSocket
 
 from .bili_client import BiliLiveClient
 from .crypto import load_cookies
-from .db import set_room_active, get_all_rooms, get_active_rooms
+from .db import set_room_active, get_all_rooms
 
 
 class RoomManager:
@@ -49,7 +49,7 @@ class RoomManager:
 
     def load_all(self):
         """Load all rooms from DB, creating clients for each."""
-        for rid in get_all_rooms():
+        for rid, _ in get_all_rooms():
             if rid not in self._clients:
                 cookies = load_cookies(rid)
                 client = BiliLiveClient(rid, on_event=self.broadcast, cookies=cookies)
@@ -57,7 +57,7 @@ class RoomManager:
 
     def get_run_tasks(self) -> list:
         """Return coroutines for all active rooms."""
-        active = set(get_active_rooms())
+        active = {rid for rid, act in get_all_rooms() if act}
         return [
             client.run()
             for client in self._clients.values()

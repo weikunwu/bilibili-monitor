@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, Query, Request, HTTPException
 from fastapi.responses import HTMLResponse
 
-from ..db import get_room_commands, save_command_state, get_command, get_all_rooms_with_active
+from ..db import get_room_commands, save_command_state, get_command, get_all_rooms
 from ..auth import require_room_access
 from ..config import ROOM_INFO_API, MASTER_INFO_API
 from ..manager import manager
@@ -56,7 +56,7 @@ async def _fetch_room_info(room_id: int) -> dict:
 async def get_rooms(request: Request):
     import asyncio
     allowed = getattr(request.state, "allowed_rooms", None)
-    db_rooms = get_all_rooms_with_active()
+    db_rooms = get_all_rooms()
 
     # Lazy fetch: ensure room info is loaded for clients that haven't fetched yet
     clients_to_fetch = []
