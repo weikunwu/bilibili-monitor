@@ -129,6 +129,7 @@ function drawCard(
   giftFrame: HTMLCanvasElement,
   W: number,
   H: number,
+  numScale: number = 1,
 ) {
   ctx.clearRect(0, 0, W, H)
   if (tpl) ctx.drawImage(tpl, 0, 0, W, H)
@@ -211,19 +212,24 @@ function drawCard(
 
   ctx.font = 'italic 800 30px "Baloo 2", -apple-system, sans-serif'
   ctx.strokeStyle = '#bc6e2d'
-  ctx.lineWidth = 3
   ctx.lineJoin = 'round'
-  ctx.strokeText('x ', numStartX, numY)
-  ctx.fillStyle = '#fff505'
-  ctx.fillText('x ', numStartX, numY)
-  const xW = ctx.measureText('x ').width
 
-  ctx.lineWidth = 5
-  ctx.strokeText(String(num), numStartX + xW, numY)
+  // Pulse the whole "x N" by scaling around the left anchor.
+  ctx.save()
+  ctx.translate(numStartX, numY)
+  ctx.scale(numScale, numScale)
+  ctx.lineWidth = 3
+  ctx.strokeText('x ', 0, 0)
   ctx.fillStyle = '#fff505'
-  ctx.fillText(String(num), numStartX + xW, numY)
-  ctx.fillText(String(num), numStartX + xW + 0.5, numY)
-  ctx.fillText(String(num), numStartX + xW - 0.5, numY)
+  ctx.fillText('x ', 0, 0)
+  const xW = ctx.measureText('x ').width
+  ctx.lineWidth = 5
+  ctx.strokeText(String(num), xW, 0)
+  ctx.fillStyle = '#fff505'
+  ctx.fillText(String(num), xW, 0)
+  ctx.fillText(String(num), xW + 0.5, 0)
+  ctx.fillText(String(num), xW - 0.5, 0)
+  ctx.restore()
 }
 
 export async function generateGiftGif(u: GiftUser, giftName: string): Promise<Blob | null> {
@@ -251,12 +257,11 @@ export async function generateGiftGif(u: GiftUser, giftName: string): Promise<Bl
   const ctx = canvas.getContext('2d')!
   ctx.scale(dpr, dpr)
 
-  // Gift image region (device pixels). Only this rect changes per frame.
+  // Right-half region (gift image + "x N" count) — updated per frame.
   const gx = Math.round(W * 0.6) * dpr
-  const gh_logical = 72
-  const gy = Math.round((H - gh_logical) / 2) * dpr
-  const gw = gh_logical * dpr
-  const gh = gh_logical * dpr
+  const gy = 0
+  const gw = (W * dpr) - gx
+  const gh = H * dpr
 
   const FW = canvas.width
   const FH = canvas.height
@@ -264,8 +269,13 @@ export async function generateGiftGif(u: GiftUser, giftName: string): Promise<Bl
   // Render every frame upfront (keep alpha — no dark bg fill) so we can collect
   // all gift-region pixels and build ONE shared palette across all frames.
   const renderedFrames: { full: ImageData; patch: ImageData; delay: number }[] = []
-  for (const { canvas: gifFrame, delay } of framesData) {
-    drawCard(ctx, u, giftName, tpl, avatar, guardFrame, gifFrame, W, H)
+  const F = framesData.length
+  for (let i = 0; i < F; i++) {
+    const { canvas: gifFrame, delay } = framesData[i]
+    // Pulse: quick grow then settle back (peak around middle of the loop).
+    const t = i / Math.max(1, F - 1)
+    const numScale = 1 + 0.35 * Math.sin(Math.PI * t)
+    drawCard(ctx, u, giftName, tpl, avatar, guardFrame, gifFrame, W, H, numScale)
     renderedFrames.push({
       full: ctx.getImageData(0, 0, FW, FH),
       patch: ctx.getImageData(gx, gy, gw, gh),
