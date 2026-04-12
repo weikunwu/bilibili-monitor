@@ -181,4 +181,11 @@ def handle_message(msg: dict) -> Optional[dict]:
         log.info(f"[上舰原始数据] {json.dumps(data, ensure_ascii=False)}")
         return event
 
+    elif base_cmd == "USER_TOAST_MSG":
+        # Paired with GUARD_BUY; carries the actual paid price in gold seeds.
+        # We don't emit an event yet — just log the payload for inspection.
+        data = msg.get("data", {})
+        log.info(f"[USER_TOAST_MSG] {json.dumps(data, ensure_ascii=False)}")
+        return None
+
     return None
