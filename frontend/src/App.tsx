@@ -219,7 +219,8 @@ function RoomPage({ rooms, currentUser }: {
   return (
     <>
       <div className="header">
-        <a className="room-link" href={`https://live.bilibili.com/${roomId}`} target="_blank" rel="noopener noreferrer">
+        <a className="room-link" href={`https://live.bilibili.com/${roomId}`} target="_blank" rel="noopener noreferrer"
+          onClick={(e) => { if (!confirm('前往直播间？')) e.preventDefault() }}>
           <h1>{currentRoom?.streamer_name || roomId}</h1>
         </a>
         <span className="room-info">({roomId})</span>
