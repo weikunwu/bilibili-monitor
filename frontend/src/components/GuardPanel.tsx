@@ -1,12 +1,15 @@
-import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { CheckPicker, DateRangePicker, Checkbox, Table, Pagination } from 'rsuite'
 import type { DateRange } from 'rsuite/DateRangePicker'
 
 import type { LiveEvent, GiftUser } from '../types'
-import { formatTime, fixUrl } from '../lib/formatters'
+import { formatTime, fixUrl, fmtDateTime } from '../lib/formatters'
 import { GenerateImageButton } from './GenerateImageButton'
 import { EVENT_GUARD } from '../lib/constants'
+import { PREDEFINED_RANGES } from '../lib/dateRanges'
 import { generateGiftCard } from '../lib/giftCard'
+import { stackCanvasesVertically } from '../lib/canvasUtils'
+import { useIsMobile } from '../hooks/useIsMobile'
 
 const { Column, HeaderCell, Cell } = Table
 
@@ -17,54 +20,6 @@ interface Props {
   dateRange: DateRange
   onQueryRange: (from: string, to: string, range: DateRange) => void
   onShowCardPreview?: (imgUrl: string) => void
-}
-
-function fmtDate(d: Date): string {
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
-}
-
-const predefinedRanges = [
-  {
-    label: '今日',
-    value: () => {
-      const now = new Date()
-      return [new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0), new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59)] as DateRange
-    },
-  },
-  {
-    label: '昨日',
-    value: () => {
-      const now = new Date()
-      return [new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 0, 0, 0), new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59)] as DateRange
-    },
-  },
-  {
-    label: '本周',
-    value: () => {
-      const now = new Date()
-      const day = now.getDay() || 7
-      return [new Date(now.getFullYear(), now.getMonth(), now.getDate() - day + 1, 0, 0, 0), new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59)] as DateRange
-    },
-  },
-  {
-    label: '本月',
-    value: () => {
-      const now = new Date()
-      return [new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0), new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59)] as DateRange
-    },
-  },
-]
-
-function useIsMobile(breakpoint = 768) {
-  const [mobile, setMobile] = useState(() => window.innerWidth <= breakpoint)
-  useEffect(() => {
-    const mq = window.matchMedia(`(max-width: ${breakpoint}px)`)
-    const handler = (e: MediaQueryListEvent) => setMobile(e.matches)
-    mq.addEventListener('change', handler)
-    return () => mq.removeEventListener('change', handler)
-  }, [breakpoint])
-  return mobile
 }
 
 export function GuardPanel({
@@ -144,16 +99,7 @@ export function GuardPanel({
       await generateGiftCard(c, u)
       canvases.push(c)
     }
-    const mergeGap = 0
-    const totalHeight = canvases.reduce((h, c) => h + c.height, 0) + (canvases.length - 1) * mergeGap
-    const maxWidth = Math.max(...canvases.map((c) => c.width))
-    const merged = document.createElement('canvas')
-    merged.width = maxWidth
-    merged.height = totalHeight
-    const ctx = merged.getContext('2d')!
-    let y = 0
-    for (const c of canvases) { ctx.drawImage(c, 0, y); y += c.height + mergeGap }
-    onShowCardPreview?.(merged.toDataURL('image/png'))
+    onShowCardPreview?.(stackCanvasesVertically(canvases).toDataURL('image/png'))
   }, [filtered, checkedKeys])
 
   const handleGenerateUserCard = useCallback(async (userName: string) => {
@@ -210,11 +156,11 @@ export function GuardPanel({
           placeholder="选择时间范围"
           size="sm"
           appearance="subtle"
-          ranges={predefinedRanges}
+          ranges={PREDEFINED_RANGES}
           value={dateRange}
           onChange={(range) => {
             if (!range) return
-            onQueryRange(fmtDate(range[0]), fmtDate(range[1]), range)
+            onQueryRange(fmtDateTime(range[0]), fmtDateTime(range[1]), range)
           }}
           placement="bottomEnd"
           style={{ width: 340 }}

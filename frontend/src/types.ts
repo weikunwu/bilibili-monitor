@@ -70,6 +70,51 @@ export type TabType = 'all' | 'danmu' | 'gift' | 'superchat' | 'guard' | 'blindb
 
 export type ConnectionStatus = 'connected' | 'disconnected' | 'connecting'
 
+export interface GiftGifItem {
+  u: GiftUser
+  giftName: string
+}
+
+export interface BlindBoxGift {
+  count: number
+  value: number
+  img: string
+}
+
+export interface BlindBoxType {
+  name: string
+  count: number
+  cost: number
+  value: number
+  profit: number
+  gifts: BlindBoxGift[]
+}
+
+export interface BlindBoxUser {
+  user_name: string
+  user_id: number
+  avatar: string
+  total_boxes: number
+  total_cost: number
+  total_value: number
+  profit: number
+  boxes: BlindBoxType[]
+}
+
+export interface CurrentUser {
+  user_id: number
+  email: string
+  role: 'admin' | 'user'
+}
+
+export interface UserInfo {
+  id: number
+  email: string
+  role: string
+  created_at: string
+  rooms: number[]
+}
+
 export interface GiftUser {
   user_name: string
   avatar: string

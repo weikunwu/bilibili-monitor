@@ -52,8 +52,11 @@ function ditherFS(rgba: Uint8ClampedArray, w: number, h: number, palette: number
   }
   return out
 }
-import type { GiftUser } from '../types'
+import type { GiftUser, GiftGifItem } from '../types'
 import { GUARD_FRAME_URLS, CARD_TPL_URLS } from './constants'
+import { getProxyImageUrl } from './formatters'
+
+export type { GiftGifItem }
 
 function loadImage(src: string, proxy = false): Promise<HTMLImageElement | null> {
   return new Promise((resolve) => {
@@ -62,17 +65,12 @@ function loadImage(src: string, proxy = false): Promise<HTMLImageElement | null>
     img.crossOrigin = 'anonymous'
     img.onload = () => resolve(img)
     img.onerror = () => resolve(null)
-    if (proxy) {
-      img.src = `/api/proxy-image?url=${encodeURIComponent(src.replace(/^http:\/\//, 'https://'))}`
-    } else {
-      img.src = src
-    }
+    img.src = proxy ? getProxyImageUrl(src) : src
   })
 }
 
 async function fetchGifFrames(gifUrl: string) {
-  const proxied = `/api/proxy-image?url=${encodeURIComponent(gifUrl.replace(/^http:\/\//, 'https://'))}`
-  const resp = await fetch(proxied)
+  const resp = await fetch(getProxyImageUrl(gifUrl))
   const buf = await resp.arrayBuffer()
   const gif = parseGIF(buf)
   const frames = decompressFrames(gif, true)
@@ -232,10 +230,6 @@ function drawCard(
   ctx.restore()
 }
 
-export interface GiftGifItem {
-  u: GiftUser
-  giftName: string
-}
 
 type RowRes = {
   u: GiftUser

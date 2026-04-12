@@ -5,6 +5,8 @@ import type { DateRange } from 'rsuite/DateRangePicker'
 import type { LiveEvent, TabType } from '../types'
 import { EventItem } from './EventItem'
 import { TAB_ALL, EVENT_DANMU } from '../lib/constants'
+import { PREDEFINED_RANGES } from '../lib/dateRanges'
+import { fmtDateTime } from '../lib/formatters'
 
 interface Props {
   events: LiveEvent[]
@@ -34,43 +36,6 @@ function formatDateLabel(dateStr: string): string {
   if (dateStr === yesterdayStr) return `昨天 ${dateStr}`
   return dateStr
 }
-
-function fmtDate(d: Date): string {
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
-}
-
-const predefinedRanges = [
-  {
-    label: '今日',
-    value: () => {
-      const now = new Date()
-      return [new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0), new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59)] as DateRange
-    },
-  },
-  {
-    label: '昨日',
-    value: () => {
-      const now = new Date()
-      return [new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 0, 0, 0), new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59)] as DateRange
-    },
-  },
-  {
-    label: '本周',
-    value: () => {
-      const now = new Date()
-      const day = now.getDay() || 7
-      return [new Date(now.getFullYear(), now.getMonth(), now.getDate() - day + 1, 0, 0, 0), new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59)] as DateRange
-    },
-  },
-  {
-    label: '本月',
-    value: () => {
-      const now = new Date()
-      return [new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0), new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59)] as DateRange
-    },
-  },
-]
 
 export function EventList({
   events, activeTab, autoScroll, dateRange, showAutoScroll = true,
@@ -131,11 +96,11 @@ export function EventList({
           placeholder="选择时间范围"
           size="sm"
           appearance="subtle"
-          ranges={predefinedRanges}
+          ranges={PREDEFINED_RANGES}
           value={dateRange}
           onChange={(range) => {
             if (!range) return
-            onQueryRange(fmtDate(range[0]), fmtDate(range[1]), range)
+            onQueryRange(fmtDateTime(range[0]), fmtDateTime(range[1]), range)
           }}
           placement="bottomEnd"
           style={{ width: 340 }}

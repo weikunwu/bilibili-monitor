@@ -1,4 +1,9 @@
-import type { Room, Stats, LiveEvent, Command, GiftUser } from '../types'
+import type {
+  Room, Stats, LiveEvent, Command, GiftUser,
+  CurrentUser, UserInfo, BlindBoxUser,
+} from '../types'
+
+export type { CurrentUser, UserInfo, BlindBoxUser, BlindBoxGift, BlindBoxType } from '../types'
 
 export async function fetchRooms(): Promise<Room[]> {
   const res = await fetch('/api/rooms')
@@ -63,24 +68,10 @@ export async function authLogout(): Promise<void> {
   await fetch('/api/logout', { method: 'POST' })
 }
 
-export interface CurrentUser {
-  user_id: number
-  email: string
-  role: 'admin' | 'user'
-}
-
 export async function fetchMe(): Promise<CurrentUser | null> {
   const res = await fetch('/api/me')
   if (!res.ok) return null
   return res.json()
-}
-
-export interface UserInfo {
-  id: number
-  email: string
-  role: string
-  created_at: string
-  rooms: number[]
 }
 
 export async function fetchUsers(): Promise<UserInfo[]> {
@@ -160,32 +151,6 @@ export async function fetchGiftSummary(
   if (blindOnly) url += '&blind_only=true'
   const res = await fetch(url)
   return res.json()
-}
-
-export interface BlindBoxGift {
-  count: number
-  value: number
-  img: string
-}
-
-export interface BlindBoxType {
-  name: string
-  count: number
-  cost: number
-  value: number
-  profit: number
-  gifts: BlindBoxGift[]
-}
-
-export interface BlindBoxUser {
-  user_name: string
-  user_id: number
-  avatar: string
-  total_boxes: number
-  total_cost: number
-  total_value: number
-  profit: number
-  boxes: BlindBoxType[]
 }
 
 export async function fetchBlindBoxSummary(

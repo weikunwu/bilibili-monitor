@@ -19,6 +19,14 @@ export function fmtDate(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
+export function fmtDateTime(d: Date): string {
+  return `${fmtDate(d)} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+}
+
+export function getProxyImageUrl(url: string): string {
+  return `/api/proxy-image?url=${encodeURIComponent(fixUrl(url))}`
+}
+
 export function fmtUTC(d: Date): string {
   return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`
 }

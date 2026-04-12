@@ -1,5 +1,6 @@
 import type { GiftUser } from '../types'
 import { GUARD_FRAME_URLS, CARD_TPL_URLS } from './constants'
+import { getProxyImageUrl } from './formatters'
 
 function loadImage(src: string, proxy = false): Promise<HTMLImageElement | null> {
   return new Promise((resolve) => {
@@ -9,11 +10,7 @@ function loadImage(src: string, proxy = false): Promise<HTMLImageElement | null>
     img.onload = () => resolve(img)
     img.onerror = () => resolve(null)
     // B站 CDN 图片通过后端代理加载，解决 CORS 问题
-    if (proxy) {
-      img.src = `/api/proxy-image?url=${encodeURIComponent(src.replace(/^http:\/\//, 'https://'))}`
-    } else {
-      img.src = src
-    }
+    img.src = proxy ? getProxyImageUrl(src) : src
   })
 }
 

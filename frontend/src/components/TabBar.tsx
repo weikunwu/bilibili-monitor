@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react'
 import { Sidenav, Nav } from 'rsuite'
 import { LayoutList, MessageSquareText, Gift, Anchor, Megaphone, Box, Wrench } from 'lucide-react'
 import type { TabType } from '../types'
 import { TAB_ALL, EVENT_DANMU, EVENT_GIFT, EVENT_SUPERCHAT, EVENT_GUARD, TAB_BLINDBOX, TAB_TOOLS } from '../lib/constants'
+import { useIsMobile } from '../hooks/useIsMobile'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const TAB_LIST: { type: TabType; label: string; icon: any }[] = [
@@ -14,17 +14,6 @@ const TAB_LIST: { type: TabType; label: string; icon: any }[] = [
   { type: TAB_BLINDBOX, label: '盲盒统计', icon: <Box size={16} /> },
   { type: TAB_TOOLS, label: '主播工具', icon: <Wrench size={16} /> },
 ]
-
-function useIsMobile(breakpoint = 768) {
-  const [mobile, setMobile] = useState(() => window.innerWidth <= breakpoint)
-  useEffect(() => {
-    const mq = window.matchMedia(`(max-width: ${breakpoint}px)`)
-    const handler = (e: MediaQueryListEvent) => setMobile(e.matches)
-    mq.addEventListener('change', handler)
-    return () => mq.removeEventListener('change', handler)
-  }, [breakpoint])
-  return mobile
-}
 
 interface Props {
   active: TabType

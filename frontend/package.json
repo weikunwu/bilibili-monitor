@@ -10,7 +10,6 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "dayjs": "^1.11.20",
     "gifenc": "^1.0.3",
     "gifuct-js": "^2.1.2",
     "lucide-react": "^1.8.0",
