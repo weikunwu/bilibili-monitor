@@ -15,8 +15,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 .dot.connecting { background: #ffc107; animation: pulse 1s infinite; }
 @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
 
-.room-layout { display: flex; flex: 1; overflow: hidden; }
-.room-sidebar { flex-shrink: 0; border-right: 1px solid #2a2a4a; }
+.room-layout { display: flex; height: calc(100vh - 53px); overflow: hidden; }
+.room-sidebar { flex-shrink: 0; border-right: 1px solid #2a2a4a; width: 160px; }
 .room-sidebar .rs-sidenav { background: transparent; }
 .room-sidebar .rs-nav-item { font-size: 14px; }
 .room-content { flex: 1; overflow: auto; min-width: 0; }
@@ -195,6 +195,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
   .blind-box-panel { padding: 12px; }
   .blind-box-controls { gap: 8px; }
   .blind-box-type { margin-left: 0; }
+
+  .room-sidebar { width: 56px; }
 
   .gift-table-wrap { padding: 0 12px 12px; }
   .gift-actions { flex-direction: column; }
