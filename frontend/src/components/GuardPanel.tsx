@@ -158,6 +158,33 @@ export function GuardPanel({
     onShowCardPreview?.(`${names.join(', ')} - 上舰截图`, url)
   }, [filtered, checkedKeys])
 
+  const handleGenerateUserCard = useCallback(async (userName: string) => {
+    const userEvents = guardEvents.filter((ev) => ev.user_name === userName)
+    if (userEvents.length === 0) return
+    const u: GiftUser = {
+      user_name: userName, avatar: '',
+      gifts: {}, gift_imgs: {}, gift_actions: {}, gift_coins: {}, gift_ids: {},
+      guard_level: 0, total_coin: 0,
+    }
+    for (const ev of userEvents) {
+      const extra = ev.extra || {}
+      if (!u.avatar && extra.avatar) u.avatar = extra.avatar
+      if (extra.guard_level && extra.guard_level > u.guard_level) u.guard_level = extra.guard_level
+      const name = extra.guard_name || ev.content || ''
+      const num = extra.num || 1
+      const coin = extra.price || 0
+      u.gifts[name] = (u.gifts[name] || 0) + num
+      u.total_coin += coin
+      if (!u.gift_actions[name]) u.gift_actions[name] = '开通'
+      const level = extra.guard_level || 3
+      u.gift_coins[name] = level === 1 ? 10000 : level === 2 ? 1000 : 0
+    }
+    try { await document.fonts.load('italic 800 30px "Baloo 2"') } catch { /* ok */ }
+    const c = document.createElement('canvas')
+    await generateGiftCard(c, u)
+    onShowCardPreview?.(`${userName} - 今日大航海`, c.toDataURL('image/png'))
+  }, [guardEvents])
+
   return (
     <div className="gift-panel">
       <div className="event-filter">
@@ -265,6 +292,19 @@ export function GuardPanel({
                 }}
               </Cell>
             </Column>
+
+            {!isMobile && (
+              <Column flexGrow={2}>
+                <HeaderCell>操作</HeaderCell>
+                <Cell>
+                  {(rowData: LiveEvent) => rowData.user_name ? (
+                    <GenerateImageButton size="sm" onClick={() => handleGenerateUserCard(rowData.user_name!)}>
+                      今日大航海
+                    </GenerateImageButton>
+                  ) : null}
+                </Cell>
+              </Column>
+            )}
 
             {!isMobile && (
               <Column flexGrow={1} align="right">

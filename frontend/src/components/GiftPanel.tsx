@@ -73,6 +73,7 @@ export function GiftPanel({
 }: Props) {
   const isMobile = useIsMobile()
   const [selectedUsers, setSelectedUsers] = useState<string[]>([])
+  const [selectedGifts, setSelectedGifts] = useState<string[]>([])
   const [checkedKeys, setCheckedKeys] = useState<Set<string>>(new Set())
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
@@ -86,13 +87,20 @@ export function GiftPanel({
     return Array.from(names).filter(Boolean).map((n) => ({ label: n, value: n }))
   }, [giftEvents])
 
+  const giftNameOptions = useMemo(() => {
+    const names = new Set(giftEvents.map((ev) => ev.extra?.gift_name || ''))
+    return Array.from(names).filter(Boolean).map((n) => ({ label: n, value: n }))
+  }, [giftEvents])
+
   const indexed = useMemo(() =>
     giftEvents.map((ev, i) => ({ ...ev, _key: `${ev.timestamp}-${i}` })),
     [giftEvents])
 
-  const filtered = selectedUsers.length > 0
-    ? indexed.filter((ev) => selectedUsers.includes(ev.user_name || ''))
-    : indexed
+  const filtered = indexed.filter((ev) => {
+    if (selectedUsers.length > 0 && !selectedUsers.includes(ev.user_name || '')) return false
+    if (selectedGifts.length > 0 && !selectedGifts.includes(ev.extra?.gift_name || '')) return false
+    return true
+  })
 
   const totalGold = filtered.reduce((s, ev) => s + (ev.extra?.total_coin || 0), 0)
   const paged = filtered.slice((page - 1) * pageSize, page * pageSize)
@@ -189,6 +197,18 @@ export function GiftPanel({
             value={selectedUsers}
             onChange={setSelectedUsers}
             placeholder="筛选用户"
+            size="sm"
+            searchable
+            countable
+            w={200}
+          />
+        )}
+        {giftNameOptions.length > 0 && (
+          <CheckPicker
+            data={giftNameOptions}
+            value={selectedGifts}
+            onChange={setSelectedGifts}
+            placeholder="筛选礼物"
             size="sm"
             searchable
             countable
