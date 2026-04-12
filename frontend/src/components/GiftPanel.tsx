@@ -347,6 +347,9 @@ export function GiftPanel({
               size="xs"
               prev
               next
+              ellipsis
+              boundaryLinks
+              maxButtons={5}
               total={filtered.length}
               limit={pageSize}
               activePage={page}

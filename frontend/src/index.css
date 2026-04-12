@@ -15,9 +15,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 .dot.connecting { background: #ffc107; animation: pulse 1s infinite; }
 @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
 
-.header .rs-dropdown { display: none; }
 .room-layout { display: flex; flex: 1; overflow: hidden; }
-.room-sidebar { width: 120px; flex-shrink: 0; border-right: 1px solid #2a2a4a; }
+.room-sidebar { flex-shrink: 0; border-right: 1px solid #2a2a4a; }
 .room-sidebar .rs-sidenav { background: transparent; }
 .room-sidebar .rs-nav-item { font-size: 14px; }
 .room-content { flex: 1; overflow: auto; min-width: 0; }
@@ -168,8 +167,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
   .login-btn { font-size: 11px; padding: 4px 10px; }
   .status { font-size: 11px; }
 
-  .header .rs-dropdown { display: inline-flex; }
-  .room-sidebar { display: none; }
 
   .event-filter { padding: 6px 12px; gap: 8px; flex-wrap: wrap; }
   .event-filter .rs-picker-daterange { width: 100% !important; }

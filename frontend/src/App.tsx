@@ -6,7 +6,7 @@ import { useWebSocket } from './hooks/useWebSocket'
 import { useLocalStorage } from './hooks/useLocalStorage'
 import { localToUTC, fmtDate } from './lib/formatters'
 import { MAX_EVENTS, TAB_ALL, TAB_BLINDBOX, TAB_TOOLS, EVENT_DANMAKU, EVENT_GIFT, EVENT_SUPERCHAT, EVENT_GUARD } from './lib/constants'
-import { TabMenu, TabSidebar } from './components/TabBar'
+import { TabSidebar } from './components/TabBar'
 
 import { EventList } from './components/EventList'
 import { GiftPanel } from './components/GiftPanel'
@@ -209,7 +209,6 @@ function RoomPage({ rooms, currentUser }: {
   return (
     <>
       <div className="header">
-        <TabMenu active={activeTab} onChange={handleTabChange} />
         <a className="room-link" href={`https://live.bilibili.com/${roomId}`} target="_blank" rel="noopener noreferrer">
           <h1>{currentRoom?.streamer_name || roomId}</h1>
         </a>
