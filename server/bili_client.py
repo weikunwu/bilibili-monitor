@@ -11,7 +11,7 @@ from .config import (
     FINGER_SPI_API, NAV_API, SEND_GIFT_API, SEND_MSG_API, WS_OP_AUTH, WS_OP_HEARTBEAT,
     PERIOD_LABELS, DANMU_PERIOD_MAP, log,
 )
-from .protocol import make_packet, parse_packets, handle_message
+from .protocol import make_packet, parse_packets, handle_message, build_guard_event
 from .bili_api import get_wbi_key, wbi_sign
 from .db import save_event, get_command, get_room_save_danmu
 
@@ -40,6 +40,10 @@ class BiliLiveClient:
         self._ws = None
         self._reconnect = False
         self._info_fetched = False
+        # GUARD_BUY and USER_TOAST_MSG arrive as a pair; buffer the first
+        # seen for up to GUARD_PAIR_TIMEOUT seconds so they can be merged
+        # into a single guard event.
+        self._pending_guard: dict[int, dict] = {}  # uid -> {guard_buy?, toast?, ts}
 
     def _make_cookie_header(self) -> dict:
         headers = dict(HEADERS)
@@ -128,6 +132,52 @@ class BiliLiveClient:
                     return {"token": d["token"], "host_list": d.get("host_server_list", [])}
         return None
 
+    # Pair timeout for guard events; after this the half we have is flushed
+    # alone (without price/avatar enrichment depending on which half arrived).
+    GUARD_PAIR_TIMEOUT = 2.0
+
+    def _absorb_guard_partial(self, partial: dict):
+        """Handle a {_partial: guard_buy|user_toast, data} returned by
+        handle_message. Either completes a pending pair (return event) or
+        stores this half in the buffer (return None)."""
+        kind = partial["_partial"]
+        data = partial["data"]
+        uid = data.get("uid", 0)
+        if not uid:
+            return None
+        pending = self._pending_guard.pop(uid, None)
+        if pending:
+            guard_buy = data if kind == "guard_buy" else pending.get("guard_buy")
+            toast = data if kind == "user_toast" else pending.get("toast")
+            return build_guard_event(guard_buy=guard_buy, toast=toast)
+        entry = {"ts": time.time()}
+        entry["guard_buy" if kind == "guard_buy" else "toast"] = data
+        self._pending_guard[uid] = entry
+        return None
+
+    async def _flush_pending_guards(self):
+        """Emit buffered guard entries whose partner never arrived. A
+        guard_buy-only event loses its paid price; a toast-only event
+        loses its avatar — both are still useful."""
+        while self._running:
+            await asyncio.sleep(0.5)
+            now = time.time()
+            for uid in list(self._pending_guard.keys()):
+                entry = self._pending_guard.get(uid)
+                if not entry or now - entry["ts"] < self.GUARD_PAIR_TIMEOUT:
+                    continue
+                self._pending_guard.pop(uid, None)
+                event = build_guard_event(
+                    guard_buy=entry.get("guard_buy"),
+                    toast=entry.get("toast"),
+                )
+                event["room_id"] = self.real_room_id
+                try:
+                    save_event(event)
+                    await self.on_event(event)
+                except Exception as ex:
+                    log.warning(f"[guard flush] emit failed: {ex}")
+
     def request_reconnect(self):
         self._reconnect = True
         if self._ws and not self._ws.closed:
@@ -135,6 +185,13 @@ class BiliLiveClient:
 
     async def run(self):
         self._running = True
+        flush_task = asyncio.create_task(self._flush_pending_guards())
+        try:
+            await self._run_loop()
+        finally:
+            flush_task.cancel()
+
+    async def _run_loop(self):
         while self._running:
             self._reconnect = False
             try:
@@ -205,6 +262,13 @@ class BiliLiveClient:
                                     self.live_status = 0
                                     continue
                                 event = handle_message(pkt)
+                                # Guard events arrive split across GUARD_BUY +
+                                # USER_TOAST_MSG — buffer one half until the
+                                # partner arrives, then emit the merged event.
+                                if isinstance(event, dict) and event.get("_partial"):
+                                    event = self._absorb_guard_partial(event)
+                                    if event is None:
+                                        continue
                                 if event:
                                     event["room_id"] = self.real_room_id
                                     skip_danmu = event["event_type"] == "danmu" and not get_room_save_danmu(self.room_id)

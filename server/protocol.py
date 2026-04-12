@@ -12,6 +12,23 @@ from .config import (
     PROTO_RAW_JSON, PROTO_ZLIB, PROTO_BROTLI, GUARD_LEVELS, log,
 )
 
+# level (1=总督 2=提督 3=舰长) → (gift_img, gift_gif) for 舰长/提督/总督一号
+# from live giftPanel/giftConfig. These URLs are stable across rooms.
+GUARD_ASSETS: dict[int, tuple[str, str]] = {
+    1: (
+        "https://s1.hdslb.com/bfs/live/52e00ca134a8a41f08b203eb5886875507e4b44e.png",
+        "https://i0.hdslb.com/bfs/live/fdd8c37dc08b4a640db4895675552bc8f1550f17.gif",
+    ),
+    2: (
+        "https://s1.hdslb.com/bfs/live/af5b620387a20a8b65b9bd6fc47cf9058a8bbd85.png",
+        "https://i0.hdslb.com/bfs/live/9661cb7dee9a6cb09d6041745242974c01cde5df.gif",
+    ),
+    3: (
+        "https://s1.hdslb.com/bfs/live/a97726f370a5aa6d5e6100b042bee848efc560f6.png",
+        "https://i0.hdslb.com/bfs/live/59e40fab772acd69a273b764cd5d5b1dbab9839c.gif",
+    ),
+}
+
 
 def make_packet(body: bytes, operation: int) -> bytes:
     header = struct.pack(
@@ -169,23 +186,44 @@ def handle_message(msg: dict) -> Optional[dict]:
 
     elif base_cmd == "GUARD_BUY":
         data = msg.get("data", {})
-        level = data.get("guard_level", 3)
-        guard_name = GUARD_LEVELS.get(level, "舰长")
-        event = {
-            "timestamp": now, "event_type": "guard",
-            "user_name": data.get("username", ""), "user_id": data.get("uid", 0),
-            "content": f"开通 {guard_name}",
-            "extra": {"guard_level": level, "guard_name": guard_name, "num": data.get("num", 1), "price": data.get("price", 0) / 100, "avatar": data.get("face", "")},
-        }
-        log.info(f"[上舰] {data.get('username', '')} 开通 {guard_name}")
+        log.info(f"[上舰] {data.get('username', '')} 开通 {GUARD_LEVELS.get(data.get('guard_level', 3), '舰长')}")
         log.info(f"[上舰原始数据] {json.dumps(data, ensure_ascii=False)}")
-        return event
+        # Partial: caller merges with paired USER_TOAST_MSG via GuardPairer.
+        return {"_partial": "guard_buy", "data": data}
 
     elif base_cmd == "USER_TOAST_MSG":
-        # Paired with GUARD_BUY; carries the actual paid price in gold seeds.
-        # We don't emit an event yet — just log the payload for inspection.
         data = msg.get("data", {})
         log.info(f"[USER_TOAST_MSG] {json.dumps(data, ensure_ascii=False)}")
-        return None
+        return {"_partial": "user_toast", "data": data}
 
     return None
+
+
+def build_guard_event(guard_buy: Optional[dict], toast: Optional[dict]) -> dict:
+    """Merge GUARD_BUY (avatar, level, username) and USER_TOAST_MSG (paid
+    price, op_type) into a single guard event. Either side may be None if
+    the partner timed out."""
+    src = toast or guard_buy or {}
+    level = (guard_buy or {}).get("guard_level") or (toast or {}).get("guard_level") or 3
+    guard_name = GUARD_LEVELS.get(level, "舰长")
+    img, gif = GUARD_ASSETS.get(level, ("", ""))
+    extra: dict = {
+        "guard_level": level,
+        "guard_name": guard_name,
+        "num": src.get("num", 1),
+        "avatar": (guard_buy or {}).get("face", ""),
+        "gift_img": img,
+        "gift_gif": gif,
+    }
+    if toast:
+        extra["price"] = toast.get("price", 0) / 1000  # gold seeds → yuan
+        if "op_type" in toast:
+            extra["op_type"] = toast["op_type"]
+    return {
+        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+        "event_type": "guard",
+        "user_name": src.get("username", ""),
+        "user_id": src.get("uid", 0),
+        "content": f"开通 {guard_name}",
+        "extra": extra,
+    }
