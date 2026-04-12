@@ -26,7 +26,7 @@ export async function generateGiftCard(canvas: HTMLCanvasElement, u: GiftUser) {
   const CARD_H = 74
   const GAP = 6
   const PAD_TOP = 6
-  const H = PAD_TOP + gifts.length * (CARD_H + GAP) - GAP + 2
+  const H = PAD_TOP + gifts.length * (CARD_H + GAP) - GAP
 
   canvas.width = W * dpr
   canvas.height = H * dpr
