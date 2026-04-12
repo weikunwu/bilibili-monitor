@@ -12,7 +12,7 @@ from .config import (
     PERIOD_LABELS, DANMU_PERIOD_MAP, log,
 )
 from .protocol import make_packet, parse_packets, handle_message, build_guard_event
-from .bili_api import get_wbi_key, wbi_sign
+from .bili_api import get_wbi_key, wbi_sign, fetch_user_avatar
 from .db import save_event, get_command, get_room_save_danmu
 
 
@@ -171,6 +171,10 @@ class BiliLiveClient:
                     guard_buy=entry.get("guard_buy"),
                     toast=entry.get("toast"),
                 )
+                if not event["extra"].get("avatar"):
+                    event["extra"]["avatar"] = await fetch_user_avatar(
+                        event.get("user_id", 0), self._make_cookie_header()
+                    )
                 event["room_id"] = self.real_room_id
                 try:
                     save_event(event)
@@ -270,6 +274,10 @@ class BiliLiveClient:
                                     if event is None:
                                         continue
                                 if event:
+                                    if event["event_type"] == "guard" and not event["extra"].get("avatar"):
+                                        event["extra"]["avatar"] = await fetch_user_avatar(
+                                            event.get("user_id", 0), self._make_cookie_header()
+                                        )
                                     event["room_id"] = self.real_room_id
                                     skip_danmu = event["event_type"] == "danmu" and not get_room_save_danmu(self.room_id)
                                     if not skip_danmu:

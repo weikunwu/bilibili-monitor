@@ -42,5 +42,37 @@ def wbi_sign(params: dict, wbi_key: str) -> dict:
     return params
 
 
+# uid -> avatar cache, small + process-local. B站 face URLs don't change
+# often, so caching avoids hammering the user-info API on repeat guards.
+_avatar_cache: dict[int, str] = {}
+
+
+async def fetch_user_avatar(uid: int, headers: dict) -> str:
+    """Resolve a user's avatar URL by uid. Returns '' on any failure."""
+    if not uid:
+        return ""
+    cached = _avatar_cache.get(uid)
+    if cached is not None:
+        return cached
+    try:
+        wbi_key = await get_wbi_key(headers)
+        if not wbi_key:
+            return ""
+        params = wbi_sign({"mid": uid}, wbi_key)
+        url = "https://api.bilibili.com/x/space/wbi/acc/info?" + urlencode(params)
+        async with aiohttp.ClientSession(headers=headers) as session:
+            async with session.get(url) as resp:
+                data = await resp.json(content_type=None)
+        if data.get("code") != 0:
+            log.info(f"[avatar] uid={uid} code={data.get('code')} msg={data.get('message')}")
+            return ""
+        face = data.get("data", {}).get("face", "") or ""
+        _avatar_cache[uid] = face
+        return face
+    except Exception as ex:
+        log.info(f"[avatar] uid={uid} err={ex}")
+        return ""
+
+
 
 

@@ -224,6 +224,6 @@ def build_guard_event(guard_buy: Optional[dict], toast: Optional[dict]) -> dict:
         "event_type": "guard",
         "user_name": src.get("username", ""),
         "user_id": src.get("uid", 0),
-        "content": f"开通 {guard_name}",
+        "content": "开通",
         "extra": extra,
     }
