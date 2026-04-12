@@ -22,10 +22,10 @@ class BiliLiveClient:
         self.real_room_id = room_id
         self.on_event = on_event
         self.cookies = cookies or {}
-        self.uid = int(self.cookies.get("DedeUserID", 0))
+        self.bot_uid = int(self.cookies.get("DedeUserID", 0))
         self.bot_name = ""
-        self.ruid = 0
         self.room_title = ""
+        self.streamer_uid = 0
         self.streamer_name = ""
         self.streamer_avatar = ""
         self.live_status = 0
@@ -64,9 +64,9 @@ class BiliLiveClient:
                 async with session.get(NAV_API) as resp:
                     data = await resp.json(content_type=None)
                     if data.get("code") == 0:
-                        self.uid = data["data"].get("mid", 0)
+                        self.bot_uid = data["data"].get("mid", 0)
                         self.bot_name = data["data"].get("uname", "")
-                        log.info(f"已登录用户: {self.bot_name} (UID: {self.uid})")
+                        log.info(f"已登录用户: {self.bot_name} (UID: {self.bot_uid})")
 
     async def get_room_info(self):
         async with aiohttp.ClientSession(headers=self._make_cookie_header()) as session:
@@ -75,18 +75,18 @@ class BiliLiveClient:
                 if data.get("code") == 0:
                     info = data["data"]
                     self.real_room_id = info.get("room_id", self.room_id)
-                    self.ruid = info.get("uid", 0)
+                    self.streamer_uid = info.get("uid", 0)
                     self.room_title = info.get("title", "")
                     self.live_status = info.get("live_status", 0)
                     self.area_name = info.get("area_name", "")
                     self.parent_area_name = info.get("parent_area_name", "")
                     self.announcement = info.get("description", "")
-                    log.info(f"房间信息: {self.room_title} (真实ID: {self.real_room_id}, 主播UID: {self.ruid})")
-                    if self.ruid:
+                    log.info(f"房间信息: {self.room_title} (真实ID: {self.real_room_id}, 主播UID: {self.streamer_uid})")
+                    if self.streamer_uid:
                         try:
                             async with session.get(
                                 MASTER_INFO_API,
-                                params={"uid": self.ruid}
+                                params={"uid": self.streamer_uid}
                             ) as name_resp:
                                 name_data = await name_resp.json(content_type=None)
                                 if name_data.get("code") == 0:
@@ -230,7 +230,7 @@ class BiliLiveClient:
             async with session.ws_connect(ws_url) as ws:
                 self._ws = ws
                 auth_body = json.dumps({
-                    "uid": self.uid, "roomid": self.real_room_id,
+                    "uid": self.bot_uid, "roomid": self.real_room_id,
                     "protover": 3, "buvid": self.buvid,
                     "platform": "web", "type": 2, "key": token,
                 }).encode()
@@ -289,13 +289,13 @@ class BiliLiveClient:
                                         uname = event.get("user_name", "")
                                         content = (event.get("content") or "").strip()
                                         # 主播指令
-                                        if uid == self.ruid:
+                                        if uid == self.streamer_uid:
                                             cmd_cfg = get_command(self.real_room_id, "auto_gift")
                                             if cmd_cfg and cmd_cfg["enabled"] and content == cmd_cfg["config"]["trigger"]:
                                                 asyncio.create_task(self.send_gift(cmd_cfg["config"]))
-                                        # 盲盒查询指令
-                                        if content in DANMU_PERIOD_MAP:
-                                            is_streamer = uid == self.ruid
+                                        # 盲盒查询指令 (skip when no bot bound — we can't reply anyway)
+                                        if content in DANMU_PERIOD_MAP and self.bot_uid:
+                                            is_streamer = uid == self.streamer_uid
                                             asyncio.create_task(self.handle_blind_box_query(
                                                 None if is_streamer else uname,
                                                 DANMU_PERIOD_MAP[content],
@@ -306,7 +306,7 @@ class BiliLiveClient:
                     hb_task.cancel()
 
     async def send_gift(self, config: dict):
-        if not self.cookies.get("SESSDATA") or not self.ruid:
+        if not self.cookies.get("SESSDATA") or not self.streamer_uid:
             log.warning("未绑定机器人或无主播信息，无法自动送礼")
             return
         gift_id = config.get("gift_id", 31036)
@@ -314,7 +314,7 @@ class BiliLiveClient:
         gift_price = config.get("gift_price", 100)
         csrf = self.cookies.get("bili_jct", "")
         payload = {
-            "uid": self.uid, "gift_id": gift_id, "ruid": self.ruid,
+            "uid": self.bot_uid, "gift_id": gift_id, "ruid": self.streamer_uid,
             "gift_num": gift_num, "coin_type": "gold", "platform": "pc",
             "biz_code": "Live", "biz_id": self.real_room_id,
             "rnd": int(time.time()), "price": gift_price,

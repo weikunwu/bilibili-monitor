@@ -37,7 +37,7 @@ export interface Room {
   streamer_avatar: string
   room_title: string
   live_status: number
-  ruid: number
+  streamer_uid: number
   followers: number
 
   area_name: string
@@ -77,6 +77,7 @@ export interface GiftGifItem {
 }
 
 export interface BlindBoxGift {
+  name: string
   count: number
   value: number
   img: string

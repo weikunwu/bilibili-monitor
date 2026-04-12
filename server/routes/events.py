@@ -284,7 +284,7 @@ async def blind_box_summary(
         users[key]["boxes"][box_key]["value"] += price * num
 
         if gift_name not in users[key]["boxes"][box_key]["gifts"]:
-            users[key]["boxes"][box_key]["gifts"][gift_name] = {"count": 0, "value": 0, "img": extra.get("gift_img", "")}
+            users[key]["boxes"][box_key]["gifts"][gift_name] = {"name": gift_name, "count": 0, "value": 0, "img": extra.get("gift_img", "")}
         users[key]["boxes"][box_key]["gifts"][gift_name]["count"] += num
         users[key]["boxes"][box_key]["gifts"][gift_name]["value"] += price * num
 

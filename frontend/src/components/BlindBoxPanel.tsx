@@ -90,8 +90,8 @@ export function BlindBoxPanel({ roomId }: Props) {
               </div>
               <div className="blind-box-gifts">
                 {box.gifts.map((gift, i) => (
-                  <div key={i} className="blind-box-gift">
-                    {gift.img && <img className="blind-box-gift-img" src={gift.img} referrerPolicy="no-referrer" alt="" />}
+                  <div key={i} className="blind-box-gift" title={gift.name}>
+                    {gift.img && <img className="blind-box-gift-img" src={gift.img} referrerPolicy="no-referrer" alt={gift.name} />}
                     <span className="blind-box-gift-count">x{gift.count}</span>
                     <span className="blind-box-gift-value">{formatBattery(gift.value)}</span>
                   </div>

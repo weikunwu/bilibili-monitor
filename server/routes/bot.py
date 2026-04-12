@@ -22,7 +22,7 @@ async def bot_status(room_id: int = Query(...), _=Depends(require_room_access)):
     if not client:
         return {"logged_in": False, "uid": 0}
     logged_in = bool(client.cookies.get("SESSDATA"))
-    return {"logged_in": logged_in, "uid": client.uid}
+    return {"logged_in": logged_in, "uid": client.bot_uid}
 
 
 @router.post("/api/bot/logout")
@@ -34,7 +34,7 @@ async def bot_logout(room_id: int = Query(...), _=Depends(require_room_access)):
     client = manager.get(room_id)
     if client:
         client.cookies = {}
-        client.uid = 0
+        client.bot_uid = 0
         client.request_reconnect()
     return {"ok": True}
 
@@ -75,7 +75,7 @@ async def bot_poll(qrcode_key: str):
         client = manager.get(target_room_id)
         if client:
             client.cookies = cookies
-            client.uid = uid
+            client.bot_uid = uid
             client.request_reconnect()
         log.info(f"房间 {target_room_id} 扫码绑定成功 (UID: {uid})")
         return {"code": 0, "message": "绑定成功", "uid": uid}
