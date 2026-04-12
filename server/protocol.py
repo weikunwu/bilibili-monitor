@@ -216,14 +216,16 @@ def build_guard_event(guard_buy: Optional[dict], toast: Optional[dict]) -> dict:
         "gift_gif": gif,
     }
     if toast:
-        extra["price"] = toast.get("price", 0) / 1000  # gold seeds → yuan
+        extra["price"] = toast.get("price", 0) / 100  # gold seeds → 电池
         if "op_type" in toast:
             extra["op_type"] = toast["op_type"]
+    # op_type: 2 = 续费, 3 = 新开 (USER_TOAST_MSG only)
+    content = "续费" if (toast and toast.get("op_type") == 2) else "开通"
     return {
         "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
         "event_type": "guard",
         "user_name": src.get("username", ""),
         "user_id": src.get("uid", 0),
-        "content": "开通",
+        "content": content,
         "extra": extra,
     }

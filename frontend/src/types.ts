@@ -16,6 +16,7 @@ export interface EventExtra {
   price?: number
   guard_name?: string
   guard_level?: number
+  op_type?: number  // guard: 2=续费 3=新开
   gift_id?: number
   gift_name?: string
   gift_img?: string

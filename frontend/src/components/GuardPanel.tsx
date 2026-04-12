@@ -87,6 +87,7 @@ export function GuardPanel({
       u.gifts[name] = (u.gifts[name] || 0) + num
       u.total_coin += coin
       if (!u.gift_actions[name]) u.gift_actions[name] = '开通'
+      if (extra.gift_img && !u.gift_imgs[name]) u.gift_imgs[name] = extra.gift_img
       // card color by guard level only: 总督=gold, 提督=purple, 舰长=blue
       const level = extra.guard_level || 3
       u.gift_coins[name] = level === 1 ? 10000 : level === 2 ? 1000 : 0
@@ -120,6 +121,7 @@ export function GuardPanel({
       u.gifts[name] = (u.gifts[name] || 0) + num
       u.total_coin += coin
       if (!u.gift_actions[name]) u.gift_actions[name] = '开通'
+      if (extra.gift_img && !u.gift_imgs[name]) u.gift_imgs[name] = extra.gift_img
       const level = extra.guard_level || 3
       u.gift_coins[name] = level === 1 ? 10000 : level === 2 ? 1000 : 0
     }
