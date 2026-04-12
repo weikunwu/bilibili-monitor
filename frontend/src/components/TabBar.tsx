@@ -1,24 +1,18 @@
 import { useState, useEffect } from 'react'
 import { Sidenav, Nav } from 'rsuite'
-import ListIcon from '@rsuite/icons/List'
-import MessageIcon from '@rsuite/icons/Message'
-import DashboardIcon from '@rsuite/icons/Dashboard'
-import ShieldIcon from '@rsuite/icons/Shield'
-import SpeakerIcon from '@rsuite/icons/Speaker'
-import ArchiveIcon from '@rsuite/icons/Archive'
-import ToolsIcon from '@rsuite/icons/Tools'
+import { LayoutList, MessageSquareText, Gift, Anchor, Megaphone, Box, Wrench } from 'lucide-react'
 import type { TabType } from '../types'
 import { TAB_ALL, EVENT_DANMAKU, EVENT_GIFT, EVENT_SUPERCHAT, EVENT_GUARD, TAB_BLINDBOX, TAB_TOOLS } from '../lib/constants'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const TAB_LIST: { type: TabType; label: string; icon: any }[] = [
-  { type: TAB_ALL, label: '全部', icon: <ListIcon /> },
-  { type: EVENT_DANMAKU, label: '弹幕', icon: <MessageIcon /> },
-  { type: EVENT_GIFT, label: '礼物', icon: <DashboardIcon /> },
-  { type: EVENT_GUARD, label: '上舰', icon: <ShieldIcon /> },
-  { type: EVENT_SUPERCHAT, label: 'SC', icon: <SpeakerIcon /> },
-  { type: TAB_BLINDBOX, label: '盲盒统计', icon: <ArchiveIcon /> },
-  { type: TAB_TOOLS, label: '主播工具', icon: <ToolsIcon /> },
+  { type: TAB_ALL, label: '全部', icon: <LayoutList size={16} /> },
+  { type: EVENT_DANMAKU, label: '弹幕', icon: <MessageSquareText size={16} /> },
+  { type: EVENT_GIFT, label: '礼物', icon: <Gift size={16} /> },
+  { type: EVENT_GUARD, label: '上舰', icon: <Anchor size={16} /> },
+  { type: EVENT_SUPERCHAT, label: 'SC', icon: <Megaphone size={16} /> },
+  { type: TAB_BLINDBOX, label: '盲盒统计', icon: <Box size={16} /> },
+  { type: TAB_TOOLS, label: '主播工具', icon: <Wrench size={16} /> },
 ]
 
 function useIsMobile(breakpoint = 768) {

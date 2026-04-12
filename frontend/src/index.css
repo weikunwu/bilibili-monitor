@@ -16,7 +16,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
 
 .room-layout { display: flex; height: calc(100vh - 53px); overflow: hidden; }
-.room-sidebar { flex-shrink: 0; border-right: 1px solid #2a2a4a; width: 160px; }
+.room-sidebar { flex-shrink: 0; border-right: 1px solid #2a2a4a; width: 200px; }
 .room-sidebar .rs-sidenav { background: transparent; }
 .room-sidebar .rs-nav-item { font-size: 14px; }
 .room-content { flex: 1; overflow: auto; min-width: 0; }
