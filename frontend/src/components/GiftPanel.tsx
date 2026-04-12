@@ -17,6 +17,7 @@ interface Props {
   onGenerateGiftImage: (userName: string) => Promise<void> | void
   onGenerateBlindBoxImage?: (userName: string) => Promise<void> | void
   onGenerateGiftGif?: (userName: string, giftName: string) => Promise<void> | void
+  onGenerateGiftGifBatch?: (items: { u: GiftUser; giftName: string }[], title: string) => Promise<void> | void
   onShowCardPreview?: (title: string, imgUrl: string) => void
 }
 
@@ -70,7 +71,7 @@ function useIsMobile(breakpoint = 768) {
 
 export function GiftPanel({
   events, dateRange, onQueryRange,
-  onGenerateGiftImage, onGenerateBlindBoxImage, onGenerateGiftGif, onShowCardPreview,
+  onGenerateGiftImage, onGenerateBlindBoxImage, onGenerateGiftGif, onGenerateGiftGifBatch, onShowCardPreview,
 }: Props) {
   const isMobile = useIsMobile()
   const [selectedUsers, setSelectedUsers] = useState<string[]>([])
@@ -120,10 +121,8 @@ export function GiftPanel({
     )
   }, [filtered])
 
-  const handleGenerateCard = useCallback(async () => {
+  const aggregateChecked = useCallback(() => {
     const checked = filtered.filter((ev) => checkedKeys.has(ev._key))
-    if (checked.length === 0) return
-    // aggregate checked events by user
     const map: Record<string, GiftUser> = {}
     for (const ev of checked) {
       const key = ev.user_name || ''
@@ -147,6 +146,10 @@ export function GiftPanel({
       if (extra.gift_img && !u.gift_imgs[name]) u.gift_imgs[name] = extra.gift_img
       if (extra.action && !u.gift_actions[name]) u.gift_actions[name] = extra.action
       if (extra.gift_id && !u.gift_ids[name]) u.gift_ids[name] = extra.gift_id
+      if (extra.gift_gif) {
+        if (!u.gift_gifs) u.gift_gifs = {}
+        if (!u.gift_gifs[name]) u.gift_gifs[name] = extra.gift_gif
+      }
     }
     // sort gifts within each user by tier: gold > pink > purple > blue
     function tierOrder(battery: number): number {
@@ -168,6 +171,12 @@ export function GiftPanel({
       u.gift_coins = c
     }
     const users = Object.values(map).sort((a, b) => b.total_coin - a.total_coin)
+    return users
+  }, [filtered, checkedKeys])
+
+  const handleGenerateCard = useCallback(async () => {
+    const users = aggregateChecked()
+    if (users.length === 0) return
     try { await document.fonts.load('italic 800 30px "Baloo 2"') } catch { /* ok */ }
     const canvases: HTMLCanvasElement[] = []
     for (const u of users) {
@@ -175,19 +184,33 @@ export function GiftPanel({
       await generateGiftCard(c, u)
       canvases.push(c)
     }
-    const mergeGap = 0
-    const totalHeight = canvases.reduce((h, c) => h + c.height, 0) + (canvases.length - 1) * mergeGap
+    const totalHeight = canvases.reduce((h, c) => h + c.height, 0)
     const maxWidth = Math.max(...canvases.map((c) => c.width))
     const merged = document.createElement('canvas')
     merged.width = maxWidth
     merged.height = totalHeight
     const ctx = merged.getContext('2d')!
     let y = 0
-    for (const c of canvases) { ctx.drawImage(c, 0, y); y += c.height + mergeGap }
+    for (const c of canvases) { ctx.drawImage(c, 0, y); y += c.height }
     const url = merged.toDataURL('image/png')
     const names = users.map((u) => u.user_name)
     onShowCardPreview?.(`${names.join(', ')} - 礼物截图`, url)
-  }, [filtered, checkedKeys])
+  }, [aggregateChecked, onShowCardPreview])
+
+  const handleGenerateGif = useCallback(async () => {
+    const users = aggregateChecked()
+    if (users.length === 0) return
+    // Flatten to (user, gift) items, keeping only gifts that have a gif_url.
+    const items: { u: GiftUser; giftName: string }[] = []
+    for (const u of users) {
+      for (const giftName of Object.keys(u.gifts)) {
+        if (u.gift_gifs?.[giftName]) items.push({ u, giftName })
+      }
+    }
+    if (items.length === 0) { alert('所选礼物均无动态图'); return }
+    const names = Array.from(new Set(items.map((it) => it.u.user_name)))
+    await onGenerateGiftGifBatch?.(items, `${names.join(', ')} - 动态截图`)
+  }, [aggregateChecked, onGenerateGiftGifBatch])
 
   return (
     <div className="gift-panel">
@@ -217,9 +240,16 @@ export function GiftPanel({
           />
         )}
         {checkedKeys.size > 0 && (
-          <GenerateImageButton size="sm" appearance="primary" onClick={handleGenerateCard}>
-            生成礼物截图 ({checkedKeys.size})
-          </GenerateImageButton>
+          <>
+            <GenerateImageButton size="sm" appearance="primary" onClick={handleGenerateCard}>
+              生成礼物截图 ({checkedKeys.size})
+            </GenerateImageButton>
+            {onGenerateGiftGifBatch && (
+              <GenerateImageButton size="sm" appearance="primary" onClick={handleGenerateGif}>
+                生成动态截图 ({checkedKeys.size})
+              </GenerateImageButton>
+            )}
+          </>
         )}
         <span style={{ flex: 1 }} />
         <DateRangePicker

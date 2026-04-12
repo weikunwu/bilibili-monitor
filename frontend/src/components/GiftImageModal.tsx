@@ -2,12 +2,13 @@ import { useImperativeHandle, forwardRef, useState } from 'react'
 import { Modal, Button, ButtonGroup } from 'rsuite'
 import { fetchGiftSummary } from '../api/client'
 import { generateGiftCard } from '../lib/giftCard'
-import { generateGiftGif } from '../lib/giftGif'
+import { generateGiftGif, type GiftGifItem } from '../lib/giftGif'
 
 export interface GiftImageModalRef {
   showGiftImage: (roomId: number, userName: string, blindOnly?: boolean) => void
   showPreview: (title: string, imgUrl: string) => void
   showGiftGif: (roomId: number, userName: string, giftName: string) => void
+  showGiftGifBatch: (items: GiftGifItem[], title: string) => void
 }
 
 export const GiftImageModal = forwardRef<GiftImageModalRef>(function GiftImageModal(_, ref) {
@@ -43,11 +44,18 @@ export const GiftImageModal = forwardRef<GiftImageModalRef>(function GiftImageMo
       const data = await fetchGiftSummary(roomId, userName)
       const u = data.users?.[0]
       if (!u) { alert('该用户今日暂无礼物记录'); return }
-      const blob = await generateGiftGif(u, giftName)
+      const blob = await generateGiftGif([{ u, giftName }])
       if (!blob) { alert('暂无该礼物的动态图'); return }
-      const url = URL.createObjectURL(blob)
       setTitle(`${userName} - ${giftName}`)
-      setImgUrl(url)
+      setImgUrl(URL.createObjectURL(blob))
+      setExt('gif')
+      setIsOpen(true)
+    },
+    async showGiftGifBatch(items: GiftGifItem[], t: string) {
+      const blob = await generateGiftGif(items)
+      if (!blob) { alert('所选礼物均无动态图'); return }
+      setTitle(t)
+      setImgUrl(URL.createObjectURL(blob))
       setExt('gif')
       setIsOpen(true)
     },

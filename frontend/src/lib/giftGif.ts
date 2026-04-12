@@ -232,50 +232,85 @@ function drawCard(
   ctx.restore()
 }
 
-export async function generateGiftGif(u: GiftUser, giftName: string): Promise<Blob | null> {
-  const gifUrl = (u.gift_gifs || {})[giftName]
-  if (!gifUrl) return null
+export interface GiftGifItem {
+  u: GiftUser
+  giftName: string
+}
+
+type RowRes = {
+  u: GiftUser
+  giftName: string
+  tpl: HTMLImageElement | null
+  avatar: HTMLImageElement | null
+  guardFrame: HTMLImageElement | null
+  frames: { canvas: HTMLCanvasElement; delay: number }[]
+}
+
+export async function generateGiftGif(items: GiftGifItem[]): Promise<Blob | null> {
+  if (!items.length) return null
   try { await document.fonts.load('italic 800 30px "Baloo 2"') } catch { /* ok */ }
 
-  const battery = (u.gift_coins || {})[giftName] || 0
-  const tplKey = battery >= 10000 ? 'gold' : battery >= 5000 ? 'pink' : battery >= 1000 ? 'purple' : 'blue'
-
-  const [tpl, avatar, guardFrame, framesData] = await Promise.all([
-    loadImage(CARD_TPL_URLS[tplKey]),
-    loadImage(u.avatar || '', true),
-    u.guard_level > 0 ? loadImage(GUARD_FRAME_URLS[u.guard_level]) : Promise.resolve(null),
-    fetchGifFrames(gifUrl),
-  ])
-  if (!framesData || !framesData.length) return null
+  // Load assets + decode gifs for every row in parallel.
+  const loaded = await Promise.all(items.map(async ({ u, giftName }): Promise<RowRes | null> => {
+    const gifUrl = (u.gift_gifs || {})[giftName]
+    if (!gifUrl) return null
+    const battery = (u.gift_coins || {})[giftName] || 0
+    const tplKey = battery >= 10000 ? 'gold' : battery >= 5000 ? 'pink' : battery >= 1000 ? 'purple' : 'blue'
+    const [tpl, avatar, guardFrame, frames] = await Promise.all([
+      loadImage(CARD_TPL_URLS[tplKey]),
+      loadImage(u.avatar || '', true),
+      u.guard_level > 0 ? loadImage(GUARD_FRAME_URLS[u.guard_level]) : Promise.resolve(null),
+      fetchGifFrames(gifUrl),
+    ])
+    if (!frames || !frames.length) return null
+    return { u, giftName, tpl, avatar, guardFrame, frames }
+  }))
+  const rows = loaded.filter((r): r is RowRes => r !== null)
+  if (!rows.length) return null
 
   const W = 480
   const H = 74
+  const GAP = 6
   const dpr = 2
+  const N = rows.length
+  const rowY: number[] = []
+  for (let i = 0; i < N; i++) rowY.push(i * (H + GAP))
+  const totalH = N * H + (N - 1) * GAP
   const canvas = document.createElement('canvas')
   canvas.width = W * dpr
-  canvas.height = H * dpr
+  canvas.height = totalH * dpr
   const ctx = canvas.getContext('2d')!
   ctx.scale(dpr, dpr)
 
-  // Right-half region (gift image + "x N" count) — updated per frame.
+  // Right-half region (gift image + "x N" count) across all stacked rows.
   const gx = Math.round(W * 0.6) * dpr
   const gy = 0
   const gw = (W * dpr) - gx
-  const gh = H * dpr
+  const gh = totalH * dpr
 
   const FW = canvas.width
   const FH = canvas.height
 
-  // Render every frame upfront (keep alpha — no dark bg fill) so we can collect
-  // all gift-region pixels and build ONE shared palette across all frames.
+  // Unified frame count: whatever the longest row needs. Each row loops
+  // independently by mapping output index → src index via proportional floor.
+  const F = Math.max(...rows.map((r) => r.frames.length))
+
   const renderedFrames: { full: ImageData; patch: ImageData; delay: number }[] = []
-  const F = framesData.length
   for (let i = 0; i < F; i++) {
-    const { canvas: gifFrame, delay } = framesData[i]
-    // Pulse: quick grow then settle back (peak around middle of the loop).
     const t = i / Math.max(1, F - 1)
     const numScale = 1 + 0.35 * Math.sin(Math.PI * t)
-    drawCard(ctx, u, giftName, tpl, avatar, guardFrame, gifFrame, W, H, numScale)
+    for (let r = 0; r < N; r++) {
+      const row = rows[r]
+      const srcIdx = Math.floor((i * row.frames.length) / F)
+      ctx.save()
+      ctx.translate(0, rowY[r])
+      drawCard(ctx, row.u, row.giftName, row.tpl, row.avatar, row.guardFrame, row.frames[srcIdx].canvas, W, H, numScale)
+      ctx.restore()
+    }
+    // Delay: use row 0's current source frame delay.
+    const r0 = rows[0]
+    const r0Idx = Math.floor((i * r0.frames.length) / F)
+    const delay = r0.frames[r0Idx].delay || 100
     renderedFrames.push({
       full: ctx.getImageData(0, 0, FW, FH),
       patch: ctx.getImageData(gx, gy, gw, gh),
