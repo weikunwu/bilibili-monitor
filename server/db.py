@@ -129,10 +129,68 @@ def get_all_rooms_with_active() -> list[tuple[int, int]]:
     return [(r[0], r[1]) for r in rows]
 
 
+def add_room(room_id: int):
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.execute("INSERT OR IGNORE INTO rooms (room_id, active) VALUES (?, 0)", (room_id,))
+    conn.commit()
+    conn.close()
+
+
+def remove_room(room_id: int):
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.execute("DELETE FROM rooms WHERE room_id = ?", (room_id,))
+    conn.execute("DELETE FROM user_rooms WHERE room_id = ?", (room_id,))
+    conn.commit()
+    conn.close()
+
+
 def set_room_active(room_id: int, active: bool):
     conn = sqlite3.connect(str(DB_PATH))
-    conn.execute("INSERT OR IGNORE INTO rooms (room_id, active) VALUES (?, ?)", (room_id, int(active)))
     conn.execute("UPDATE rooms SET active=? WHERE room_id=?", (int(active), room_id))
+    conn.commit()
+    conn.close()
+
+
+def list_users() -> list[dict]:
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute("SELECT id, email, role, created_at FROM users").fetchall()
+    result = []
+    for r in rows:
+        rooms = [x[0] for x in conn.execute(
+            "SELECT room_id FROM user_rooms WHERE user_id = ?", (r["id"],)
+        ).fetchall()]
+        result.append({**dict(r), "rooms": rooms})
+    conn.close()
+    return result
+
+
+def create_user(email: str, password: str, role: str = "user") -> dict:
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.execute(
+        "INSERT INTO users (email, password_hash, role) VALUES (?,?,?)",
+        (email, hash_password(password), role),
+    )
+    conn.commit()
+    user_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.close()
+    return {"id": user_id, "email": email, "role": role}
+
+
+def delete_user(user_id: int):
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+    conn.execute("DELETE FROM user_rooms WHERE user_id = ?", (user_id,))
+    conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+    conn.commit()
+    conn.close()
+
+
+def assign_user_rooms(user_id: int, room_ids: list[int]):
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.execute("DELETE FROM user_rooms WHERE user_id = ?", (user_id,))
+    for rid in room_ids:
+        conn.execute("INSERT INTO user_rooms (user_id, room_id) VALUES (?,?)", (user_id, rid))
     conn.commit()
     conn.close()
 

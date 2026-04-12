@@ -7,8 +7,8 @@ import time
 import aiohttp
 
 from .config import (
-    HEADERS, DANMU_CONF_API, DANMU_INFO_API, ROOM_INFO_API, NAV_API,
-    SEND_GIFT_API, SEND_MSG_API, WS_OP_AUTH, WS_OP_HEARTBEAT,
+    HEADERS, DANMU_CONF_API, DANMU_INFO_API, ROOM_INFO_API, MASTER_INFO_API,
+    FINGER_SPI_API, NAV_API, SEND_GIFT_API, SEND_MSG_API, WS_OP_AUTH, WS_OP_HEARTBEAT,
     PERIOD_LABELS, DANMAKU_PERIOD_MAP, log,
 )
 from .protocol import make_packet, parse_packets, handle_message
@@ -51,7 +51,7 @@ class BiliLiveClient:
     async def get_buvid(self):
         headers = self._make_cookie_header()
         async with aiohttp.ClientSession(headers=headers) as session:
-            async with session.get("https://api.bilibili.com/x/frontend/finger/spi") as resp:
+            async with session.get(FINGER_SPI_API) as resp:
                 data = await resp.json(content_type=None)
                 if data.get("code") == 0:
                     self.buvid = data["data"].get("b_3", "")
@@ -81,7 +81,7 @@ class BiliLiveClient:
                     if self.ruid:
                         try:
                             async with session.get(
-                                "https://api.live.bilibili.com/live_user/v1/Master/info",
+                                MASTER_INFO_API,
                                 params={"uid": self.ruid}
                             ) as name_resp:
                                 name_data = await name_resp.json(content_type=None)

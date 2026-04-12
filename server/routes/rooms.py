@@ -5,6 +5,7 @@ from fastapi.responses import HTMLResponse
 
 from ..db import get_room_commands, save_command_state, get_command, get_all_rooms_with_active
 from ..auth import require_room_access
+from ..config import ROOM_INFO_API, MASTER_INFO_API
 from ..manager import manager
 
 router = APIRouter()
@@ -23,7 +24,7 @@ async def _fetch_room_info(room_id: int) -> dict:
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(
-                "https://api.live.bilibili.com/room/v1/Room/get_info",
+                ROOM_INFO_API,
                 params={"room_id": room_id},
             ) as resp:
                 data = await resp.json(content_type=None)
@@ -38,13 +39,14 @@ async def _fetch_room_info(room_id: int) -> dict:
                     base["ruid"] = ruid
                     if ruid:
                         async with session.get(
-                            "https://api.bilibili.com/x/space/wbi/acc/info",
-                            params={"mid": ruid},
+                            MASTER_INFO_API,
+                            params={"uid": ruid},
                         ) as resp2:
                             d2 = await resp2.json(content_type=None)
                             if d2.get("code") == 0:
-                                base["streamer_name"] = d2["data"].get("name", "")
-                                base["streamer_avatar"] = d2["data"].get("face", "")
+                                base["streamer_name"] = d2["data"]["info"].get("uname", "")
+                                base["streamer_avatar"] = d2["data"]["info"].get("face", "")
+                                base["followers"] = d2["data"].get("follower_num", 0)
     except Exception:
         pass
     return base
