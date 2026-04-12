@@ -10,6 +10,46 @@ from ..manager import manager
 router = APIRouter()
 
 
+async def _fetch_room_info(room_id: int) -> dict:
+    """Fetch room info from Bilibili API for rooms without a client."""
+    import aiohttp
+    base = {
+        "room_id": room_id, "real_room_id": room_id,
+        "streamer_name": "", "streamer_avatar": "", "room_title": "",
+        "live_status": 0, "ruid": 0, "followers": 0,
+        "area_name": "", "parent_area_name": "", "announcement": "",
+        "bot_uid": 0, "bot_name": "", "active": False,
+    }
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                "https://api.live.bilibili.com/room/v1/Room/get_info",
+                params={"room_id": room_id},
+            ) as resp:
+                data = await resp.json(content_type=None)
+                if data.get("code") == 0:
+                    info = data["data"]
+                    base["real_room_id"] = info.get("room_id", room_id)
+                    base["room_title"] = info.get("title", "")
+                    base["live_status"] = info.get("live_status", 0)
+                    base["area_name"] = info.get("area_name", "")
+                    base["parent_area_name"] = info.get("parent_area_name", "")
+                    ruid = info.get("uid", 0)
+                    base["ruid"] = ruid
+                    if ruid:
+                        async with session.get(
+                            "https://api.bilibili.com/x/space/wbi/acc/info",
+                            params={"mid": ruid},
+                        ) as resp2:
+                            d2 = await resp2.json(content_type=None)
+                            if d2.get("code") == 0:
+                                base["streamer_name"] = d2["data"].get("name", "")
+                                base["streamer_avatar"] = d2["data"].get("face", "")
+    except Exception:
+        pass
+    return base
+
+
 @router.get("/api/rooms")
 async def get_rooms(request: Request):
     import asyncio
@@ -51,13 +91,10 @@ async def get_rooms(request: Request):
                 "active": c._running,
             })
         else:
-            result.append({
-                "room_id": room_id, "real_room_id": room_id,
-                "streamer_name": "", "streamer_avatar": "", "room_title": "",
-                "live_status": 0, "ruid": 0, "followers": 0,
-                "area_name": "", "parent_area_name": "", "announcement": "",
-                "bot_uid": 0, "bot_name": "", "active": bool(active),
-            })
+            # No client in memory — fetch basic info from Bilibili API
+            info = await _fetch_room_info(room_id)
+            info["active"] = bool(active)
+            result.append(info)
     return result
 
 
