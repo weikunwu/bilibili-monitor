@@ -78,18 +78,15 @@ async def assign_rooms(user_id: int, request: Request):
 async def add_room(request: Request):
     body = await request.json()
     room_id = int(body["room_id"])
-    if manager.has(room_id):
+    from ..db import set_room_active, get_all_rooms_with_active
+    existing = [r[0] for r in get_all_rooms_with_active()]
+    if room_id in existing:
         raise HTTPException(400, "该房间已存在")
-
-    from ..db import set_room_active
-    set_room_active(room_id, True)
-    client = manager.add_room(room_id)
+    set_room_active(room_id, False)
 
     return {
         "ok": True,
         "room_id": room_id,
-        "real_room_id": client.real_room_id,
-        "streamer_name": client.streamer_name,
     }
 
 
