@@ -112,11 +112,12 @@ async def stop_room(room_id: int, _=Depends(require_room_access)):
 
 
 @router.post("/api/rooms/{room_id}/start")
-async def start_room(room_id: int, _=Depends(require_room_access)):
+async def start_room(room_id: int, request: Request, _=Depends(require_room_access)):
     client = manager.get(room_id)
     if client and client._running:
         raise HTTPException(400, "房间已在运行中")
-    if client and not client.cookies.get("SESSDATA"):
+    is_admin = getattr(request.state, "user_role", "") == "admin"
+    if not is_admin and client and not client.cookies.get("SESSDATA"):
         raise HTTPException(400, "请先绑定机器人后再启动监控")
     await manager.start_room(room_id)
     return {"ok": True, "room_id": room_id}
