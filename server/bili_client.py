@@ -207,10 +207,10 @@ class BiliLiveClient:
                                 event = handle_message(pkt)
                                 if event:
                                     event["room_id"] = self.real_room_id
-                                    if event["event_type"] == "danmu" and not get_room_save_danmu(self.room_id):
-                                        continue
-                                    save_event(event)
-                                    await self.on_event(event)
+                                    skip_danmu = event["event_type"] == "danmu" and not get_room_save_danmu(self.room_id)
+                                    if not skip_danmu:
+                                        save_event(event)
+                                        await self.on_event(event)
                                     # 指令系统
                                     if event.get("event_type") == "danmu":
                                         uid = event.get("user_id")
