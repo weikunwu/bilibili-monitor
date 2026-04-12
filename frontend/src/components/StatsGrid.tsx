@@ -4,9 +4,9 @@ export function StatsGrid({ stats }: { stats: Stats | null }) {
   const s = stats
   return (
     <div className="stats">
-      <div className="stat-card danmaku">
+      <div className="stat-card danmu">
         <div className="label">弹幕</div>
-        <div className="value">{s?.danmaku?.toLocaleString() ?? '0'}</div>
+        <div className="value">{s?.danmu?.toLocaleString() ?? '0'}</div>
       </div>
       <div className="stat-card gift">
         <div className="label">礼物</div>

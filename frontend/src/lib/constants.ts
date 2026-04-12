@@ -1,7 +1,7 @@
 export const MAX_EVENTS = 1000
 
 // Event types
-export const EVENT_DANMAKU = 'danmaku' as const
+export const EVENT_DANMU = 'danmu' as const
 export const EVENT_GIFT = 'gift' as const
 export const EVENT_SUPERCHAT = 'superchat' as const
 export const EVENT_GUARD = 'guard' as const
@@ -14,7 +14,7 @@ export const TAB_TOOLS = 'tools' as const
 export const TAB_ADMIN = 'admin' as const
 
 export const BADGE_NAMES: Record<string, string> = {
-  danmaku: '弹幕',
+  danmu: '弹幕',
   gift: '礼物',
   superchat: 'SC',
   guard: '上舰',

@@ -92,7 +92,7 @@ async def get_stats(room_id: int = Query(...), _=Depends(require_room_access)):
     conn = sqlite3.connect(str(DB_PATH))
     rp = [room_id]
     total = conn.execute("SELECT COUNT(*) FROM events WHERE room_id=?", rp).fetchone()[0]
-    danmaku_count = conn.execute("SELECT COUNT(*) FROM events WHERE event_type='danmaku' AND room_id=?", rp).fetchone()[0]
+    danmu_count = conn.execute("SELECT COUNT(*) FROM events WHERE event_type='danmu' AND room_id=?", rp).fetchone()[0]
     gift_count = conn.execute("SELECT COUNT(*) FROM events WHERE event_type='gift' AND room_id=?", rp).fetchone()[0]
     sc_count = conn.execute("SELECT COUNT(*) FROM events WHERE event_type='superchat' AND room_id=?", rp).fetchone()[0]
     guard_count = conn.execute("SELECT COUNT(*) FROM events WHERE event_type='guard' AND room_id=?", rp).fetchone()[0]
@@ -108,7 +108,7 @@ async def get_stats(room_id: int = Query(...), _=Depends(require_room_access)):
     client = manager.get(room_id)
     pop = client.popularity if client else 0
     return {
-        "total": total, "danmaku": danmaku_count, "gift": gift_count,
+        "total": total, "danmu": danmu_count, "gift": gift_count,
         "superchat": sc_count, "guard": guard_count, "sc_total_price": sc_total,
         "popularity": pop,
     }

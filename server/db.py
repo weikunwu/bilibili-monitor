@@ -40,7 +40,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS commands (
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
-            type TEXT NOT NULL DEFAULT 'streamer_danmaku',
+            type TEXT NOT NULL DEFAULT 'streamer_danmu',
             description TEXT NOT NULL DEFAULT '',
             config_json TEXT NOT NULL DEFAULT '{}'
         )
@@ -90,6 +90,13 @@ def init_db():
                 (admin_email, hash_password(admin_password), "admin"),
             )
             log.info(f"创建管理员账号: {admin_email}")
+
+    # Migrate: rename event_type 'danmaku' -> 'danmu'
+    conn.execute("UPDATE events SET event_type='danmu' WHERE event_type='danmaku'")
+    # Migrate: rename settings key 'save_danmaku' -> 'save_danmu'
+    conn.execute("UPDATE rooms SET settings_json=REPLACE(settings_json, '\"save_danmaku\"', '\"save_danmu\"') WHERE settings_json LIKE '%save_danmaku%'")
+    # Migrate: rename command type 'streamer_danmaku' -> 'streamer_danmu'
+    conn.execute("UPDATE commands SET type='streamer_danmu' WHERE type='streamer_danmaku'")
 
     conn.commit()
     conn.close()
@@ -250,3 +257,14 @@ def save_command_state(room_id: int, cmd_id: str, enabled: bool):
 
 def get_command(room_id: int, cmd_id: str) -> Optional[dict]:
     return next((c for c in get_room_commands(room_id) if c["id"] == cmd_id), None)
+
+
+def get_room_save_danmu(room_id: int) -> bool:
+    settings = get_room_settings(room_id)
+    return settings.get("save_danmu", True)
+
+
+def set_room_save_danmu(room_id: int, enabled: bool):
+    settings = get_room_settings(room_id)
+    settings["save_danmu"] = enabled
+    save_room_settings(room_id, settings)

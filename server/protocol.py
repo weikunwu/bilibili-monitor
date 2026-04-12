@@ -106,7 +106,7 @@ def handle_message(msg: dict) -> Optional[dict]:
                     }
         event = {
             "timestamp": now,
-            "event_type": "danmaku",
+            "event_type": "danmu",
             "user_name": user_name,
             "user_id": user_id,
             "content": text,

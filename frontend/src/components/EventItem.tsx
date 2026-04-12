@@ -11,7 +11,7 @@ interface Props {
 }
 
 const TAG_COLORS: Record<string, 'red' | 'orange' | 'yellow' | 'green' | 'blue' | 'violet' | 'cyan'> = {
-  danmaku: 'blue',
+  danmu: 'blue',
   gift: 'orange',
   superchat: 'yellow',
   guard: 'violet',

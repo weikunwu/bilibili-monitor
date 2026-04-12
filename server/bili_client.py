@@ -9,11 +9,11 @@ import aiohttp
 from .config import (
     HEADERS, DANMU_CONF_API, DANMU_INFO_API, ROOM_INFO_API, MASTER_INFO_API,
     FINGER_SPI_API, NAV_API, SEND_GIFT_API, SEND_MSG_API, WS_OP_AUTH, WS_OP_HEARTBEAT,
-    PERIOD_LABELS, DANMAKU_PERIOD_MAP, log,
+    PERIOD_LABELS, DANMU_PERIOD_MAP, log,
 )
 from .protocol import make_packet, parse_packets, handle_message
 from .bili_api import get_wbi_key, wbi_sign
-from .db import save_event, get_command
+from .db import save_event, get_command, get_room_save_danmu
 
 
 class BiliLiveClient:
@@ -207,10 +207,11 @@ class BiliLiveClient:
                                 event = handle_message(pkt)
                                 if event:
                                     event["room_id"] = self.real_room_id
-                                    save_event(event)
+                                    if event["event_type"] != "danmu" or get_room_save_danmu(self.real_room_id):
+                                        save_event(event)
                                     await self.on_event(event)
                                     # 指令系统
-                                    if event.get("event_type") == "danmaku":
+                                    if event.get("event_type") == "danmu":
                                         uid = event.get("user_id")
                                         uname = event.get("user_name", "")
                                         content = (event.get("content") or "").strip()
@@ -220,11 +221,11 @@ class BiliLiveClient:
                                             if cmd_cfg and cmd_cfg["enabled"] and content == cmd_cfg["config"]["trigger"]:
                                                 asyncio.create_task(self.send_gift(cmd_cfg["config"]))
                                         # 盲盒查询指令
-                                        if content in DANMAKU_PERIOD_MAP:
+                                        if content in DANMU_PERIOD_MAP:
                                             is_streamer = uid == self.ruid
                                             asyncio.create_task(self.handle_blind_box_query(
                                                 None if is_streamer else uname,
-                                                DANMAKU_PERIOD_MAP[content],
+                                                DANMU_PERIOD_MAP[content],
                                             ))
                         elif raw_msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
                             break
@@ -263,7 +264,7 @@ class BiliLiveClient:
         except Exception as e:
             log.warning(f"[自动送礼] 异常: {e}")
 
-    async def send_danmaku(self, msg: str):
+    async def send_danmu(self, msg: str):
         if not self.cookies.get("SESSDATA"):
             return
         csrf = self.cookies.get("bili_jct", "")
@@ -291,7 +292,7 @@ class BiliLiveClient:
             log.warning(f"[发弹幕] 异常: {e}")
 
     async def handle_blind_box_query(self, user_name, period: str = "today"):
-        """Query blind box stats and reply via danmaku. user_name=None for all users (streamer)."""
+        """Query blind box stats and reply via danmu. user_name=None for all users (streamer)."""
         from .routes.events import _beijing_time_range
         import sqlite3
         from .config import DB_PATH
@@ -309,7 +310,7 @@ class BiliLiveClient:
         period_label = PERIOD_LABELS.get(period, "今日")
         prefix = f"{user_name}，" if user_name else ""
         if not rows:
-            await self.send_danmaku(f"{prefix}{period_label}暂无盲盒记录")
+            await self.send_danmu(f"{prefix}{period_label}暂无盲盒记录")
             return
 
         total_boxes = 0
@@ -339,11 +340,11 @@ class BiliLiveClient:
 
         profit = total_value - total_cost
         msg = f"{prefix}{period_label}盲盒共{total_boxes}个，{fmt_profit(profit)}"
-        await self.send_danmaku(msg)
+        await self.send_danmu(msg)
 
         for name, b in boxes.items():
             await asyncio.sleep(2)
-            await self.send_danmaku(f"{name}{b['count']}个，{fmt_profit(b['value'] - b['cost'])}")
+            await self.send_danmu(f"{name}{b['count']}个，{fmt_profit(b['value'] - b['cost'])}")
 
     def stop(self):
         self._running = False

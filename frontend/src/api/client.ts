@@ -134,6 +134,14 @@ export async function removeRoom(roomId: number): Promise<void> {
   }
 }
 
+export async function toggleSaveDanmu(roomId: number, enabled: boolean): Promise<void> {
+  await fetch(`/api/rooms/${roomId}/save-danmu`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled }),
+  })
+}
+
 export async function fetchCommands(roomId: number): Promise<Command[]> {
   const res = await fetch(`/api/commands?room_id=${roomId}`)
   return res.json()

@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, Query, Request, HTTPException
 from fastapi.responses import HTMLResponse
 
-from ..db import get_room_commands, save_command_state, get_command, get_all_rooms
+from ..db import get_room_commands, save_command_state, get_command, get_all_rooms, get_room_save_danmu, set_room_save_danmu
 from ..auth import require_room_access
 from ..config import ROOM_INFO_API, MASTER_INFO_API
 from ..manager import manager
@@ -91,11 +91,13 @@ async def get_rooms(request: Request):
                 "bot_uid": c.uid if c.cookies.get("SESSDATA") else 0,
                 "bot_name": c.bot_name if c.cookies.get("SESSDATA") else "",
                 "active": c._running,
+                "save_danmu": get_room_save_danmu(c.real_room_id),
             })
         else:
             # No client in memory — fetch basic info from Bilibili API
             info = await _fetch_room_info(room_id)
             info["active"] = bool(active)
+            info["save_danmu"] = get_room_save_danmu(room_id)
             result.append(info)
     return result
 
@@ -123,6 +125,14 @@ async def start_room(room_id: int, request: Request, _=Depends(require_room_acce
         raise HTTPException(400, "请先绑定机器人后再启动监控")
     await manager.start_room(room_id)
     return {"ok": True, "room_id": room_id}
+
+
+@router.post("/api/rooms/{room_id}/save-danmu")
+async def toggle_save_danmu(room_id: int, request: Request, _=Depends(require_room_access)):
+    body = await request.json()
+    enabled = bool(body.get("enabled", True))
+    set_room_save_danmu(room_id, enabled)
+    return {"ok": True, "room_id": room_id, "save_danmu": enabled}
 
 
 @router.post("/api/commands/{cmd_id}/toggle")

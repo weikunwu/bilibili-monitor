@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Routes, Route, useParams, useNavigate, Navigate } from 'react-router-dom'
 import type { LiveEvent, TabType, Room } from './types'
-import { fetchRooms, fetchEvents, fetchMe, type CurrentUser } from './api/client'
+import { fetchRooms, fetchEvents, fetchMe, toggleSaveDanmu, type CurrentUser } from './api/client'
 import { useWebSocket } from './hooks/useWebSocket'
 import { useLocalStorage } from './hooks/useLocalStorage'
 import { localToUTC, fmtDate } from './lib/formatters'
-import { MAX_EVENTS, TAB_ALL, TAB_BLINDBOX, TAB_TOOLS, EVENT_DANMAKU, EVENT_GIFT, EVENT_SUPERCHAT, EVENT_GUARD } from './lib/constants'
+import { MAX_EVENTS, TAB_ALL, TAB_BLINDBOX, TAB_TOOLS, EVENT_DANMU, EVENT_GIFT, EVENT_SUPERCHAT, EVENT_GUARD } from './lib/constants'
 import { TabSidebar } from './components/TabBar'
 
 import { EventList } from './components/EventList'
@@ -30,7 +30,7 @@ function todayRange(): DateRange {
   ]
 }
 
-const VALID_TABS: TabType[] = [TAB_ALL, EVENT_DANMAKU, EVENT_GIFT, EVENT_SUPERCHAT, EVENT_GUARD, TAB_BLINDBOX, TAB_TOOLS]
+const VALID_TABS: TabType[] = [TAB_ALL, EVENT_DANMU, EVENT_GIFT, EVENT_SUPERCHAT, EVENT_GUARD, TAB_BLINDBOX, TAB_TOOLS]
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null)
@@ -57,6 +57,7 @@ export default function App() {
         <RoomPage
           rooms={rooms}
           currentUser={currentUser}
+          onRoomsChanged={() => fetchRooms().then(setRooms)}
         />
       } />
       <Route path="/admin" element={
@@ -117,9 +118,10 @@ function AdminPage({ rooms, currentUser, onRoomsChanged }: { rooms: Room[]; curr
   )
 }
 
-function RoomPage({ rooms, currentUser }: {
+function RoomPage({ rooms, currentUser, onRoomsChanged }: {
   rooms: Room[]
   currentUser: CurrentUser | null
+  onRoomsChanged: () => void
 }) {
   const { roomId: roomIdStr, tab: tabStr } = useParams()
   const navigate = useNavigate()
@@ -212,7 +214,12 @@ function RoomPage({ rooms, currentUser }: {
         events={events}
         activeTab={activeTab}
         autoScroll={autoScroll}
-        showAutoScroll={activeTab === TAB_ALL || activeTab === EVENT_DANMAKU}
+        showAutoScroll={activeTab === TAB_ALL || activeTab === EVENT_DANMU}
+        saveDanmu={currentRoom?.save_danmu}
+        onToggleSaveDanmu={activeTab === EVENT_DANMU ? async (checked) => {
+          await toggleSaveDanmu(roomId, checked)
+          onRoomsChanged()
+        } : undefined}
         onAutoScrollChange={setAutoScroll}
         dateRange={dateRange}
         onQueryRange={handleQueryRange}

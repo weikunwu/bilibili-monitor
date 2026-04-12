@@ -2,12 +2,12 @@ import { useState, useEffect } from 'react'
 import { Sidenav, Nav } from 'rsuite'
 import { LayoutList, MessageSquareText, Gift, Anchor, Megaphone, Box, Wrench } from 'lucide-react'
 import type { TabType } from '../types'
-import { TAB_ALL, EVENT_DANMAKU, EVENT_GIFT, EVENT_SUPERCHAT, EVENT_GUARD, TAB_BLINDBOX, TAB_TOOLS } from '../lib/constants'
+import { TAB_ALL, EVENT_DANMU, EVENT_GIFT, EVENT_SUPERCHAT, EVENT_GUARD, TAB_BLINDBOX, TAB_TOOLS } from '../lib/constants'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const TAB_LIST: { type: TabType; label: string; icon: any }[] = [
   { type: TAB_ALL, label: '全部', icon: <LayoutList size={16} /> },
-  { type: EVENT_DANMAKU, label: '弹幕', icon: <MessageSquareText size={16} /> },
+  { type: EVENT_DANMU, label: '弹幕', icon: <MessageSquareText size={16} /> },
   { type: EVENT_GIFT, label: '礼物', icon: <Gift size={16} /> },
   { type: EVENT_GUARD, label: '上舰', icon: <Anchor size={16} /> },
   { type: EVENT_SUPERCHAT, label: 'SC', icon: <Megaphone size={16} /> },

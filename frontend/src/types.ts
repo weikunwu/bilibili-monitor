@@ -1,5 +1,5 @@
 export interface LiveEvent {
-  event_type: 'danmaku' | 'gift' | 'superchat' | 'guard' | 'info'
+  event_type: 'danmu' | 'gift' | 'superchat' | 'guard' | 'info'
   timestamp: string
   user_name?: string
   user_id?: number
@@ -44,11 +44,12 @@ export interface Room {
   bot_uid: number
   bot_name: string
   active: boolean
+  save_danmu: boolean
 }
 
 export interface Stats {
   total: number
-  danmaku: number
+  danmu: number
   gift: number
   superchat: number
   guard: number
@@ -64,7 +65,7 @@ export interface Command {
   config: Record<string, unknown>
 }
 
-export type TabType = 'all' | 'danmaku' | 'gift' | 'superchat' | 'guard' | 'blindbox' | 'tools' | 'admin'
+export type TabType = 'all' | 'danmu' | 'gift' | 'superchat' | 'guard' | 'blindbox' | 'tools' | 'admin'
 
 export type ConnectionStatus = 'connected' | 'disconnected' | 'connecting'
 

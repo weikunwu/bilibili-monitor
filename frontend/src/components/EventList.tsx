@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { Checkbox, CheckPicker, DateRangePicker } from 'rsuite'
+import { Checkbox, CheckPicker, DateRangePicker, Toggle } from 'rsuite'
 import type { DateRange } from 'rsuite/DateRangePicker'
 
 import type { LiveEvent, TabType } from '../types'
 import { EventItem } from './EventItem'
-import { TAB_ALL, EVENT_DANMAKU } from '../lib/constants'
+import { TAB_ALL, EVENT_DANMU } from '../lib/constants'
 
 interface Props {
   events: LiveEvent[]
@@ -12,6 +12,8 @@ interface Props {
   autoScroll: boolean
   dateRange: DateRange
   showAutoScroll?: boolean
+  saveDanmu?: boolean
+  onToggleSaveDanmu?: (v: boolean) => void
   onAutoScrollChange: (v: boolean) => void
   onQueryRange: (from: string, to: string, range: DateRange) => void
 }
@@ -72,7 +74,7 @@ const predefinedRanges = [
 
 export function EventList({
   events, activeTab, autoScroll, dateRange, showAutoScroll = true,
-  onAutoScrollChange, onQueryRange,
+  saveDanmu, onToggleSaveDanmu, onAutoScrollChange, onQueryRange,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [selectedUsers, setSelectedUsers] = useState<string[]>([])
@@ -89,7 +91,7 @@ export function EventList({
   })
 
   useEffect(() => {
-    if (autoScroll && (activeTab === TAB_ALL || activeTab === EVENT_DANMAKU) && containerRef.current) {
+    if (autoScroll && (activeTab === TAB_ALL || activeTab === EVENT_DANMU) && containerRef.current) {
       containerRef.current.scrollTop = containerRef.current.scrollHeight
     }
   }, [filtered.length, autoScroll])
@@ -97,6 +99,11 @@ export function EventList({
   return (
     <>
       <div className="event-filter">
+        {onToggleSaveDanmu && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+            记录弹幕 <Toggle size="sm" checked={saveDanmu} onChange={onToggleSaveDanmu} />
+          </label>
+        )}
         {showAutoScroll && (
           <Checkbox
             checked={autoScroll}
