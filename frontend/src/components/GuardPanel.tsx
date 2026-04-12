@@ -130,13 +130,11 @@ export function GuardPanel({
       const num = extra.num || 1
       const coin = extra.price || 0
       u.gifts[name] = (u.gifts[name] || 0) + num
-      u.gift_coins[name] = (u.gift_coins[name] || 0) + coin
       u.total_coin += coin
       if (!u.gift_actions[name]) u.gift_actions[name] = '开通'
-      // force card color: 总督=gold(>=10000), 提督=purple(>=1000), 舰长=blue(<1000)
+      // card color by guard level only: 总督=gold, 提督=purple, 舰长=blue
       const level = extra.guard_level || 3
-      const minTier = level === 1 ? 10000 : level === 2 ? 1000 : 0
-      if ((u.gift_coins[name] || 0) < minTier) u.gift_coins[name] = minTier
+      u.gift_coins[name] = level === 1 ? 10000 : level === 2 ? 1000 : 0
     }
     const users = Object.values(map).sort((a, b) => b.total_coin - a.total_coin)
     try { await document.fonts.load('italic 800 30px "Baloo 2"') } catch { /* ok */ }
