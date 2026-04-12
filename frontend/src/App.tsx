@@ -74,12 +74,13 @@ function HomePage({ rooms, currentUser, onRoomsChanged }: { rooms: Room[]; curre
   const [bindRoomId, setBindRoomId] = useState<number | null>(null)
 
   return (
-    <div>
+    <>
       <div className="header">
         <h1>B站直播监控</h1>
         <span style={{ flex: 1 }} />
         {currentUser && <ProfileMenu user={currentUser} />}
       </div>
+      <div className="page-scroll">
       <RoomList
         rooms={rooms}
         onSelectRoom={(id) => navigate(`/room/${id}/all`)}
@@ -94,22 +95,25 @@ function HomePage({ rooms, currentUser, onRoomsChanged }: { rooms: Room[]; curre
           onSuccess={() => { setBindRoomId(null); onRoomsChanged() }}
         />
       )}
-    </div>
+      </div>
+    </>
   )
 }
 
 function AdminPage({ rooms, currentUser, onRoomsChanged }: { rooms: Room[]; currentUser: CurrentUser | null; onRoomsChanged: () => void }) {
   const navigate = useNavigate()
   return (
-    <div>
+    <>
       <div className="header">
         <Button appearance="subtle" size="xs" onClick={() => navigate('/')}>← 房间</Button>
         <h1>管理后台</h1>
         <span style={{ flex: 1 }} />
         {currentUser && <ProfileMenu user={currentUser} />}
       </div>
-      <AdminPanel rooms={rooms} onRoomsChanged={onRoomsChanged} />
-    </div>
+      <div className="page-scroll">
+        <AdminPanel rooms={rooms} onRoomsChanged={onRoomsChanged} />
+      </div>
+    </>
   )
 }
 
