@@ -204,12 +204,3 @@ export async function fetchGiftGif(giftId: number): Promise<{ gif: string }> {
   return res.json()
 }
 
-export async function fetchGiftGifCard(userName: string, giftName: string, tzOffset: number): Promise<Blob | null> {
-  const res = await fetch(
-    `/api/gift-gif-card?user_name=${encodeURIComponent(userName)}&gift_name=${encodeURIComponent(giftName)}&tz_offset=${tzOffset}`,
-  )
-  if (!res.ok || res.headers.get('content-type')?.includes('json')) {
-    return null
-  }
-  return res.blob()
-}

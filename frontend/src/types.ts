@@ -19,6 +19,7 @@ export interface EventExtra {
   gift_id?: number
   gift_name?: string
   gift_img?: string
+  gift_gif?: string
   num?: number
   action?: string
   blind_name?: string

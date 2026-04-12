@@ -16,6 +16,7 @@ interface Props {
   onQueryRange: (from: string, to: string, range: DateRange) => void
   onGenerateGiftImage: (userName: string) => Promise<void> | void
   onGenerateBlindBoxImage?: (userName: string) => Promise<void> | void
+  onGenerateGiftGif?: (userName: string, giftName: string) => Promise<void> | void
   onShowCardPreview?: (title: string, imgUrl: string) => void
 }
 
@@ -69,7 +70,7 @@ function useIsMobile(breakpoint = 768) {
 
 export function GiftPanel({
   events, dateRange, onQueryRange,
-  onGenerateGiftImage, onGenerateBlindBoxImage, onShowCardPreview,
+  onGenerateGiftImage, onGenerateBlindBoxImage, onGenerateGiftGif, onShowCardPreview,
 }: Props) {
   const isMobile = useIsMobile()
   const [selectedUsers, setSelectedUsers] = useState<string[]>([])
@@ -332,6 +333,11 @@ export function GiftPanel({
                       {onGenerateBlindBoxImage && (
                         <GenerateImageButton size="sm" onClick={() => onGenerateBlindBoxImage(rowData.user_name!)}>
                           今日盲盒
+                        </GenerateImageButton>
+                      )}
+                      {onGenerateGiftGif && rowData.extra?.gift_gif && rowData.extra?.gift_name && (
+                        <GenerateImageButton size="sm" onClick={() => onGenerateGiftGif(rowData.user_name!, rowData.extra!.gift_name!)}>
+                          动态图
                         </GenerateImageButton>
                       )}
                     </div>

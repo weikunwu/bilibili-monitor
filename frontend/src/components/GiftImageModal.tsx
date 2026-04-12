@@ -2,16 +2,19 @@ import { useImperativeHandle, forwardRef, useState } from 'react'
 import { Modal, Button, ButtonGroup } from 'rsuite'
 import { fetchGiftSummary } from '../api/client'
 import { generateGiftCard } from '../lib/giftCard'
+import { generateGiftGif } from '../lib/giftGif'
 
 export interface GiftImageModalRef {
   showGiftImage: (roomId: number, userName: string, blindOnly?: boolean) => void
   showPreview: (title: string, imgUrl: string) => void
+  showGiftGif: (roomId: number, userName: string, giftName: string) => void
 }
 
 export const GiftImageModal = forwardRef<GiftImageModalRef>(function GiftImageModal(_, ref) {
   const [isOpen, setIsOpen] = useState(false)
   const [title, setTitle] = useState('')
   const [imgUrl, setImgUrl] = useState('')
+  const [ext, setExt] = useState<'png' | 'gif'>('png')
 
   useImperativeHandle(ref, () => ({
     async showGiftImage(roomId: number, userName: string, blindOnly?: boolean) {
@@ -26,11 +29,26 @@ export const GiftImageModal = forwardRef<GiftImageModalRef>(function GiftImageMo
 
       setTitle(`${u.user_name} - ${data.date} ${blindOnly ? '盲盒' : '礼物'}`)
       setImgUrl(url)
+      setExt('png')
       setIsOpen(true)
     },
     showPreview(title: string, imgUrl: string) {
       setTitle(title)
       setImgUrl(imgUrl)
+      setExt('png')
+      setIsOpen(true)
+    },
+    async showGiftGif(roomId: number, userName: string, giftName: string) {
+      try { await document.fonts.load('italic 800 30px "Baloo 2"') } catch { /* ok */ }
+      const data = await fetchGiftSummary(roomId, userName)
+      const u = data.users?.[0]
+      if (!u) { alert('该用户今日暂无礼物记录'); return }
+      const blob = await generateGiftGif(u, giftName)
+      if (!blob) { alert('暂无该礼物的动态图'); return }
+      const url = URL.createObjectURL(blob)
+      setTitle(`${userName} - ${giftName}`)
+      setImgUrl(url)
+      setExt('gif')
       setIsOpen(true)
     },
   }))
@@ -38,7 +56,7 @@ export const GiftImageModal = forwardRef<GiftImageModalRef>(function GiftImageMo
   function download() {
     if (!imgUrl) return
     const a = document.createElement('a')
-    a.download = `gift-summary-${new Date().toISOString().slice(0, 10)}.png`
+    a.download = `gift-${new Date().toISOString().slice(0, 10)}.${ext}`
     a.href = imgUrl
     a.click()
   }
