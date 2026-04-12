@@ -82,7 +82,7 @@ async def add_room(request: Request):
         raise HTTPException(400, "该房间已存在")
 
     from ..db import set_room_active
-    set_room_active(room_id, False)
+    set_room_active(room_id, True)
     client = manager.add_room(room_id)
 
     return {
