@@ -91,7 +91,7 @@ async def get_rooms(request: Request):
                 "bot_uid": c.uid if c.cookies.get("SESSDATA") else 0,
                 "bot_name": c.bot_name if c.cookies.get("SESSDATA") else "",
                 "active": c._running,
-                "save_danmu": get_room_save_danmu(c.real_room_id),
+                "save_danmu": get_room_save_danmu(room_id),
             })
         else:
             # No client in memory — fetch basic info from Bilibili API

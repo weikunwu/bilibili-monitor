@@ -232,8 +232,8 @@ def get_room_settings(room_id: int) -> dict:
 def save_room_settings(room_id: int, settings: dict):
     conn = sqlite3.connect(str(DB_PATH))
     conn.execute(
-        "INSERT OR REPLACE INTO rooms (room_id, settings_json) VALUES (?,?)",
-        (room_id, json.dumps(settings, ensure_ascii=False)),
+        "UPDATE rooms SET settings_json=? WHERE room_id=?",
+        (json.dumps(settings, ensure_ascii=False), room_id),
     )
     conn.commit()
     conn.close()

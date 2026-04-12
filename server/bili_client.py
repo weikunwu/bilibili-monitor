@@ -207,7 +207,7 @@ class BiliLiveClient:
                                 event = handle_message(pkt)
                                 if event:
                                     event["room_id"] = self.real_room_id
-                                    if event["event_type"] != "danmu" or get_room_save_danmu(self.real_room_id):
+                                    if event["event_type"] != "danmu" or get_room_save_danmu(self.room_id):
                                         save_event(event)
                                     await self.on_event(event)
                                     # 指令系统
