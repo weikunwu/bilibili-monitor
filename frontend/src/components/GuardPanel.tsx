@@ -16,7 +16,7 @@ interface Props {
   events: LiveEvent[]
   dateRange: DateRange
   onQueryRange: (from: string, to: string, range: DateRange) => void
-  onShowCardPreview?: (title: string, imgUrl: string) => void
+  onShowCardPreview?: (imgUrl: string) => void
 }
 
 function fmtDate(d: Date): string {
@@ -153,9 +153,7 @@ export function GuardPanel({
     const ctx = merged.getContext('2d')!
     let y = 0
     for (const c of canvases) { ctx.drawImage(c, 0, y); y += c.height + mergeGap }
-    const url = merged.toDataURL('image/png')
-    const names = users.map((u) => u.user_name)
-    onShowCardPreview?.(`${names.join(', ')} - 上舰截图`, url)
+    onShowCardPreview?.(merged.toDataURL('image/png'))
   }, [filtered, checkedKeys])
 
   const handleGenerateUserCard = useCallback(async (userName: string) => {
@@ -182,7 +180,7 @@ export function GuardPanel({
     try { await document.fonts.load('italic 800 30px "Baloo 2"') } catch { /* ok */ }
     const c = document.createElement('canvas')
     await generateGiftCard(c, u)
-    onShowCardPreview?.(`${userName} - 今日大航海`, c.toDataURL('image/png'))
+    onShowCardPreview?.(c.toDataURL('image/png'))
   }, [guardEvents])
 
   return (

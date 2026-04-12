@@ -193,7 +193,7 @@ function RoomPage({ rooms, currentUser, onRoomsChanged }: {
           events={events}
           dateRange={dateRange}
           onQueryRange={handleQueryRange}
-          onShowCardPreview={(title, url) => giftModalRef.current?.showPreview(title, url)}
+          onShowCardPreview={(url) => giftModalRef.current?.showPreview(url)}
         />
       )
     }
@@ -205,9 +205,8 @@ function RoomPage({ rooms, currentUser, onRoomsChanged }: {
           onQueryRange={handleQueryRange}
           onGenerateGiftImage={(userName) => giftModalRef.current?.showGiftImage(roomId, userName)}
           onGenerateBlindBoxImage={(userName) => giftModalRef.current?.showGiftImage(roomId, userName, true)}
-          onGenerateGiftGif={(userName, giftName) => giftModalRef.current?.showGiftGif(roomId, userName, giftName)}
-          onGenerateGiftGifBatch={(items, title) => giftModalRef.current?.showGiftGifBatch(items, title)}
-          onShowCardPreview={(title, url) => giftModalRef.current?.showPreview(title, url)}
+          onGenerateGiftGif={(items) => giftModalRef.current?.showGiftGif(items)}
+          onShowCardPreview={(url, ext) => giftModalRef.current?.showPreview(url, ext)}
         />
       )
     }

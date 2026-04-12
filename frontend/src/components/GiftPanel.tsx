@@ -7,6 +7,7 @@ import { formatTime, formatBattery, fixUrl } from '../lib/formatters'
 import { GenerateImageButton } from './GenerateImageButton'
 import { EVENT_GIFT } from '../lib/constants'
 import { generateGiftCard } from '../lib/giftCard'
+import type { GiftGifItem } from '../lib/giftGif'
 
 const { Column, HeaderCell, Cell } = Table
 
@@ -16,9 +17,8 @@ interface Props {
   onQueryRange: (from: string, to: string, range: DateRange) => void
   onGenerateGiftImage: (userName: string) => Promise<void> | void
   onGenerateBlindBoxImage?: (userName: string) => Promise<void> | void
-  onGenerateGiftGif?: (userName: string, giftName: string) => Promise<void> | void
-  onGenerateGiftGifBatch?: (items: { u: GiftUser; giftName: string }[], title: string) => Promise<void> | void
-  onShowCardPreview?: (title: string, imgUrl: string) => void
+  onShowCardPreview?: (imgUrl: string, ext?: 'png' | 'gif') => void
+  onGenerateGiftGif?: (items: GiftGifItem[]) => Promise<void> | void
 }
 
 function fmtDate(d: Date): string {
@@ -71,7 +71,7 @@ function useIsMobile(breakpoint = 768) {
 
 export function GiftPanel({
   events, dateRange, onQueryRange,
-  onGenerateGiftImage, onGenerateBlindBoxImage, onGenerateGiftGif, onGenerateGiftGifBatch, onShowCardPreview,
+  onGenerateGiftImage, onGenerateBlindBoxImage, onShowCardPreview, onGenerateGiftGif,
 }: Props) {
   const isMobile = useIsMobile()
   const [selectedUsers, setSelectedUsers] = useState<string[]>([])
@@ -192,15 +192,30 @@ export function GiftPanel({
     const ctx = merged.getContext('2d')!
     let y = 0
     for (const c of canvases) { ctx.drawImage(c, 0, y); y += c.height }
-    const url = merged.toDataURL('image/png')
-    const names = users.map((u) => u.user_name)
-    onShowCardPreview?.(`${names.join(', ')} - 礼物截图`, url)
+    onShowCardPreview?.(merged.toDataURL('image/png'))
   }, [aggregateChecked, onShowCardPreview])
+
+  const handleGenerateRowGif = useCallback((rowData: LiveEvent) => {
+    const extra = rowData.extra!
+    const name = extra.gift_name!
+    const u: GiftUser = {
+      user_name: rowData.user_name!,
+      avatar: extra.avatar || '',
+      gifts: { [name]: extra.num || 1 },
+      gift_imgs: extra.gift_img ? { [name]: extra.gift_img } : {},
+      gift_actions: extra.action ? { [name]: extra.action } : {},
+      gift_coins: { [name]: extra.total_coin || 0 },
+      gift_ids: extra.gift_id ? { [name]: extra.gift_id } : {},
+      gift_gifs: { [name]: extra.gift_gif! },
+      guard_level: extra.guard_level || 0,
+      total_coin: extra.total_coin || 0,
+    }
+    return onGenerateGiftGif?.([{ u, giftName: name }])
+  }, [onGenerateGiftGif])
 
   const handleGenerateGif = useCallback(async () => {
     const users = aggregateChecked()
     if (users.length === 0) return
-    // Flatten to (user, gift) items, keeping only gifts that have a gif_url.
     const items: { u: GiftUser; giftName: string }[] = []
     for (const u of users) {
       for (const giftName of Object.keys(u.gifts)) {
@@ -208,9 +223,8 @@ export function GiftPanel({
       }
     }
     if (items.length === 0) { alert('所选礼物均无动态图'); return }
-    const names = Array.from(new Set(items.map((it) => it.u.user_name)))
-    await onGenerateGiftGifBatch?.(items, `${names.join(', ')} - 动态截图`)
-  }, [aggregateChecked, onGenerateGiftGifBatch])
+    await onGenerateGiftGif?.(items)
+  }, [aggregateChecked, onGenerateGiftGif])
 
   return (
     <div className="gift-panel">
@@ -244,11 +258,9 @@ export function GiftPanel({
             <GenerateImageButton size="sm" appearance="primary" onClick={handleGenerateCard}>
               生成礼物截图 ({checkedKeys.size})
             </GenerateImageButton>
-            {onGenerateGiftGifBatch && (
-              <GenerateImageButton size="sm" appearance="primary" onClick={handleGenerateGif}>
-                生成动态截图 ({checkedKeys.size})
-              </GenerateImageButton>
-            )}
+            <GenerateImageButton size="sm" appearance="primary" onClick={handleGenerateGif}>
+              生成动态截图 ({checkedKeys.size})
+            </GenerateImageButton>
           </>
         )}
         <span style={{ flex: 1 }} />
@@ -366,7 +378,7 @@ export function GiftPanel({
                         </GenerateImageButton>
                       )}
                       {onGenerateGiftGif && rowData.extra?.gift_gif && rowData.extra?.gift_name && (
-                        <GenerateImageButton size="sm" onClick={() => onGenerateGiftGif(rowData.user_name!, rowData.extra!.gift_name!)}>
+                        <GenerateImageButton size="sm" onClick={() => handleGenerateRowGif(rowData)}>
                           动态图
                         </GenerateImageButton>
                       )}

@@ -6,14 +6,12 @@ import { generateGiftGif, type GiftGifItem } from '../lib/giftGif'
 
 export interface GiftImageModalRef {
   showGiftImage: (roomId: number, userName: string, blindOnly?: boolean) => void
-  showPreview: (title: string, imgUrl: string) => void
-  showGiftGif: (roomId: number, userName: string, giftName: string) => void
-  showGiftGifBatch: (items: GiftGifItem[], title: string) => void
+  showPreview: (imgUrl: string, ext?: 'png' | 'gif') => void
+  showGiftGif: (items: GiftGifItem[]) => void
 }
 
 export const GiftImageModal = forwardRef<GiftImageModalRef>(function GiftImageModal(_, ref) {
   const [isOpen, setIsOpen] = useState(false)
-  const [title, setTitle] = useState('')
   const [imgUrl, setImgUrl] = useState('')
   const [ext, setExt] = useState<'png' | 'gif'>('png')
 
@@ -26,35 +24,18 @@ export const GiftImageModal = forwardRef<GiftImageModalRef>(function GiftImageMo
 
       const offscreen = document.createElement('canvas')
       await generateGiftCard(offscreen, u)
-      const url = offscreen.toDataURL('image/png')
-
-      setTitle(`${u.user_name} - ${data.date} ${blindOnly ? '盲盒' : '礼物'}`)
-      setImgUrl(url)
+      setImgUrl(offscreen.toDataURL('image/png'))
       setExt('png')
       setIsOpen(true)
     },
-    showPreview(title: string, imgUrl: string) {
-      setTitle(title)
+    showPreview(imgUrl: string, ext: 'png' | 'gif' = 'png') {
       setImgUrl(imgUrl)
-      setExt('png')
+      setExt(ext)
       setIsOpen(true)
     },
-    async showGiftGif(roomId: number, userName: string, giftName: string) {
-      try { await document.fonts.load('italic 800 30px "Baloo 2"') } catch { /* ok */ }
-      const data = await fetchGiftSummary(roomId, userName)
-      const u = data.users?.[0]
-      if (!u) { alert('该用户今日暂无礼物记录'); return }
-      const blob = await generateGiftGif([{ u, giftName }])
-      if (!blob) { alert('暂无该礼物的动态图'); return }
-      setTitle(`${userName} - ${giftName}`)
-      setImgUrl(URL.createObjectURL(blob))
-      setExt('gif')
-      setIsOpen(true)
-    },
-    async showGiftGifBatch(items: GiftGifItem[], t: string) {
+    async showGiftGif(items: GiftGifItem[]) {
       const blob = await generateGiftGif(items)
       if (!blob) { alert('所选礼物均无动态图'); return }
-      setTitle(t)
       setImgUrl(URL.createObjectURL(blob))
       setExt('gif')
       setIsOpen(true)
@@ -73,7 +54,7 @@ export const GiftImageModal = forwardRef<GiftImageModalRef>(function GiftImageMo
     <Modal open={isOpen} onClose={() => setIsOpen(false)} size="sm">
       <Modal.Header closeButton={false} />
       <Modal.Body style={{ textAlign: 'center' }}>
-        {imgUrl && <img src={imgUrl} alt={title} style={{ borderRadius: 8, maxWidth: '100%' }} />}
+        {imgUrl && <img src={imgUrl} alt="" style={{ borderRadius: 8, maxWidth: '100%' }} />}
       </Modal.Body>
       <Modal.Footer>
         <ButtonGroup>
