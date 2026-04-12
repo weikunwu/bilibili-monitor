@@ -201,12 +201,12 @@ function drawCard(
   ctx.shadowOffsetY = 0
 
   const gSize = 72
-  const rightStart = W * 0.6
+  const rightStart = W * 0.59
   ctx.drawImage(giftFrame, rightStart, (H - gSize) / 2, gSize, gSize)
 
   const num = u.gifts[giftName] || 0
   const numY = H * 0.5 + 11
-  const numStartX = rightStart + gSize + 8
+  const numStartX = rightStart + gSize
 
   ctx.font = 'italic 800 30px "Baloo 2", -apple-system, sans-serif'
   ctx.strokeStyle = '#bc6e2d'

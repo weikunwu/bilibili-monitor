@@ -126,13 +126,13 @@ export async function generateGiftCard(canvas: HTMLCanvasElement, u: GiftUser) {
     ctx.shadowOffsetY = 0
 
     const gSize = 72
-    const rightStart = W * 0.6
+    const rightStart = W * 0.59
     if (giftImgObjs[i]) {
       ctx.drawImage(giftImgObjs[i]!, rightStart, y + (CARD_H - gSize) / 2, gSize, gSize)
     }
 
     const numY = y + CARD_H * 0.5 + 11
-    const numStartX = rightStart + gSize + 8
+    const numStartX = rightStart + gSize
 
     ctx.font = 'italic 800 30px "Baloo 2", -apple-system, sans-serif'
     ctx.strokeStyle = '#bc6e2d'

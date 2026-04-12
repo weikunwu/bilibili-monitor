@@ -2,8 +2,8 @@ import { useState, useMemo, useCallback } from 'react'
 import { CheckPicker, DateRangePicker, Checkbox, Table, Pagination } from 'rsuite'
 import type { DateRange } from 'rsuite/DateRangePicker'
 
-import type { LiveEvent, GiftUser } from '../types'
-import { formatTime, fixUrl, fmtDateTime } from '../lib/formatters'
+import type { LiveEvent, GiftUser, GiftGifItem } from '../types'
+import { formatTime, formatBattery, fixUrl, fmtDateTime } from '../lib/formatters'
 import { GenerateImageButton } from './GenerateImageButton'
 import { EVENT_GUARD } from '../lib/constants'
 import { PREDEFINED_RANGES } from '../lib/dateRanges'
@@ -20,10 +20,11 @@ interface Props {
   dateRange: DateRange
   onQueryRange: (from: string, to: string, range: DateRange) => void
   onShowCardPreview?: (imgUrl: string) => void
+  onGenerateGiftGif?: (items: GiftGifItem[]) => Promise<void> | void
 }
 
 export function GuardPanel({
-  events, dateRange, onQueryRange, onShowCardPreview,
+  events, dateRange, onQueryRange, onShowCardPreview, onGenerateGiftGif,
 }: Props) {
   const isMobile = useIsMobile()
   const [selectedUsers, setSelectedUsers] = useState<string[]>([])
@@ -131,6 +132,45 @@ export function GuardPanel({
     onShowCardPreview?.(c.toDataURL('image/png'))
   }, [guardEvents])
 
+  const buildGifUserFromEvent = (rowData: LiveEvent): { u: GiftUser; giftName: string } | null => {
+    const extra = rowData.extra || {}
+    if (!extra.gift_gif) return null
+    const level = extra.guard_level || 3
+    const name = GUARD_NAMES[level] || extra.guard_name || '舰长'
+    const num = extra.num || 1
+    const coin = extra.price || 0
+    const u: GiftUser = {
+      user_name: rowData.user_name || '',
+      avatar: extra.avatar || '',
+      gifts: { [name]: num },
+      gift_imgs: extra.gift_img ? { [name]: extra.gift_img } : {},
+      gift_actions: { [name]: '开通' },
+      gift_coins: { [name]: level === 1 ? 10000 : level === 2 ? 1000 : 0 },
+      gift_ids: {},
+      gift_gifs: { [name]: extra.gift_gif },
+      guard_level: level,
+      total_coin: coin,
+    }
+    return { u, giftName: name }
+  }
+
+  const handleGenerateRowGif = useCallback((rowData: LiveEvent) => {
+    const item = buildGifUserFromEvent(rowData)
+    if (!item) return
+    return onGenerateGiftGif?.([item])
+  }, [onGenerateGiftGif])
+
+  const handleGenerateGif = useCallback(async () => {
+    const items: GiftGifItem[] = []
+    for (const ev of filtered) {
+      if (!checkedKeys.has(ev._key)) continue
+      const item = buildGifUserFromEvent(ev)
+      if (item) items.push(item)
+    }
+    if (items.length === 0) { alert('所选上舰均无动态图'); return }
+    await onGenerateGiftGif?.(items)
+  }, [filtered, checkedKeys, onGenerateGiftGif])
+
   return (
     <div className="gift-panel">
       <div className="event-filter">
@@ -147,9 +187,16 @@ export function GuardPanel({
           />
         )}
         {checkedKeys.size > 0 && (
-          <GenerateImageButton size="sm" appearance="primary" onClick={handleGenerateCard}>
-            生成上舰截图 ({checkedKeys.size})
-          </GenerateImageButton>
+          <>
+            <GenerateImageButton size="sm" appearance="primary" onClick={handleGenerateCard}>
+              生成上舰截图 ({checkedKeys.size})
+            </GenerateImageButton>
+            {onGenerateGiftGif && (
+              <GenerateImageButton size="sm" appearance="primary" onClick={handleGenerateGif}>
+                生成动态截图 ({checkedKeys.size})
+              </GenerateImageButton>
+            )}
+          </>
         )}
         <span style={{ flex: 1 }} />
         <DateRangePicker
@@ -226,12 +273,14 @@ export function GuardPanel({
                 {(rowData: LiveEvent) => {
                   const extra = rowData.extra || {}
                   const level = extra.guard_level || 3
+                  const name = GUARD_NAMES[level] || extra.guard_name || '舰长'
+                  const num = extra.num || 1
                   return (
-                    <span className={`guard-level guard-level-${level}`}>
-                      {GUARD_NAMES[level] || extra.guard_name || '舰长'}
-                      {(extra.num || 1) > 1 ? ` x${extra.num}` : ''}
+                    <span className="gift-item">
+                      {extra.gift_img && <img className="gift-item-img" src={fixUrl(extra.gift_img)} alt="" />}
+                      {name} x{num}
                       {isMobile && extra.price ? (
-                        <span className="gift-item-coin">¥{(extra.price / 10).toFixed(1).replace(/\.0$/, '')}</span>
+                        <span className="gift-item-coin">{formatBattery(extra.price * num)}</span>
                       ) : null}
                     </span>
                   )
@@ -257,9 +306,16 @@ export function GuardPanel({
                 <HeaderCell>操作</HeaderCell>
                 <Cell>
                   {(rowData: LiveEvent) => rowData.user_name ? (
-                    <GenerateImageButton size="sm" onClick={() => handleGenerateUserCard(rowData.user_name!)}>
-                      今日大航海
-                    </GenerateImageButton>
+                    <div className="gift-actions">
+                      <GenerateImageButton size="sm" onClick={() => handleGenerateUserCard(rowData.user_name!)}>
+                        今日大航海
+                      </GenerateImageButton>
+                      {onGenerateGiftGif && rowData.extra?.gift_gif && (
+                        <GenerateImageButton size="sm" onClick={() => handleGenerateRowGif(rowData)}>
+                          动态图
+                        </GenerateImageButton>
+                      )}
+                    </div>
                   ) : null}
                 </Cell>
               </Column>

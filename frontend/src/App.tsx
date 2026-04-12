@@ -194,6 +194,7 @@ function RoomPage({ rooms, currentUser, onRoomsChanged }: {
           dateRange={dateRange}
           onQueryRange={handleQueryRange}
           onShowCardPreview={(url) => giftModalRef.current?.showPreview(url)}
+          onGenerateGiftGif={(items) => giftModalRef.current?.showGiftGif(items)}
         />
       )
     }
