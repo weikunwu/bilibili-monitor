@@ -275,7 +275,7 @@ export function GuardPanel({
             </Column>
 
             <Column flexGrow={2}>
-              <HeaderCell>类型</HeaderCell>
+              <HeaderCell>大航海</HeaderCell>
               <Cell>
                 {(rowData: LiveEvent) => {
                   const extra = rowData.extra || {}
@@ -294,6 +294,19 @@ export function GuardPanel({
             </Column>
 
             {!isMobile && (
+              <Column flexGrow={1} align="right">
+                <HeaderCell>价值</HeaderCell>
+                <Cell>
+                  {(rowData: LiveEvent) => (
+                    rowData.extra?.price
+                      ? <span className="gift-total">¥{(rowData.extra.price / 10).toFixed(1).replace(/\.0$/, '')}</span>
+                      : null
+                  )}
+                </Cell>
+              </Column>
+            )}
+
+            {!isMobile && (
               <Column flexGrow={2}>
                 <HeaderCell>操作</HeaderCell>
                 <Cell>
@@ -302,19 +315,6 @@ export function GuardPanel({
                       今日大航海
                     </GenerateImageButton>
                   ) : null}
-                </Cell>
-              </Column>
-            )}
-
-            {!isMobile && (
-              <Column flexGrow={1} align="right">
-                <HeaderCell>价格</HeaderCell>
-                <Cell>
-                  {(rowData: LiveEvent) => (
-                    rowData.extra?.price
-                      ? <span className="gift-total">¥{(rowData.extra.price / 10).toFixed(1).replace(/\.0$/, '')}</span>
-                      : null
-                  )}
                 </Cell>
               </Column>
             )}
