@@ -81,6 +81,8 @@ async def add_room(request: Request):
     if manager.has(room_id):
         raise HTTPException(400, "该房间已存在")
 
+    from ..db import set_room_active
+    set_room_active(room_id, False)
     client = manager.add_room(room_id)
 
     return {
@@ -96,4 +98,11 @@ async def remove_room(room_id: int):
     if not manager.has(room_id):
         raise HTTPException(404, "房间不存在")
     manager.remove_room(room_id)
+    import sqlite3
+    from ..config import DB_PATH
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.execute("DELETE FROM rooms WHERE room_id = ?", (room_id,))
+    conn.execute("DELETE FROM user_rooms WHERE room_id = ?", (room_id,))
+    conn.commit()
+    conn.close()
     return {"ok": True, "room_id": room_id}
