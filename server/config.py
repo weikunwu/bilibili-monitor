@@ -49,7 +49,7 @@ QR_POLL_API = "https://passport.bilibili.com/x/passport-login/web/qrcode/poll"
 GUARD_LEVELS = {1: "总督", 2: "提督", 3: "舰长"}
 
 PERIOD_LABELS = {"today": "今日", "yesterday": "昨日", "this_month": "今月", "last_month": "上月"}
-DANMU_PERIOD_MAP = {"今日盲盒": "today", "昨日盲盒": "yesterday", "今月盲盒": "this_month", "上月盲盒": "last_month"}
+DANMU_PERIOD_MAP = {"今日盲盒": "today", "昨日盲盒": "yesterday", "今月盲盒": "this_month", "上月盲盒": "last_month", "我的盲盒": "this_month"}
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",

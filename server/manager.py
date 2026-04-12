@@ -83,7 +83,7 @@ class RoomManager:
         set_room_active(room_id, False)
 
     def add_room(self, room_id: int) -> BiliLiveClient:
-        """Create a new client and start it."""
+        """Create an in-memory client (does not start listening)."""
         cookies = load_cookies(room_id)
         client = BiliLiveClient(room_id, on_event=self.broadcast, cookies=cookies)
         self._clients[room_id] = client

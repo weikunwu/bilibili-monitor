@@ -55,6 +55,9 @@ async def add_room(request: Request):
     if room_id in existing:
         raise HTTPException(400, "该房间已存在")
     db_add_room(room_id)
+    # Create an in-memory client and fetch room info immediately
+    client = manager.add_room(room_id)
+    await client.ensure_info()
     return {"ok": True, "room_id": room_id}
 
 
