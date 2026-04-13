@@ -165,6 +165,8 @@ def handle_message(msg: dict) -> Optional[dict]:
             },
         }
         log.info(f"[礼物] {data.get('uname')} {action} {gift_name} x{num}")
+        if price >= 100000:  # ≥ ¥1000: log raw payload so we can spot SVGA/effect fields
+            log.info(f"[礼物原始数据] {json.dumps(data, ensure_ascii=False)}")
         return event
 
     elif base_cmd == "SUPER_CHAT_MESSAGE":

@@ -268,3 +268,14 @@ def set_room_save_danmu(room_id: int, enabled: bool):
     settings = get_room_settings(room_id)
     settings["save_danmu"] = enabled
     save_room_settings(room_id, settings)
+
+
+def get_room_auto_clip(room_id: int) -> bool:
+    settings = get_room_settings(room_id)
+    return settings.get("auto_clip", False)
+
+
+def set_room_auto_clip(room_id: int, enabled: bool):
+    settings = get_room_settings(room_id)
+    settings["auto_clip"] = enabled
+    save_room_settings(room_id, settings)

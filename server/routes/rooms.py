@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, Query, Request, HTTPException
 from fastapi.responses import HTMLResponse
 
-from ..db import get_room_commands, save_command_state, get_command, get_all_rooms, get_room_save_danmu, set_room_save_danmu
+from ..db import get_room_commands, save_command_state, get_command, get_all_rooms, get_room_save_danmu, set_room_save_danmu, get_room_auto_clip, set_room_auto_clip
 from ..auth import require_room_access
 from ..config import ROOM_INFO_API, MASTER_INFO_API
 from ..manager import manager
@@ -133,6 +133,21 @@ async def toggle_save_danmu(room_id: int, request: Request, _=Depends(require_ro
     enabled = bool(body.get("enabled", True))
     set_room_save_danmu(room_id, enabled)
     return {"ok": True, "room_id": room_id, "save_danmu": enabled}
+
+
+@router.get("/api/rooms/{room_id}/auto-clip")
+async def get_auto_clip(room_id: int, _=Depends(require_room_access)):
+    return {"enabled": get_room_auto_clip(room_id)}
+
+
+@router.post("/api/rooms/{room_id}/auto-clip")
+async def toggle_auto_clip(room_id: int, request: Request, _=Depends(require_room_access)):
+    if getattr(request.state, "user_role", "") != "admin":
+        raise HTTPException(403, "仅管理员可开启自动剪辑")
+    body = await request.json()
+    enabled = bool(body.get("enabled", False))
+    set_room_auto_clip(room_id, enabled)
+    return {"ok": True, "room_id": room_id, "auto_clip": enabled}
 
 
 @router.post("/api/commands/{cmd_id}/toggle")

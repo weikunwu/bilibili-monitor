@@ -13,7 +13,8 @@ from .config import (
 )
 from .protocol import make_packet, parse_packets, handle_message, build_guard_event
 from .bili_api import get_wbi_key, wbi_sign, fetch_user_avatar
-from .db import save_event, get_command, get_room_save_danmu
+from . import recorder
+from .db import save_event, get_command, get_room_save_danmu, get_room_auto_clip
 
 
 class BiliLiveClient:
@@ -182,6 +183,24 @@ class BiliLiveClient:
                 except Exception as ex:
                     log.warning(f"[guard flush] emit failed: {ex}")
 
+    # Only gifts worth ≥ ¥1000 (10000 电池) trigger a clip. Guard/SC skipped
+    # — they typically don't have the big SVGA we want to capture.
+    CLIP_GIFT_THRESHOLD = 10000  # ¥1000 in 电池
+
+    def _maybe_clip(self, event: dict):
+        if not get_room_auto_clip(self.room_id):
+            return
+        session = recorder.get_session(self.real_room_id)
+        if not session or not session._running:
+            return
+        extra = event.get("extra") or {}
+        if event.get("event_type") != "gift":
+            return
+        if (extra.get("total_coin") or 0) < self.CLIP_GIFT_THRESHOLD:
+            return
+        label = event.get("user_name", "") or "gift"
+        asyncio.create_task(session.clip(label))
+
     def request_reconnect(self):
         self._reconnect = True
         if self._ws and not self._ws.closed:
@@ -261,9 +280,12 @@ class BiliLiveClient:
                                 base_cmd = cmd.split(":")[0]
                                 if base_cmd == "LIVE":
                                     self.live_status = 1
+                                    if get_room_auto_clip(self.room_id):
+                                        asyncio.create_task(recorder.start_for(self.real_room_id, self.cookies))
                                     continue
                                 if base_cmd == "PREPARING":
                                     self.live_status = 0
+                                    asyncio.create_task(recorder.stop_for(self.real_room_id))
                                     continue
                                 event = handle_message(pkt)
                                 # Guard events arrive split across GUARD_BUY +
@@ -283,6 +305,7 @@ class BiliLiveClient:
                                     if not skip_danmu:
                                         save_event(event)
                                         await self.on_event(event)
+                                    self._maybe_clip(event)
                                     # 指令系统
                                     if event.get("event_type") == "danmu":
                                         uid = event.get("user_id")

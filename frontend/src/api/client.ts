@@ -133,6 +133,20 @@ export async function toggleSaveDanmu(roomId: number, enabled: boolean): Promise
   })
 }
 
+export async function fetchAutoClip(roomId: number): Promise<boolean> {
+  const res = await fetch(`/api/rooms/${roomId}/auto-clip`)
+  const data = await res.json()
+  return !!data.enabled
+}
+
+export async function toggleAutoClip(roomId: number, enabled: boolean): Promise<void> {
+  await fetch(`/api/rooms/${roomId}/auto-clip`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled }),
+  })
+}
+
 export async function fetchCommands(roomId: number): Promise<Command[]> {
   const res = await fetch(`/api/commands?room_id=${roomId}`)
   return res.json()
