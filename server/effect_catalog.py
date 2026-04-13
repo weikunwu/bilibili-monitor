@@ -23,6 +23,8 @@ EFFECT_API = "https://api.live.bilibili.com/xlive/general-interface/v1/fullScSpe
 _by_gift: dict[int, tuple[str, str]] = {}
 # effect_id → (web_mp4_url, web_mp4_json_url)  — some events only carry effect_id
 _by_effect: dict[int, tuple[str, str]] = {}
+# url → duration_sec (lazily fetched from the VAP json's info.f / info.fps)
+_duration_cache: dict[str, float] = {}
 
 
 async def refresh() -> int:
@@ -66,6 +68,35 @@ def get_by_gift(gift_id: int) -> Optional[tuple[str, str]]:
 
 def get_by_effect(effect_id: int) -> Optional[tuple[str, str]]:
     return _by_effect.get(effect_id)
+
+
+async def fetch_duration(json_url: str) -> Optional[float]:
+    """Return the VAP animation duration in seconds (info.f / info.fps).
+
+    Downloads the small sidecar json once and caches. Returns None on any
+    failure so the caller can fall back to a default.
+    """
+    if not json_url:
+        return None
+    cached = _duration_cache.get(json_url)
+    if cached is not None:
+        return cached
+    try:
+        async with aiohttp.ClientSession(headers=HEADERS, timeout=aiohttp.ClientTimeout(total=10)) as s:
+            async with s.get(json_url) as r:
+                import json as _json
+                data = _json.loads(await r.text())
+    except Exception as e:
+        log.info(f"[effect_catalog] duration fetch failed for {json_url[-40:]}: {e}")
+        return None
+    info = (data or {}).get("info") or {}
+    f = info.get("f") or 0
+    fps = info.get("fps") or 0
+    if not (f and fps):
+        return None
+    dur = f / fps
+    _duration_cache[json_url] = dur
+    return dur
 
 
 async def run_periodic(interval_sec: int = 6 * 3600):

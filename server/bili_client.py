@@ -211,7 +211,7 @@ class BiliLiveClient:
         effect_id = int(extra.get("effect_id") or 0)
         if event.get("event_type") == "guard" and not gift_id:
             gift_id = self.GUARD_VAP_GIFT_IDS.get(extra.get("guard_level") or 0, 0)
-        session.request_clip(gift_id, effect_id, label)
+        asyncio.create_task(session.request_clip(gift_id, effect_id, label))
 
     def request_reconnect(self):
         self._reconnect = True

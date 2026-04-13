@@ -107,7 +107,7 @@ async def debug_test_clip(request: Request):
             off = float(t.get("offset_sec", 0))
             if off > 0:
                 await asyncio.sleep(off)
-            session.request_clip(
+            await session.request_clip(
                 gift_id=int(t.get("gift_id", 0)),
                 effect_id=int(t.get("effect_id", 0)),
                 label=str(t.get("label", "debug")),

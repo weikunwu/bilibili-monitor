@@ -12,6 +12,7 @@ import tempfile
 import time
 from collections import deque
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Optional
 from urllib.parse import urlencode
 
@@ -39,13 +40,19 @@ POLL_INTERVAL = 1.0
 # Directory where final clips are written.
 CLIP_ROOT = DATA_DIR / "clips"
 
+# Ephemeral dir for the rolling HLS segment buffer. Keeping the raw
+# bytes on disk (instead of in Python memory) is critical on the 256MB
+# VM — one segment at 1080p60 ≈ 750KB and a 35s pending window can
+# accumulate ~30MB that would otherwise blow the RAM budget.
+SEG_BUF_ROOT = Path("/tmp/recorder_buf")
 
 
 @dataclass
 class _Segment:
     seq: int
     duration: float
-    data: bytes
+    path: str       # on-disk location of the raw fmp4 bytes
+    size: int       # bytes (cached so we can sum without statting)
     wall_ts: float  # when we fetched it, for post-event timing
 
 
@@ -76,7 +83,8 @@ class RecorderSession:
         self.room_id = room_id
         self.cookies = cookies or {}
         self._segments: deque[_Segment] = deque()
-        self._init_segment: Optional[bytes] = None
+        self._init_path: Optional[str] = None   # on-disk init.mp4
+        self._buf_dir = SEG_BUF_ROOT / str(room_id)
         self._m3u8_url: str = ""
         self._seg_host: str = ""  # URL prefix for relative segment URIs
         self._seen_seqs: set[int] = set()
@@ -90,6 +98,7 @@ class RecorderSession:
     async def start(self):
         if self._running:
             return
+        self._buf_dir.mkdir(parents=True, exist_ok=True)
         self._running = True
         self._task = asyncio.create_task(self._run())
         log.info(f"[recorder] room {self.room_id} start")
@@ -106,21 +115,34 @@ class RecorderSession:
         if self._session:
             await self._session.close()
             self._session = None
+        # Drop on-disk segment buffer
+        for s in self._segments:
+            try: os.unlink(s.path)
+            except OSError: pass
         self._segments.clear()
         self._seen_seqs.clear()
-        self._init_segment = None
+        if self._init_path:
+            try: os.unlink(self._init_path)
+            except OSError: pass
+            self._init_path = None
         log.info(f"[recorder] room {self.room_id} stop")
 
     # Clip window parameters.
     PRE_SEC = 5.0
-    POST_SEC = 30.0
-    MAX_TOTAL_SEC = 120.0  # cap to avoid runaway coalescing
+    POST_TAIL_SEC = 3.0         # record this long after each animation ends
+    POST_SEC_FALLBACK = 15.0    # used when VAP metadata isn't available
+    MAX_TOTAL_SEC = 120.0       # cap to avoid runaway coalescing
 
-    def request_clip(self, gift_id: int, effect_id: int, label: str):
-        """Fire-and-forget: request a clip at the current wall time.
+    async def request_clip(self, gift_id: int, effect_id: int, label: str):
+        """Async: register a clip trigger at the current wall time.
 
-        If a clip is already pending, append this trigger to it (extending
-        close_at up to MAX_TOTAL_SEC from the first trigger). Otherwise,
+        close_at for each trigger is set to (trigger_wall + animation_dur +
+        POST_TAIL_SEC); the pending clip's close_at tracks the max across
+        all triggers. If VAP metadata isn't available we fall back to a
+        fixed POST_SEC_FALLBACK window.
+
+        If a clip is already pending, append this trigger (extending
+        close_at up to MAX_TOTAL_SEC from the first trigger). Otherwise
         spawn a new _finalize_clip task.
         """
         if not self._running or not self._segments:
@@ -129,22 +151,34 @@ class RecorderSession:
         now = time.time()
         trig = _Trigger(wall_ts=now, gift_id=gift_id, effect_id=effect_id, label=label)
 
+        # Resolve this trigger's animation duration (network fetch, cached).
+        urls = effect_catalog.get_by_gift(gift_id) or effect_catalog.get_by_effect(effect_id)
+        anim_dur = None
+        if urls:
+            anim_dur = await effect_catalog.fetch_duration(urls[1])
+        if anim_dur is None:
+            anim_dur = self.POST_SEC_FALLBACK - self.POST_TAIL_SEC  # default keeps total = FALLBACK
+        trigger_close = now + anim_dur + self.POST_TAIL_SEC
+
         p = self._pending_clip
         if p is not None:
             cap = p.first_wall + self.MAX_TOTAL_SEC
-            new_close = min(now + self.POST_SEC, cap)
+            new_close = min(trigger_close, cap)
             if new_close > p.close_at:
                 p.close_at = new_close
             p.triggers.append(trig)
-            log.info(f"[recorder] room {self.room_id} trigger coalesced ({len(p.triggers)} total)")
+            log.info(f"[recorder] room {self.room_id} trigger coalesced "
+                     f"({len(p.triggers)} total, close_at +{p.close_at - p.first_wall:.1f}s)")
             return
 
         self._pending_clip = _PendingClip(
             first_wall=now,
-            close_at=now + self.POST_SEC,
+            close_at=trigger_close,
             triggers=[trig],
         )
         self._pending_clip.task = asyncio.create_task(self._finalize_clip(self._pending_clip))
+        log.info(f"[recorder] room {self.room_id} new pending clip "
+                 f"(anim {anim_dur:.1f}s → close_at +{anim_dur + self.POST_TAIL_SEC:.1f}s)")
 
     async def _finalize_clip(self, p: _PendingClip):
         """Wait until close_at, then snapshot segments and composite VAPs."""
@@ -165,8 +199,8 @@ class RecorderSession:
             if not selected:
                 log.warning(f"[recorder] room {self.room_id} clip: no segments in window")
                 return
-            init = self._init_segment
-            if not init:
+            init_path = self._init_path
+            if not init_path:
                 log.warning(f"[recorder] room {self.room_id} clip: no init segment")
                 return
 
@@ -180,13 +214,16 @@ class RecorderSession:
             base_name = f"{ts_name}_{safe_label}"
             base_path = out_dir / f"{base_name}.mp4"
 
-            # Write raw fmp4 (init + segments concatenated) then remux to clean mp4
-            # with -c copy (no re-encode; keeps memory use low on the 256MB VM).
+            # Concatenate init + segment files on disk (low-memory; one 64KB
+            # chunk at a time). Output to a temp .m4s that ffmpeg will remux.
             with tempfile.NamedTemporaryFile(suffix=".m4s", delete=False) as fp:
                 raw_path = fp.name
-                fp.write(init)
-                for s in selected:
-                    fp.write(s.data)
+                for src in [init_path] + [s.path for s in selected]:
+                    with open(src, "rb") as f:
+                        while True:
+                            chunk = f.read(65536)
+                            if not chunk: break
+                            fp.write(chunk)
             try:
                 async with FFMPEG_LOCK:
                     proc = await asyncio.create_subprocess_exec(
@@ -326,10 +363,13 @@ class RecorderSession:
                 cur_seq += 1
                 cur_dur = None
 
-        if init_uri and self._init_segment is None:
+        if init_uri and self._init_path is None:
             init_url = init_uri if init_uri.startswith("http") else self._seg_host + init_uri
             async with self._session.get(init_url) as r:
-                self._init_segment = await r.read()
+                body = await r.read()
+            init_path = self._buf_dir / "init.mp4"
+            init_path.write_bytes(body)
+            self._init_path = str(init_path)
 
         for seq, dur, uri in pending:
             if seq in self._seen_seqs:
@@ -342,7 +382,9 @@ class RecorderSession:
             except Exception as ex:
                 log.info(f"[recorder] seg {seq} fetch err: {type(ex).__name__}: {ex}")
                 continue
-            self._segments.append(_Segment(seq, dur, body, time.time()))
+            seg_path = self._buf_dir / f"{seq}.m4s"
+            seg_path.write_bytes(body)
+            self._segments.append(_Segment(seq, dur, str(seg_path), len(body), time.time()))
 
         # Evict old segments beyond BUFFER_SECONDS — but if a pending clip is
         # in flight, protect everything back to (first_trigger - PRE_SEC) or it
@@ -354,6 +396,8 @@ class RecorderSession:
         while self._segments and self._segments[0].wall_ts < cutoff:
             old = self._segments.popleft()
             self._seen_seqs.discard(old.seq)
+            try: os.unlink(old.path)
+            except OSError: pass
 
 
 # Global registry — one session per room.
