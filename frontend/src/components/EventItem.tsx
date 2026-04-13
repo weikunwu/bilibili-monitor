@@ -1,43 +1,8 @@
-import { type ReactNode, memo, useState } from 'react'
-import { Tag, Checkbox, Button } from 'rsuite'
+import { type ReactNode, memo } from 'react'
+import { Tag, Checkbox } from 'rsuite'
 import type { LiveEvent } from '../types'
 import { formatTime, formatBattery, fixUrl } from '../lib/formatters'
 import { BADGE_NAMES, EVENT_GIFT, EVENT_SUPERCHAT, EVENT_GUARD } from '../lib/constants'
-import { matchClip, clipComposeUrl } from '../api/client'
-
-// ≥ 1000 电池 (¥1000) — matches the server-side CLIP_GIFT_THRESHOLD.
-const CLIP_MIN_COIN = 10000
-
-function isClippable(ev: LiveEvent): boolean {
-  const extra = ev.extra || {}
-  const coin = extra.total_coin ?? (extra.price || 0) * (extra.num || 1)
-  if (ev.event_type === EVENT_GIFT) return coin >= CLIP_MIN_COIN
-  if (ev.event_type === EVENT_GUARD) return coin >= CLIP_MIN_COIN
-  return false
-}
-
-function ClipDownloadButton({ ev }: { ev: LiveEvent }) {
-  const [busy, setBusy] = useState(false)
-  const [missing, setMissing] = useState(false)
-  async function handleClick() {
-    if (!ev.room_id || !ev.user_name || !ev.timestamp) return
-    setBusy(true)
-    setMissing(false)
-    try {
-      const m = await matchClip(ev.room_id, ev.user_name, ev.timestamp)
-      if (!m) { setMissing(true); return }
-      window.open(clipComposeUrl(ev.room_id, m.name), '_blank')
-    } finally {
-      setBusy(false)
-    }
-  }
-  return (
-    <Button size="xs" appearance="ghost" loading={busy} onClick={handleClick}
-      style={{ marginLeft: 6 }}>
-      {missing ? '无录屏' : '录屏'}
-    </Button>
-  )
-}
 
 interface Props {
   event: LiveEvent
@@ -140,7 +105,6 @@ export const EventItem = memo(function EventItem({ event: ev, checked, onCheck }
         )}
         {renderContent(ev)}
         {priceTag}
-        {isClippable(ev) && <ClipDownloadButton ev={ev} />}
       </span>
     </div>
   )

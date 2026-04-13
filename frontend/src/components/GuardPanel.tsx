@@ -5,6 +5,7 @@ import type { DateRange } from 'rsuite/DateRangePicker'
 import type { LiveEvent, GiftUser, GiftGifItem } from '../types'
 import { formatTime, formatBattery, fixUrl, fmtDateTime } from '../lib/formatters'
 import { GenerateImageButton } from './GenerateImageButton'
+import { ClipDownloadButton, isClippable } from './ClipDownloadButton'
 import { EVENT_GUARD } from '../lib/constants'
 import { PREDEFINED_RANGES } from '../lib/dateRanges'
 import { generateGiftCard } from '../lib/giftCard'
@@ -316,6 +317,7 @@ export function GuardPanel({
                           动态图
                         </GenerateImageButton>
                       )}
+                      {isClippable(rowData) && <ClipDownloadButton event={rowData} size="sm" />}
                     </div>
                   ) : null}
                 </Cell>
