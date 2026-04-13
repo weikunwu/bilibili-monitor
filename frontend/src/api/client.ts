@@ -169,11 +169,14 @@ export async function fetchGiftSummary(
 
 export async function fetchBlindBoxSummary(
   roomId: number,
-  period: string,
+  timeFrom: string,
+  timeTo: string,
   userName?: string,
 ): Promise<{ period: string; users: BlindBoxUser[] }> {
-  let url = `/api/blind-box-summary?room_id=${roomId}&period=${period}`
-  if (userName) url += `&user_name=${encodeURIComponent(userName)}`
+  const url = `/api/blind-box-summary?room_id=${roomId}`
+    + `&time_from=${encodeURIComponent(timeFrom)}`
+    + `&time_to=${encodeURIComponent(timeTo)}`
+    + (userName ? `&user_name=${encodeURIComponent(userName)}` : '')
   const res = await fetch(url)
   return res.json()
 }

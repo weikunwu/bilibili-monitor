@@ -234,11 +234,13 @@ def _beijing_time_range(period: str) -> tuple[str, str, str]:
 @router.get("/api/blind-box-summary")
 async def blind_box_summary(
     room_id: int = Query(...),
-    period: str = Query("today"),
+    time_from: str = Query(...),
+    time_to: str = Query(...),
     user_name: Optional[str] = Query(None),
     _=Depends(require_room_access),
 ):
-    utc_start, utc_end, label = _beijing_time_range(period)
+    utc_start, utc_end = time_from, time_to
+    label = f"{time_from[:10]} ~ {time_to[:10]}"
     conn = sqlite3.connect(str(DB_PATH))
     where = "event_type='gift' AND room_id=? AND timestamp >= ? AND timestamp < ? AND extra_json LIKE '%blind_name%' AND extra_json NOT LIKE '%\"blind_name\": \"\"%'"
     params: list = [room_id, utc_start, utc_end]

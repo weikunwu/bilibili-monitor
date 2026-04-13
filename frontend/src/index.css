@@ -54,7 +54,14 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 .blind-box-panel .blind-box-controls,
 .blind-box-panel .blind-box-period-label,
 .blind-box-panel .blind-box-user,
+.blind-box-panel .blind-box-summary,
 .blind-box-panel .empty { padding-left: 24px; padding-right: 24px; }
+.blind-box-summary { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+.summary-card { flex: 1; min-width: 120px; background: #1a1a2e; border: 1px solid #2a2a4a; border-radius: 8px; padding: 12px 16px; }
+.summary-card-label { font-size: 12px; color: #888; margin-bottom: 6px; }
+.summary-card-value { font-size: 22px; font-weight: 600; color: #e0e0e0; }
+.summary-card-value.profit-pos { color: #4caf50; }
+.summary-card-value.profit-neg { color: #f44336; }
 .blind-box-controls { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
 .blind-box-period-label { font-size: 14px; color: #888; margin-bottom: 12px; }
 .blind-box-user { margin-bottom: 8px; }
