@@ -24,3 +24,6 @@ frontend/dist/
 
 # HAR captures
 *.har
+
+# Local test output
+clips/
