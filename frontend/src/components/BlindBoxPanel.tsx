@@ -72,7 +72,7 @@ export function BlindBoxPanel({ roomId }: Props) {
   return (
     <div className="blind-box-panel">
       <div className="panel-title">盲盒统计</div>
-      <div className="blind-box-controls">
+      <div className="event-filter">
         {userOptions.length > 0 && (
           <CheckPicker
             data={userOptions}
