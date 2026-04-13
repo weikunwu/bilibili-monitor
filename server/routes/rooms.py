@@ -1,8 +1,11 @@
 """房间和指令 API"""
 
+import asyncio
+
 from fastapi import APIRouter, Depends, Query, Request, HTTPException
 from fastapi.responses import HTMLResponse
 
+from .. import recorder
 from ..db import get_room_commands, save_command_state, get_command, get_all_rooms, get_room_save_danmu, set_room_save_danmu, get_room_auto_clip, set_room_auto_clip
 from ..auth import require_room_access
 from ..config import ROOM_INFO_API, MASTER_INFO_API
@@ -149,8 +152,6 @@ async def toggle_auto_clip(room_id: int, request: Request, _=Depends(require_roo
     set_room_auto_clip(room_id, enabled)
     # Apply immediately to the running client: start/stop recorder now so the
     # user doesn't have to wait for the next reconnect.
-    import asyncio
-    from .. import recorder
     client = manager.get(room_id)
     if client:
         if enabled and client.live_status == 1:

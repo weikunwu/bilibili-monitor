@@ -183,8 +183,7 @@ class BiliLiveClient:
                 except Exception as ex:
                     log.warning(f"[guard flush] emit failed: {ex}")
 
-    # Only gifts worth ≥ ¥1000 (10000 电池) trigger a clip. Guard/SC skipped
-    # — they typically don't have the big SVGA we want to capture.
+    # Gift or guard events worth ≥ ¥1000 (10000 电池) trigger a clip.
     CLIP_GIFT_THRESHOLD = 10000  # ¥1000 in 电池
 
     def _maybe_clip(self, event: dict):
@@ -193,12 +192,16 @@ class BiliLiveClient:
         session = recorder.get_session(self.real_room_id)
         if not session or not session._running:
             return
+        if event.get("event_type") not in ("gift", "guard"):
+            return
         extra = event.get("extra") or {}
-        if event.get("event_type") != "gift":
+        # Prefer total_coin (gifts) else price*num (guard events don't set total_coin).
+        coin = extra.get("total_coin")
+        if coin is None:
+            coin = (extra.get("price") or 0) * (extra.get("num") or 1)
+        if coin < self.CLIP_GIFT_THRESHOLD:
             return
-        if (extra.get("total_coin") or 0) < self.CLIP_GIFT_THRESHOLD:
-            return
-        label = event.get("user_name", "") or "gift"
+        label = event.get("user_name", "") or event.get("event_type", "")
         asyncio.create_task(session.clip(label))
 
     def request_reconnect(self):

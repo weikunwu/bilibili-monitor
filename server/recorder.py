@@ -269,12 +269,18 @@ def get_session(room_id: int) -> Optional[RecorderSession]:
 
 
 async def start_for(room_id: int, cookies: dict) -> RecorderSession:
+    # Reserve the slot synchronously (no await before the assignment) so two
+    # concurrent callers don't both create orphan sessions.
     s = _sessions.get(room_id)
-    if s and s._running:
+    if s:
         return s
     s = RecorderSession(room_id, cookies)
     _sessions[room_id] = s
-    await s.start()
+    try:
+        await s.start()
+    except Exception:
+        _sessions.pop(room_id, None)
+        raise
     return s
 
 

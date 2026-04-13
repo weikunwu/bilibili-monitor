@@ -11,6 +11,7 @@ from .config import BASE_DIR, log
 from .db import init_db, cleanup_old_events
 from .auth import AuthMiddleware, get_session_user, get_user_allowed_rooms, handle_login, handle_logout
 from .manager import manager
+from . import recorder
 from .routes import events, rooms, bot, admin
 
 app = FastAPI(title="B站直播监控")
@@ -99,4 +100,14 @@ async def main(port: int):
     run_tasks = manager.get_run_tasks()
     log.info(f"启动监控: {len(run_tasks)} 个活跃房间 / {len(manager.all_clients())} 个总房间 | Web: http://localhost:{port}")
 
-    await asyncio.gather(server.serve(), *run_tasks)
+    await asyncio.gather(server.serve(), _periodic_clip_cleanup(), *run_tasks)
+
+
+async def _periodic_clip_cleanup():
+    """Delete clips older than 24h every hour."""
+    while True:
+        try:
+            recorder.cleanup_old_clips(max_age_hours=24)
+        except Exception as e:
+            log.warning(f"[clip cleanup] {e}")
+        await asyncio.sleep(3600)
