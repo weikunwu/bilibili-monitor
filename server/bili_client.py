@@ -420,8 +420,8 @@ class BiliLiveClient:
         if not nickname:
             await self.send_danmu(f"{user_name}，昵称不能为空")
             return
-        if len(nickname) > 20:
-            await self.send_danmu(f"{user_name}，昵称过长（最多20字）")
+        if len(nickname) > 6:
+            await self.send_danmu(f"{user_name}，昵称过长（最多6字）")
             return
         upsert_nickname(self.real_room_id, user_id, user_name, nickname)
         await self.send_danmu(f"好的，{nickname}")
