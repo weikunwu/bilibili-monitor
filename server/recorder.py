@@ -265,9 +265,12 @@ class RecorderSession:
             pass
 
     async def _resolve_playurl(self) -> bool:
+        # qn: 80=360p, 150=720p (default high), 250=720p60, 400=1080p, 10000=原画.
+        # Lower is critical on the 256MB VM: 720p ~2Mbps buffered for 35s = 9MB,
+        # 360p ~500Kbps = 2MB.
         params = {
             "room_id": self.room_id, "protocol": "1", "format": "2",
-            "codec": "0", "qn": 10000, "platform": "web", "ptype": 8,
+            "codec": "0", "qn": 80, "platform": "web", "ptype": 8,
         }
         async with self._session.get(PLAYURL_API + "?" + urlencode(params)) as r:
             data = await r.json(content_type=None)
