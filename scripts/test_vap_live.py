@@ -62,9 +62,16 @@ async def main():
         print(f"   trigger gift={gift_id} label={label}")
         session.request_clip(gift_id=gift_id, effect_id=0, label=f"test_{label}")
 
-    # 5. Wait for finalize (POST_SEC + ffmpeg headroom).
-    print("=> waiting for finalize (≈45s)…")
-    await asyncio.sleep(recorder.RecorderSession.POST_SEC + 15)
+    # 5. Grab the finalize task and await it. _finalize_clip does: wait
+    #    close_at, remux base (~few seconds), then 2× libx264 composite
+    #    (can be 30-60s each on the 256MB VM). Takes 1-3 min total.
+    finalize_task = session._pending_clip.task if session._pending_clip else None
+    if finalize_task:
+        print("=> awaiting finalize task (up to 5 min)…")
+        try:
+            await asyncio.wait_for(finalize_task, timeout=300)
+        except asyncio.TimeoutError:
+            print("   !! timed out, partial output possible")
 
     # 6. Stop recorder + list output.
     await recorder.stop_for(ROOM_ID)

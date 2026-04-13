@@ -188,7 +188,8 @@ class RecorderSession:
                 proc = await asyncio.create_subprocess_exec(
                     "ffmpeg", "-y", "-i", raw_path,
                     "-vf", f"scale=-2:{CLIP_OUT_HEIGHT}",
-                    "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+                    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
+                    "-threads", "1",
                     "-c:a", "copy",
                     "-movflags", "+faststart", str(base_path),
                     stdout=asyncio.subprocess.DEVNULL,

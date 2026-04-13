@@ -199,7 +199,9 @@ async def composite(
         "-filter_complex", filter_str,
         "-map", f"[{final_label}]",
         "-map", "0:a?",
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+        # ultrafast + higher CRF keeps memory + CPU low on 256MB VM.
+        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
+        "-threads", "1",
         "-c:a", "copy",
         "-movflags", "+faststart",
         out_path,
