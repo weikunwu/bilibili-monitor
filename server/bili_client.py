@@ -337,6 +337,7 @@ class BiliLiveClient:
                                             asyncio.create_task(self.handle_blind_box_query(
                                                 None if is_streamer else uname,
                                                 DANMU_PERIOD_MAP[content],
+                                                user_id=None if is_streamer else uid,
                                             ))
                         elif raw_msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
                             break
@@ -402,9 +403,10 @@ class BiliLiveClient:
         except Exception as e:
             log.warning(f"[发弹幕] 异常: {e}")
 
-    async def handle_blind_box_query(self, user_name, period: str = "today"):
+    async def handle_blind_box_query(self, user_name, period: str = "today", user_id: int = 0):
         """Query blind box stats and reply via danmu. user_name=None for all users (streamer)."""
         from .routes.events import _beijing_time_range
+        from .db import get_nickname
         import sqlite3
         from .config import DB_PATH
 
@@ -419,7 +421,8 @@ class BiliLiveClient:
         conn.close()
 
         period_label = PERIOD_LABELS.get(period, "今日")
-        prefix = f"{user_name}，" if user_name else ""
+        display_name = (get_nickname(self.real_room_id, user_id) or user_name) if user_name else ""
+        prefix = f"{display_name}，" if display_name else ""
         if not rows:
             await self.send_danmu(f"{prefix}{period_label}暂无盲盒记录")
             return

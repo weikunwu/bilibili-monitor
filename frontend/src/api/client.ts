@@ -181,6 +181,39 @@ export async function fetchBlindBoxSummary(
   return res.json()
 }
 
+export interface Nickname {
+  user_id: number
+  user_name: string
+  nickname: string
+  updated_at: string
+}
+
+export async function fetchNicknames(roomId: number): Promise<Nickname[]> {
+  const res = await fetch(`/api/rooms/${roomId}/nicknames`)
+  return res.json()
+}
+
+export async function saveNickname(
+  roomId: number, userId: number, userName: string, nickname: string,
+): Promise<void> {
+  await fetch(`/api/rooms/${roomId}/nicknames/${userId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_name: userName, nickname }),
+  })
+}
+
+export async function deleteNickname(roomId: number, userId: number): Promise<void> {
+  await fetch(`/api/rooms/${roomId}/nicknames/${userId}`, { method: 'DELETE' })
+}
+
+export async function fetchRoomUsers(
+  roomId: number, search: string,
+): Promise<{ user_id: number; user_name: string }[]> {
+  const res = await fetch(`/api/rooms/${roomId}/users?search=${encodeURIComponent(search)}`)
+  return res.json()
+}
+
 export async function fetchGiftGif(giftId: number): Promise<{ gif: string }> {
   const res = await fetch(`/api/gift-gif?gift_id=${giftId}`)
   return res.json()

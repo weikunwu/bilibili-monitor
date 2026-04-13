@@ -1,7 +1,7 @@
 import { Sidenav, Nav } from 'rsuite'
-import { LayoutList, MessageSquareText, Gift, Anchor, Megaphone, Box, Wrench } from 'lucide-react'
+import { LayoutList, MessageSquareText, Gift, Anchor, Megaphone, Box, Wrench, Tag } from 'lucide-react'
 import type { TabType } from '../types'
-import { TAB_ALL, EVENT_DANMU, EVENT_GIFT, EVENT_SUPERCHAT, EVENT_GUARD, TAB_BLINDBOX, TAB_TOOLS } from '../lib/constants'
+import { TAB_ALL, EVENT_DANMU, EVENT_GIFT, EVENT_SUPERCHAT, EVENT_GUARD, TAB_BLINDBOX, TAB_TOOLS, TAB_NICKNAMES } from '../lib/constants'
 import { useIsMobile } from '../hooks/useIsMobile'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -12,6 +12,7 @@ const TAB_LIST: { type: TabType; label: string; icon: any }[] = [
   { type: EVENT_GUARD, label: '大航海', icon: <Anchor size={16} /> },
   { type: EVENT_SUPERCHAT, label: '醒目留言', icon: <Megaphone size={16} /> },
   { type: TAB_BLINDBOX, label: '盲盒统计', icon: <Box size={16} /> },
+  { type: TAB_NICKNAMES, label: '昵称管理', icon: <Tag size={16} /> },
   { type: TAB_TOOLS, label: '主播工具', icon: <Wrench size={16} /> },
 ]
 

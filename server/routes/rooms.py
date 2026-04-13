@@ -6,7 +6,11 @@ from fastapi import APIRouter, Depends, Query, Request, HTTPException
 from fastapi.responses import HTMLResponse
 
 from .. import recorder
-from ..db import get_room_commands, save_command_state, get_command, get_all_rooms, get_room_save_danmu, set_room_save_danmu, get_room_auto_clip, set_room_auto_clip
+from ..db import (
+    get_room_commands, save_command_state, get_command, get_all_rooms,
+    get_room_save_danmu, set_room_save_danmu, get_room_auto_clip, set_room_auto_clip,
+    list_nicknames, upsert_nickname, delete_nickname, list_room_users,
+)
 from ..auth import require_room_access
 from ..config import ROOM_INFO_API, MASTER_INFO_API
 from ..manager import manager
@@ -159,6 +163,33 @@ async def toggle_auto_clip(room_id: int, request: Request, _=Depends(require_roo
         elif not enabled:
             asyncio.create_task(recorder.stop_for(client.real_room_id))
     return {"ok": True, "room_id": room_id, "auto_clip": enabled}
+
+
+@router.get("/api/rooms/{room_id}/nicknames")
+async def get_nicknames(room_id: int, _=Depends(require_room_access)):
+    return list_nicknames(room_id)
+
+
+@router.put("/api/rooms/{room_id}/nicknames/{user_id}")
+async def put_nickname(room_id: int, user_id: int, request: Request, _=Depends(require_room_access)):
+    body = await request.json()
+    nickname = (body.get("nickname") or "").strip()
+    user_name = (body.get("user_name") or "").strip()
+    if not nickname:
+        raise HTTPException(400, "昵称不能为空")
+    upsert_nickname(room_id, user_id, user_name, nickname)
+    return {"ok": True}
+
+
+@router.delete("/api/rooms/{room_id}/nicknames/{user_id}")
+async def remove_nickname(room_id: int, user_id: int, _=Depends(require_room_access)):
+    delete_nickname(room_id, user_id)
+    return {"ok": True}
+
+
+@router.get("/api/rooms/{room_id}/users")
+async def get_room_users(room_id: int, search: str = Query(""), _=Depends(require_room_access)):
+    return list_room_users(room_id, search)
 
 
 @router.post("/api/commands/{cmd_id}/toggle")

@@ -71,6 +71,16 @@ def init_db():
         )
     """)
     conn.execute("""
+        CREATE TABLE IF NOT EXISTS nicknames (
+            room_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            user_name TEXT NOT NULL DEFAULT '',
+            nickname TEXT NOT NULL,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            PRIMARY KEY (room_id, user_id)
+        )
+    """)
+    conn.execute("""
         CREATE TABLE IF NOT EXISTS sessions (
             token TEXT PRIMARY KEY,
             user_id INTEGER NOT NULL,
@@ -268,6 +278,69 @@ def set_room_save_danmu(room_id: int, enabled: bool):
     settings = get_room_settings(room_id)
     settings["save_danmu"] = enabled
     save_room_settings(room_id, settings)
+
+
+def list_nicknames(room_id: int) -> list[dict]:
+    conn = sqlite3.connect(str(DB_PATH))
+    rows = conn.execute(
+        "SELECT user_id, user_name, nickname, updated_at FROM nicknames WHERE room_id=? ORDER BY updated_at DESC",
+        (room_id,),
+    ).fetchall()
+    conn.close()
+    return [{"user_id": r[0], "user_name": r[1], "nickname": r[2], "updated_at": r[3]} for r in rows]
+
+
+def get_nickname(room_id: int, user_id: int) -> Optional[str]:
+    if not user_id:
+        return None
+    conn = sqlite3.connect(str(DB_PATH))
+    row = conn.execute(
+        "SELECT nickname FROM nicknames WHERE room_id=? AND user_id=?",
+        (room_id, user_id),
+    ).fetchone()
+    conn.close()
+    return row[0] if row else None
+
+
+def upsert_nickname(room_id: int, user_id: int, user_name: str, nickname: str):
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.execute(
+        """
+        INSERT INTO nicknames (room_id, user_id, user_name, nickname, updated_at)
+        VALUES (?,?,?,?, datetime('now'))
+        ON CONFLICT(room_id, user_id) DO UPDATE SET
+            user_name=excluded.user_name,
+            nickname=excluded.nickname,
+            updated_at=datetime('now')
+        """,
+        (room_id, user_id, user_name, nickname),
+    )
+    conn.commit()
+    conn.close()
+
+
+def delete_nickname(room_id: int, user_id: int):
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.execute("DELETE FROM nicknames WHERE room_id=? AND user_id=?", (room_id, user_id))
+    conn.commit()
+    conn.close()
+
+
+def list_room_users(room_id: int, search: str = "") -> list[dict]:
+    """Distinct (user_id, most recent user_name) from events for a room."""
+    conn = sqlite3.connect(str(DB_PATH))
+    sql = """
+        SELECT user_id, user_name FROM events
+        WHERE room_id=? AND user_id > 0 AND user_name IS NOT NULL AND user_name != ''
+    """
+    params: list = [room_id]
+    if search:
+        sql += " AND user_name LIKE ?"
+        params.append(f"%{search}%")
+    sql += " GROUP BY user_id ORDER BY MAX(timestamp) DESC LIMIT 200"
+    rows = conn.execute(sql, params).fetchall()
+    conn.close()
+    return [{"user_id": r[0], "user_name": r[1]} for r in rows]
 
 
 def get_room_auto_clip(room_id: int) -> bool:
