@@ -18,7 +18,12 @@ from urllib.parse import urlencode
 import aiohttp
 
 from .config import HEADERS, log, DATA_DIR
-from . import effect_catalog, vap_composite
+from . import effect_catalog
+
+
+# Global lock — run at most one ffmpeg subprocess at a time so we don't
+# stress the 256MB VM with concurrent encodes/remuxes.
+FFMPEG_LOCK = asyncio.Lock()
 
 
 PLAYURL_API = "https://api.live.bilibili.com/xlive/web-room/v2/index/getRoomPlayInfo"
@@ -34,9 +39,6 @@ POLL_INTERVAL = 1.0
 # Directory where final clips are written.
 CLIP_ROOT = DATA_DIR / "clips"
 
-# Output clips are scaled to this height (width auto, preserves aspect).
-# 480 = 480p, much smaller files and faster ffmpeg on the 256MB VM.
-CLIP_OUT_HEIGHT = 480
 
 
 @dataclass
@@ -178,20 +180,17 @@ class RecorderSession:
             base_name = f"{ts_name}_{safe_label}"
             base_path = out_dir / f"{base_name}.mp4"
 
-            # Write raw fmp4 (init + segments concatenated) then remux to clean mp4.
+            # Write raw fmp4 (init + segments concatenated) then remux to clean mp4
+            # with -c copy (no re-encode; keeps memory use low on the 256MB VM).
             with tempfile.NamedTemporaryFile(suffix=".m4s", delete=False) as fp:
                 raw_path = fp.name
                 fp.write(init)
                 for s in selected:
                     fp.write(s.data)
             try:
-                async with vap_composite.FFMPEG_LOCK:
+                async with FFMPEG_LOCK:
                     proc = await asyncio.create_subprocess_exec(
-                        "ffmpeg", "-y", "-i", raw_path,
-                        "-vf", f"scale=-2:{CLIP_OUT_HEIGHT}",
-                        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
-                        "-threads", "1",
-                        "-c:a", "copy",
+                        "ffmpeg", "-y", "-i", raw_path, "-c", "copy",
                         "-movflags", "+faststart", str(base_path),
                         stdout=asyncio.subprocess.DEVNULL,
                         stderr=asyncio.subprocess.PIPE,
@@ -209,34 +208,32 @@ class RecorderSession:
             log.info(f"[recorder] room {self.room_id} base clip {base_path.name} "
                      f"({secs_covered:.1f}s, {size_kb:.0f}KB, {len(p.triggers)} triggers)")
 
-            # Build VAP overlays for each trigger, keyed by gift_id (fallback: effect_id).
+            # Build a sidecar JSON describing VAP overlays. The client composites
+            # at view-time (server has no memory budget for ffmpeg filter_complex).
             clip_anchor = selected[0].wall_ts
-            vap_triggers: list[vap_composite.VapTrigger] = []
+            overlays = []
             for t in p.triggers:
                 urls = effect_catalog.get_by_gift(t.gift_id) or effect_catalog.get_by_effect(t.effect_id)
-                if not urls:
-                    log.info(f"[recorder] no VAP for gift={t.gift_id} effect={t.effect_id}")
-                    continue
-                fetched = await vap_composite.fetch_vap(urls[0], urls[1])
-                if not fetched:
-                    continue
-                mp4_path, meta = fetched
-                vap_triggers.append(vap_composite.VapTrigger(
-                    offset_sec=t.wall_ts - clip_anchor,
-                    mp4_path=mp4_path,
-                    meta=meta,
-                ))
+                entry = {
+                    "offset_sec": round(t.wall_ts - clip_anchor, 3),
+                    "gift_id": t.gift_id,
+                    "effect_id": t.effect_id,
+                    "label": t.label,
+                }
+                if urls:
+                    entry["vap_mp4"] = urls[0]
+                    entry["vap_json"] = urls[1]
+                overlays.append(entry)
 
-            if vap_triggers:
-                # Produce two variants — fullscreen + native — for comparison.
-                for layout in ("fullscreen", "native"):
-                    out_variant = out_dir / f"{base_name}_{layout}.mp4"
-                    ok = await vap_composite.composite(
-                        str(base_path), vap_triggers, str(out_variant), layout=layout,
-                    )
-                    if ok:
-                        sz = out_variant.stat().st_size / 1024
-                        log.info(f"[recorder] composited {out_variant.name} ({sz:.0f}KB)")
+            import json as _json
+            meta_path = out_dir / f"{base_name}.json"
+            with open(meta_path, "w", encoding="utf-8") as f:
+                _json.dump({
+                    "base_mp4": base_path.name,
+                    "duration_sec": round(secs_covered, 3),
+                    "overlays": overlays,
+                }, f, ensure_ascii=False, indent=2)
+            log.info(f"[recorder] sidecar {meta_path.name} with {len(overlays)} overlays")
         except asyncio.CancelledError:
             raise
         except Exception as e:
@@ -406,6 +403,5 @@ def cleanup_old_clips(max_age_hours: int = 24):
         return n
 
     removed_clips = _sweep(CLIP_ROOT, recurse_dirs=True)
-    removed_vap = _sweep(vap_composite.VAP_CACHE, recurse_dirs=False)
-    if removed_clips or removed_vap:
-        log.info(f"[recorder] cleaned {removed_clips} clips, {removed_vap} vap cache")
+    if removed_clips:
+        log.info(f"[recorder] cleaned {removed_clips} clips")
