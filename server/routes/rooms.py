@@ -147,6 +147,16 @@ async def toggle_auto_clip(room_id: int, request: Request, _=Depends(require_roo
     body = await request.json()
     enabled = bool(body.get("enabled", False))
     set_room_auto_clip(room_id, enabled)
+    # Apply immediately to the running client: start/stop recorder now so the
+    # user doesn't have to wait for the next reconnect.
+    import asyncio
+    from .. import recorder
+    client = manager.get(room_id)
+    if client:
+        if enabled and client.live_status == 1:
+            asyncio.create_task(recorder.start_for(client.real_room_id, client.cookies))
+        elif not enabled:
+            asyncio.create_task(recorder.stop_for(client.real_room_id))
     return {"ok": True, "room_id": room_id, "auto_clip": enabled}
 
 
