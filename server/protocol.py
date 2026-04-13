@@ -138,6 +138,7 @@ def handle_message(msg: dict) -> Optional[dict]:
         gift_info = data.get("gift_info", {})
         gift_img = gift_info.get("img_basic", "")
         gift_gif = gift_info.get("gif", "")
+        effect_id = gift_info.get("effect_id", 0)
         blind = data.get("blind_gift") or {}
         blind_name = ""
         blind_price = 0
@@ -161,6 +162,7 @@ def handle_message(msg: dict) -> Optional[dict]:
                 "total_coin": price * num / 100,
                 "price": price / 100, "action": action, "blind_name": blind_name,
                 "avatar": data.get("face", ""), "gift_img": gift_img, "gift_gif": gift_gif,
+                "effect_id": effect_id,
                 "guard_level": data.get("guard_level", 0), "blind_price": blind_price / 100,
             },
         }

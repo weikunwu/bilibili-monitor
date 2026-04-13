@@ -186,6 +186,11 @@ class BiliLiveClient:
     # Gift or guard events worth ≥ ¥1000 (10000 电池) trigger a clip.
     CLIP_GIFT_THRESHOLD = 10000  # ¥1000 in 电池
 
+    # For guard events (GUARD_BUY / USER_TOAST_MSG) there's no gift_id — map
+    # guard_level → a known "xx一号" gift_id so the catalog can look up VAP.
+    # level 1=总督, 2=提督, 3=舰长
+    GUARD_VAP_GIFT_IDS = {1: 34639, 2: 34638, 3: 34637}
+
     def _maybe_clip(self, event: dict):
         if not get_room_auto_clip(self.room_id):
             return
@@ -202,7 +207,11 @@ class BiliLiveClient:
         if coin < self.CLIP_GIFT_THRESHOLD:
             return
         label = event.get("user_name", "") or event.get("event_type", "")
-        asyncio.create_task(session.clip(label))
+        gift_id = int(extra.get("gift_id") or 0)
+        effect_id = int(extra.get("effect_id") or 0)
+        if event.get("event_type") == "guard" and not gift_id:
+            gift_id = self.GUARD_VAP_GIFT_IDS.get(extra.get("guard_level") or 0, 0)
+        session.request_clip(gift_id, effect_id, label)
 
     def request_reconnect(self):
         self._reconnect = True
