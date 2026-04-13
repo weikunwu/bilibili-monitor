@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import sqlite3
 import time
 
 import aiohttp
@@ -9,12 +10,16 @@ import aiohttp
 from .config import (
     HEADERS, DANMU_CONF_API, DANMU_INFO_API, ROOM_INFO_API, MASTER_INFO_API,
     FINGER_SPI_API, NAV_API, SEND_GIFT_API, SEND_MSG_API, WS_OP_AUTH, WS_OP_HEARTBEAT,
-    PERIOD_LABELS, DANMU_PERIOD_MAP, log,
+    PERIOD_LABELS, DANMU_PERIOD_MAP, DB_PATH, log,
 )
 from .protocol import make_packet, parse_packets, handle_message, build_guard_event
 from .bili_api import get_wbi_key, wbi_sign, fetch_user_avatar
 from . import recorder
-from .db import save_event, get_command, get_room_save_danmu, get_room_auto_clip
+from .db import (
+    save_event, get_command, get_room_save_danmu, get_room_auto_clip,
+    get_nickname, upsert_nickname, delete_nickname,
+)
+from .time_utils import beijing_time_range
 
 
 class BiliLiveClient:
@@ -331,6 +336,12 @@ class BiliLiveClient:
                                             cmd_cfg = get_command(self.real_room_id, "auto_gift")
                                             if cmd_cfg and cmd_cfg["enabled"] and content == cmd_cfg["config"]["trigger"]:
                                                 asyncio.create_task(self.send_gift(cmd_cfg["config"]))
+                                        # 设置/清除昵称
+                                        if self.bot_uid and uid:
+                                            if content == "清除昵称":
+                                                asyncio.create_task(self.handle_clear_nickname(uid, uname))
+                                            elif content.startswith("叫我"):
+                                                asyncio.create_task(self.handle_set_nickname(uid, uname, content[2:].strip()))
                                         # 盲盒查询指令 (skip when no bot bound — we can't reply anyway)
                                         if content in DANMU_PERIOD_MAP and self.bot_uid:
                                             is_streamer = uid == self.streamer_uid
@@ -403,14 +414,25 @@ class BiliLiveClient:
         except Exception as e:
             log.warning(f"[发弹幕] 异常: {e}")
 
+    async def handle_set_nickname(self, user_id: int, user_name: str, nickname: str):
+        """Handle '叫我xxx' danmu command: upsert this user's nickname for this room."""
+        nickname = (nickname or "").strip()
+        if not nickname:
+            await self.send_danmu(f"{user_name}，昵称不能为空")
+            return
+        if len(nickname) > 20:
+            await self.send_danmu(f"{user_name}，昵称过长（最多20字）")
+            return
+        upsert_nickname(self.real_room_id, user_id, user_name, nickname)
+        await self.send_danmu(f"好的，{nickname}")
+
+    async def handle_clear_nickname(self, user_id: int, user_name: str):
+        delete_nickname(self.real_room_id, user_id)
+        await self.send_danmu(f"{user_name}，已清除昵称")
+
     async def handle_blind_box_query(self, user_name, period: str = "today", user_id: int = 0):
         """Query blind box stats and reply via danmu. user_name=None for all users (streamer)."""
-        from .routes.events import _beijing_time_range
-        from .db import get_nickname
-        import sqlite3
-        from .config import DB_PATH
-
-        utc_start, utc_end, _ = _beijing_time_range(period)
+        utc_start, utc_end, _ = beijing_time_range(period)
         conn = sqlite3.connect(str(DB_PATH))
         sql = "SELECT extra_json FROM events WHERE event_type='gift' AND room_id=? AND timestamp >= ? AND timestamp < ? AND extra_json LIKE '%blind_name%' AND extra_json NOT LIKE '%\"blind_name\": \"\"%'"
         params: list = [self.real_room_id, utc_start, utc_end]

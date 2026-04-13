@@ -10,6 +10,7 @@ an empty delta assuming the client has an up-to-date cache.
 """
 
 import asyncio
+import json
 from typing import Optional
 
 import aiohttp
@@ -84,8 +85,7 @@ async def fetch_duration(json_url: str) -> Optional[float]:
     try:
         async with aiohttp.ClientSession(headers=HEADERS, timeout=aiohttp.ClientTimeout(total=10)) as s:
             async with s.get(json_url) as r:
-                import json as _json
-                data = _json.loads(await r.text())
+                data = json.loads(await r.text())
     except Exception as e:
         log.info(f"[effect_catalog] duration fetch failed for {json_url[-40:]}: {e}")
         return None

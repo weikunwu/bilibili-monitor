@@ -82,7 +82,7 @@ export function BlindBoxPanel({ roomId }: Props) {
             size="sm"
             searchable
             countable
-            style={{ width: 200 }}
+            w={200}
           />
         )}
         {boxOptions.length > 0 && (
@@ -94,7 +94,7 @@ export function BlindBoxPanel({ roomId }: Props) {
             size="sm"
             searchable
             countable
-            style={{ width: 200 }}
+            w={200}
           />
         )}
         <span style={{ flex: 1 }} />

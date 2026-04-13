@@ -7,11 +7,13 @@ remuxes the lot to a standalone .mp4 on disk via ffmpeg.
 """
 
 import asyncio
+import json
 import os
 import tempfile
 import time
 from collections import deque
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 from urllib.parse import urlencode
@@ -248,7 +250,6 @@ class RecorderSession:
             # Build a sidecar JSON describing VAP overlays, with absolute wall
             # timestamps so the UI can match events to clips without guessing.
             clip_anchor = selected[0].wall_ts
-            from datetime import datetime, timezone
             def _iso(ts: float) -> str:
                 return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
             overlays = []
@@ -266,10 +267,9 @@ class RecorderSession:
                     entry["vap_json"] = urls[1]
                 overlays.append(entry)
 
-            import json as _json
             meta_path = out_dir / f"{base_name}.json"
             with open(meta_path, "w", encoding="utf-8") as f:
-                _json.dump({
+                json.dump({
                     "base_mp4": base_path.name,
                     "clip_start_ts": _iso(clip_anchor),
                     "duration_sec": round(secs_covered, 3),

@@ -2,6 +2,7 @@
 
 import asyncio
 
+import aiohttp
 from fastapi import APIRouter, Depends, Query, Request, HTTPException
 from fastapi.responses import HTMLResponse
 
@@ -20,7 +21,6 @@ router = APIRouter()
 
 async def _fetch_room_info(room_id: int) -> dict:
     """Fetch room info from Bilibili API for rooms without a client."""
-    import aiohttp
     base = {
         "room_id": room_id, "real_room_id": room_id,
         "streamer_name": "", "streamer_avatar": "", "room_title": "",
@@ -61,7 +61,6 @@ async def _fetch_room_info(room_id: int) -> dict:
 
 @router.get("/api/rooms")
 async def get_rooms(request: Request):
-    import asyncio
     allowed = getattr(request.state, "allowed_rooms", None)
     db_rooms = get_all_rooms()
 
