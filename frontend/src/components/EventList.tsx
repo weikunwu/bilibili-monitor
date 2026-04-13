@@ -61,8 +61,10 @@ export function EventList({
     }
   }, [filtered.length, autoScroll])
 
+  const title = activeTab === EVENT_DANMU ? '弹幕' : '全部事件'
   return (
     <>
+      <div className="panel-title">{title}</div>
       <div className="event-filter">
         {onToggleSaveDanmu && (
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>

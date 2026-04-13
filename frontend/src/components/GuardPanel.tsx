@@ -167,12 +167,13 @@ export function GuardPanel({
       const item = buildGifUserFromEvent(ev)
       if (item) items.push(item)
     }
-    if (items.length === 0) { alert('所选上舰均无动态图'); return }
+    if (items.length === 0) { alert('所选大航海均无动态图'); return }
     await onGenerateGiftGif?.(items)
   }, [filtered, checkedKeys, onGenerateGiftGif])
 
   return (
     <div className="gift-panel">
+      <div className="panel-title">大航海</div>
       <div className="event-filter">
         {userOptions.length > 0 && (
           <CheckPicker
@@ -189,7 +190,7 @@ export function GuardPanel({
         {checkedKeys.size > 0 && (
           <>
             <GenerateImageButton size="sm" appearance="primary" onClick={handleGenerateCard}>
-              生成上舰截图 ({checkedKeys.size})
+              生成大航海截图 ({checkedKeys.size})
             </GenerateImageButton>
             {onGenerateGiftGif && (
               <GenerateImageButton size="sm" appearance="primary" onClick={handleGenerateGif}>
@@ -217,7 +218,7 @@ export function GuardPanel({
       </div>
 
       {filtered.length === 0 ? (
-        <div className="empty">暂无上舰数据</div>
+        <div className="empty">暂无大航海数据</div>
       ) : (
         <div className="gift-table-wrap">
           <Table

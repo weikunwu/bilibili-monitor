@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Button, ButtonGroup, Input, InputGroup, Tag, Divider } from 'rsuite'
+import { Button, ButtonGroup, Input, InputGroup, Tag, Divider, Whisper, Tooltip } from 'rsuite'
 import SearchIcon from '@rsuite/icons/Search'
 import { fetchBlindBoxSummary, type BlindBoxUser } from '../api/client'
 import { formatBattery } from '../lib/formatters'
@@ -29,6 +29,7 @@ export function BlindBoxPanel({ roomId }: Props) {
 
   return (
     <div className="blind-box-panel">
+      <div className="panel-title">盲盒统计</div>
       <div className="blind-box-controls">
         <ButtonGroup size="sm">
           {PERIODS.map((p) => (
@@ -90,11 +91,13 @@ export function BlindBoxPanel({ roomId }: Props) {
               </div>
               <div className="blind-box-gifts">
                 {box.gifts.map((gift, i) => (
-                  <div key={i} className="blind-box-gift" title={gift.name}>
-                    {gift.img && <img className="blind-box-gift-img" src={gift.img} referrerPolicy="no-referrer" alt={gift.name} />}
-                    <span className="blind-box-gift-count">x{gift.count}</span>
-                    <span className="blind-box-gift-value">{formatBattery(gift.value)}</span>
-                  </div>
+                  <Whisper key={i} trigger="hover" placement="top" speaker={<Tooltip>{gift.name}</Tooltip>}>
+                    <div className="blind-box-gift">
+                      {gift.img && <img className="blind-box-gift-img" src={gift.img} referrerPolicy="no-referrer" alt={gift.name} />}
+                      <span className="blind-box-gift-count">x{gift.count}</span>
+                      <span className="blind-box-gift-value">{formatBattery(gift.value)}</span>
+                    </div>
+                  </Whisper>
                 ))}
               </div>
             </div>

@@ -16,8 +16,8 @@ export const TAB_ADMIN = 'admin' as const
 export const BADGE_NAMES: Record<string, string> = {
   danmu: '弹幕',
   gift: '礼物',
-  superchat: 'SC',
-  guard: '上舰',
+  superchat: '醒目留言',
+  guard: '大航海',
   info: '信息',
 }
 

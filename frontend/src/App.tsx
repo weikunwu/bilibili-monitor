@@ -176,7 +176,7 @@ function RoomPage({ rooms, currentUser, onRoomsChanged }: {
       return <BlindBoxPanel roomId={roomId} />
     }
     if (activeTab === 'tools') {
-      return <ToolsPanel roomId={roomId} isAdmin={currentUser?.role === 'admin'} />
+      return <ToolsPanel roomId={roomId} />
     }
     if (activeTab === EVENT_SUPERCHAT) {
       return (

@@ -17,11 +17,11 @@ export function StatsGrid({ stats }: { stats: Stats | null }) {
         <div className="value">{s?.superchat?.toLocaleString() ?? '0'}</div>
       </div>
       <div className="stat-card guard">
-        <div className="label">上舰</div>
+        <div className="label">大航海</div>
         <div className="value">{s?.guard?.toLocaleString() ?? '0'}</div>
       </div>
       <div className="stat-card sc-total">
-        <div className="label">SC 总额</div>
+        <div className="label">醒目留言总额</div>
         <div className="value">¥{((s?.sc_total_price ?? 0) / 10).toFixed(1).replace(/\.0$/, '')}</div>
       </div>
     </div>

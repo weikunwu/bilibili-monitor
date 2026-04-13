@@ -9,8 +9,8 @@ const TAB_LIST: { type: TabType; label: string; icon: any }[] = [
   { type: TAB_ALL, label: '全部', icon: <LayoutList size={16} /> },
   { type: EVENT_DANMU, label: '弹幕', icon: <MessageSquareText size={16} /> },
   { type: EVENT_GIFT, label: '礼物', icon: <Gift size={16} /> },
-  { type: EVENT_GUARD, label: '上舰', icon: <Anchor size={16} /> },
-  { type: EVENT_SUPERCHAT, label: 'SC', icon: <Megaphone size={16} /> },
+  { type: EVENT_GUARD, label: '大航海', icon: <Anchor size={16} /> },
+  { type: EVENT_SUPERCHAT, label: '醒目留言', icon: <Megaphone size={16} /> },
   { type: TAB_BLINDBOX, label: '盲盒统计', icon: <Box size={16} /> },
   { type: TAB_TOOLS, label: '主播工具', icon: <Wrench size={16} /> },
 ]

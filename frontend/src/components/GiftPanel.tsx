@@ -174,6 +174,7 @@ export function GiftPanel({
 
   return (
     <div className="gift-panel">
+      <div className="panel-title">礼物</div>
       <div className="event-filter">
         {userOptions.length > 0 && (
           <CheckPicker
