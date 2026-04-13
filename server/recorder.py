@@ -185,17 +185,18 @@ class RecorderSession:
                 for s in selected:
                     fp.write(s.data)
             try:
-                proc = await asyncio.create_subprocess_exec(
-                    "ffmpeg", "-y", "-i", raw_path,
-                    "-vf", f"scale=-2:{CLIP_OUT_HEIGHT}",
-                    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
-                    "-threads", "1",
-                    "-c:a", "copy",
-                    "-movflags", "+faststart", str(base_path),
-                    stdout=asyncio.subprocess.DEVNULL,
-                    stderr=asyncio.subprocess.PIPE,
-                )
-                _, err = await proc.communicate()
+                async with vap_composite.FFMPEG_LOCK:
+                    proc = await asyncio.create_subprocess_exec(
+                        "ffmpeg", "-y", "-i", raw_path,
+                        "-vf", f"scale=-2:{CLIP_OUT_HEIGHT}",
+                        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
+                        "-threads", "1",
+                        "-c:a", "copy",
+                        "-movflags", "+faststart", str(base_path),
+                        stdout=asyncio.subprocess.DEVNULL,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    _, err = await proc.communicate()
                 if proc.returncode != 0:
                     log.warning(f"[recorder] ffmpeg fail rc={proc.returncode}: {err.decode(errors='replace')[:400]}")
                     return
@@ -343,9 +344,13 @@ class RecorderSession:
                 continue
             self._segments.append(_Segment(seq, dur, body, time.time()))
 
-        # Evict old segments beyond BUFFER_SECONDS (but keep them if an in-flight
-        # clip() is still collecting post-event data — clip() reads atomically).
+        # Evict old segments beyond BUFFER_SECONDS — but if a pending clip is
+        # in flight, protect everything back to (first_trigger - PRE_SEC) or it
+        # will prune the pre-event window before finalize_clip runs.
         cutoff = time.time() - BUFFER_SECONDS
+        if self._pending_clip is not None:
+            protect = self._pending_clip.first_wall - self.PRE_SEC
+            cutoff = min(cutoff, protect)
         while self._segments and self._segments[0].wall_ts < cutoff:
             old = self._segments.popleft()
             self._seen_seqs.discard(old.seq)

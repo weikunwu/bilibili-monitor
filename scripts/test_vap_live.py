@@ -36,10 +36,14 @@ async def main():
     n = await effect_catalog.refresh()
     print(f"   {n} gifts in catalog")
 
-    # 2. Start the HLS recorder for the target room (no cookies — works for
-    #    public, non-auth-gated streams).
-    print(f"=> starting recorder for room {ROOM_ID}…")
-    session = await recorder.start_for(ROOM_ID, cookies={})
+    # 2. Reuse the main app's recorder session if it's already running this
+    #    room. start_for is idempotent (returns existing session if any), so
+    #    we don't double-poll HLS. Do NOT stop it at the end — the main app
+    #    still needs it for real triggers.
+    print(f"=> attaching to recorder for room {ROOM_ID}…")
+    existing = recorder.get_session(ROOM_ID)
+    owned = existing is None
+    session = existing or await recorder.start_for(ROOM_ID, cookies={})
 
     # 3. Buffer a few segments so there's pre-trigger content.
     print(f"=> buffering {BUFFER_SECONDS}s of HLS…")
@@ -73,8 +77,9 @@ async def main():
         except asyncio.TimeoutError:
             print("   !! timed out, partial output possible")
 
-    # 6. Stop recorder + list output.
-    await recorder.stop_for(ROOM_ID)
+    # 6. Only stop the recorder if we started it ourselves.
+    if owned:
+        await recorder.stop_for(ROOM_ID)
     out_dir = f"/app/data/clips/{ROOM_ID}"
     if os.path.isdir(out_dir):
         print(f"\n=> output in {out_dir}:")

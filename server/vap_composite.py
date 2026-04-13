@@ -25,6 +25,11 @@ from .config import HEADERS, log, DATA_DIR
 
 VAP_CACHE = DATA_DIR / "vap_cache"
 
+# Global lock — run at most one ffmpeg subprocess at a time so we don't OOM
+# the 256MB VM when the main app + multiple rooms are all alive. All ffmpeg
+# / ffprobe calls in this codebase must acquire this before spawning.
+FFMPEG_LOCK = asyncio.Lock()
+
 
 @dataclass
 class VapTrigger:
@@ -158,12 +163,13 @@ def build_filter(
 
 async def probe_dims(path: str) -> Optional[tuple[int, int]]:
     """Get (width, height) of a video via ffprobe."""
-    proc = await asyncio.create_subprocess_exec(
-        "ffprobe", "-v", "error", "-select_streams", "v:0",
-        "-show_entries", "stream=width,height", "-of", "csv=p=0:s=x", path,
-        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
-    )
-    out, _ = await proc.communicate()
+    async with FFMPEG_LOCK:
+        proc = await asyncio.create_subprocess_exec(
+            "ffprobe", "-v", "error", "-select_streams", "v:0",
+            "-show_entries", "stream=width,height", "-of", "csv=p=0:s=x", path,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+        )
+        out, _ = await proc.communicate()
     if proc.returncode != 0:
         return None
     try:
@@ -207,12 +213,13 @@ async def composite(
         out_path,
     ]
 
-    proc = await asyncio.create_subprocess_exec(
-        *args,
-        stdout=asyncio.subprocess.DEVNULL,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    _, err = await proc.communicate()
+    async with FFMPEG_LOCK:
+        proc = await asyncio.create_subprocess_exec(
+            *args,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, err = await proc.communicate()
     if proc.returncode != 0:
         log.warning(f"[vap] ffmpeg rc={proc.returncode}: {err.decode(errors='replace')[:500]}")
         return False
