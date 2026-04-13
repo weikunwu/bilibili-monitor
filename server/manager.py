@@ -31,7 +31,7 @@ class RoomManager:
     async def broadcast(self, event: dict):
         dead = set()
         room_id = event.get("room_id")
-        for ws, allowed_rooms in self._ws_clients.items():
+        for ws, allowed_rooms in list(self._ws_clients.items()):
             if allowed_rooms is not None and room_id and room_id not in allowed_rooms:
                 continue
             try:
