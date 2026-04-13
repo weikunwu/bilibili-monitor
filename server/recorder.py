@@ -340,7 +340,7 @@ class RecorderSession:
                 async with self._session.get(seg_url) as r:
                     body = await r.read()
             except Exception as ex:
-                log.info(f"[recorder] seg {seq} fetch err: {ex}")
+                log.info(f"[recorder] seg {seq} fetch err: {type(ex).__name__}: {ex}")
                 continue
             self._segments.append(_Segment(seq, dur, body, time.time()))
 
