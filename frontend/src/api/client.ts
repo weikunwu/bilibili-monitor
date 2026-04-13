@@ -183,3 +183,26 @@ export async function fetchGiftGif(giftId: number): Promise<{ gif: string }> {
   return res.json()
 }
 
+export interface ClipMatch {
+  name: string
+  meta: { base_mp4: string; clip_start_ts: string; duration_sec: number; overlays: unknown[] }
+  overlay: { offset_sec: number; trigger_ts: string; label: string; gift_id: number }
+  delta_sec: number
+}
+
+export async function matchClip(
+  roomId: number,
+  userName: string,
+  ts: string,
+): Promise<ClipMatch | null> {
+  const res = await fetch(
+    `/api/rooms/${roomId}/clips/match?user_name=${encodeURIComponent(userName)}&ts=${encodeURIComponent(ts)}`,
+  )
+  if (!res.ok) return null
+  return res.json()
+}
+
+export function clipComposeUrl(roomId: number, name: string): string {
+  return `/api/rooms/${roomId}/clips/${encodeURIComponent(name)}/compose`
+}
+

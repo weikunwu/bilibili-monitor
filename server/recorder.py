@@ -245,14 +245,18 @@ class RecorderSession:
             log.info(f"[recorder] room {self.room_id} base clip {base_path.name} "
                      f"({secs_covered:.1f}s, {size_kb:.0f}KB, {len(p.triggers)} triggers)")
 
-            # Build a sidecar JSON describing VAP overlays. The client composites
-            # at view-time (server has no memory budget for ffmpeg filter_complex).
+            # Build a sidecar JSON describing VAP overlays, with absolute wall
+            # timestamps so the UI can match events to clips without guessing.
             clip_anchor = selected[0].wall_ts
+            from datetime import datetime, timezone
+            def _iso(ts: float) -> str:
+                return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
             overlays = []
             for t in p.triggers:
                 urls = effect_catalog.get_by_gift(t.gift_id) or effect_catalog.get_by_effect(t.effect_id)
                 entry = {
                     "offset_sec": round(t.wall_ts - clip_anchor, 3),
+                    "trigger_ts": _iso(t.wall_ts),
                     "gift_id": t.gift_id,
                     "effect_id": t.effect_id,
                     "label": t.label,
@@ -267,6 +271,7 @@ class RecorderSession:
             with open(meta_path, "w", encoding="utf-8") as f:
                 _json.dump({
                     "base_mp4": base_path.name,
+                    "clip_start_ts": _iso(clip_anchor),
                     "duration_sec": round(secs_covered, 3),
                     "overlays": overlays,
                 }, f, ensure_ascii=False, indent=2)
@@ -450,5 +455,8 @@ def cleanup_old_clips(max_age_hours: int = 24):
         return n
 
     removed_clips = _sweep(CLIP_ROOT, recurse_dirs=True)
-    if removed_clips:
-        log.info(f"[recorder] cleaned {removed_clips} clips")
+    # VAP assets downloaded by the on-demand composite endpoint
+    # (server/routes/clips.py) live in /tmp/vap_dl — sweep those too.
+    removed_vap = _sweep(Path("/tmp/vap_dl"), recurse_dirs=False)
+    if removed_clips or removed_vap:
+        log.info(f"[recorder] cleaned {removed_clips} clips, {removed_vap} vap cache")

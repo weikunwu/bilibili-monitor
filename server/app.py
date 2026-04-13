@@ -12,7 +12,7 @@ from .db import init_db, cleanup_old_events
 from .auth import AuthMiddleware, get_session_user, get_user_allowed_rooms, handle_login, handle_logout
 from .manager import manager
 from . import recorder, effect_catalog
-from .routes import events, rooms, bot, admin
+from .routes import events, rooms, bot, admin, clips
 
 app = FastAPI(title="B站直播监控")
 
@@ -30,6 +30,7 @@ app.include_router(events.router)
 app.include_router(rooms.router)
 app.include_router(bot.router)
 app.include_router(admin.router)
+app.include_router(clips.router)
 
 
 @app.post("/api/auth")

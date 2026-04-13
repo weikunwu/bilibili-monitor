@@ -200,35 +200,7 @@ def handle_message(msg: dict) -> Optional[dict]:
         log.info(f"[USER_TOAST_MSG] {json.dumps(data, ensure_ascii=False)}")
         return {"_partial": "user_toast", "data": data}
 
-    # Unknown cmd: log raw payload to discover fields (e.g. gift animation mp4/svga URLs).
-    # Skip noisy cmds we've already confirmed uninteresting.
-    if base_cmd and base_cmd not in _UNKNOWN_CMD_SKIP:
-        try:
-            raw = json.dumps(msg, ensure_ascii=False)
-        except Exception:
-            raw = str(msg)
-        if len(raw) > 4000:
-            raw = raw[:4000] + "...[truncated]"
-        log.info(f"[未知cmd|{base_cmd}] {raw}")
     return None
-
-
-_UNKNOWN_CMD_SKIP = {
-    "INTERACT_WORD", "INTERACT_WORD_V2", "ENTRY_EFFECT", "ONLINE_RANK_COUNT", "ONLINE_RANK_V2",
-    "ONLINE_RANK_TOP3", "ONLINE_RANK_V3", "STOP_LIVE_ROOM_LIST", "WATCHED_CHANGE", "LIKE_INFO_V3_CLICK",
-    "LIKE_INFO_V3_UPDATE", "POPULARITY_RED_POCKET_START", "POPULARITY_RED_POCKET_NEW",
-    "POPULARITY_RED_POCKET_WINNER_LIST", "NOTICE_MSG", "ROOM_REAL_TIME_MESSAGE_UPDATE",
-    "HOT_RANK_CHANGED", "HOT_RANK_CHANGED_V2", "HOT_RANK_SETTLEMENT", "HOT_RANK_SETTLEMENT_V2",
-    "WIDGET_BANNER", "ROOM_CHANGE", "PREPARING", "LIVE", "ROOM_BLOCK_MSG",
-    "DM_INTERACTION", "PK_BATTLE_PROCESS_NEW", "PK_BATTLE_PROCESS", "PK_BATTLE_SETTLE",
-    "PK_BATTLE_SETTLE_USER", "PK_BATTLE_SETTLE_V2", "PK_BATTLE_END", "PK_BATTLE_START_NEW",
-    "PK_BATTLE_PRE_NEW", "PK_BATTLE_PRE", "PK_BATTLE_START", "PK_BATTLE_MATCH_TIMEOUT", "PK_INFO",
-    "RECOMMEND_CARD", "TRADING_SCORE", "GIFT_STAR_PROCESS", "WIDGET_GIFT_STAR_PROCESS_V2", "COMBO_SEND",
-    "LIVE_INTERACTIVE_GAME", "LITTLE_MESSAGE_BOX", "POPULAR_RANK_CHANGED",
-    "VOICE_JOIN_LIST", "VOICE_JOIN_ROOM_COUNT_INFO", "VOICE_JOIN_STATUS",
-    "GUARD_HONOR_THOUSAND", "RANK_REM", "AREA_RANK_CHANGED", "POPULAR_RANK_GUIDE_CARD",
-    "SUPER_CHAT_ENTRANCE", "DANMU_AGGREGATION", "LOG_IN_NOTICE", "UNIVERSAL_EVENT_GIFT", "UNIVERSAL_EVENT_GIFT_V2",
-}
 
 
 def build_guard_event(guard_buy: Optional[dict], toast: Optional[dict]) -> dict:
