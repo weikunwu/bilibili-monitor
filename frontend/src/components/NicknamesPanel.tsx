@@ -113,7 +113,7 @@ function EditModal({
         <div style={{ marginBottom: 8, color: '#888', fontSize: 13 }}>
           用户：{initial.user_name} (UID {initial.user_id})
         </div>
-        <Input value={nickname} onChange={setNickname} placeholder="昵称" />
+        <Input value={nickname} onChange={(v) => setNickname(v.slice(0, 6))} placeholder="昵称（最多6字）" maxLength={6} />
       </Modal.Body>
       <Modal.Footer>
         <Button onClick={onClose} appearance="subtle">取消</Button>
@@ -167,7 +167,7 @@ function AddModal({
             block
           />
         </div>
-        <Input value={nickname} onChange={setNickname} placeholder="昵称" />
+        <Input value={nickname} onChange={(v) => setNickname(v.slice(0, 6))} placeholder="昵称（最多6字）" maxLength={6} />
       </Modal.Body>
       <Modal.Footer>
         <Button onClick={onClose} appearance="subtle">取消</Button>
