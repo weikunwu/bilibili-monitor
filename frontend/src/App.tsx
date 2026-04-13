@@ -185,7 +185,7 @@ function RoomPage({ rooms, currentUser, onRoomsChanged }: {
     if (activeTab === EVENT_SUPERCHAT) {
       return (
         <SuperChatPanel
-          events={events}
+          roomId={roomId}
           dateRange={dateRange}
           onQueryRange={handleQueryRange}
         />
@@ -194,7 +194,7 @@ function RoomPage({ rooms, currentUser, onRoomsChanged }: {
     if (activeTab === EVENT_GUARD) {
       return (
         <GuardPanel
-          events={events}
+          roomId={roomId}
           dateRange={dateRange}
           onQueryRange={handleQueryRange}
           onShowCardPreview={(url) => giftModalRef.current?.showPreview(url)}
@@ -205,7 +205,7 @@ function RoomPage({ rooms, currentUser, onRoomsChanged }: {
     if (activeTab === EVENT_GIFT) {
       return (
         <GiftPanel
-          events={events}
+          roomId={roomId}
           dateRange={dateRange}
           onQueryRange={handleQueryRange}
           onGenerateGiftImage={(userName) => giftModalRef.current?.showGiftImage(roomId, userName)}

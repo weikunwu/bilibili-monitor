@@ -47,17 +47,10 @@ def _today_utc_range(tz_offset: Optional[int] = None) -> tuple[str, str]:
     return utc_start, utc_end
 
 
-@router.get("/api/events")
-async def get_events(
-    room_id: int = Query(...),
-    type: Optional[str] = Query(None),
-    user_name: Optional[str] = Query(None),
-    limit: int = Query(200, ge=1, le=5000),
-    offset: int = Query(0, ge=0),
-    time_from: Optional[str] = Query(None),
-    time_to: Optional[str] = Query(None),
-    _=Depends(require_room_access),
-):
+def _query_events(
+    room_id: int, type: Optional[str], user_name: Optional[str],
+    time_from: Optional[str], time_to: Optional[str], limit: int, offset: int,
+) -> list[dict]:
     conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
     conditions = ["room_id=?"]
@@ -76,13 +69,45 @@ async def get_events(
         params.append(user_name)
     # exclude silver coin gifts (free gifts like 辣条)
     conditions.append("extra_json NOT LIKE '%\"coin_type\": \"silver\"%'")
-    where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
+    where = " WHERE " + " AND ".join(conditions)
     rows = conn.execute(
         f"SELECT * FROM events{where} ORDER BY id DESC LIMIT ? OFFSET ?",
         params + [limit, offset],
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+@router.get("/api/events")
+async def get_events(
+    room_id: int = Query(...),
+    type: Optional[str] = Query(None),
+    user_name: Optional[str] = Query(None),
+    limit: int = Query(200, ge=1, le=5000),
+    offset: int = Query(0, ge=0),
+    time_from: Optional[str] = Query(None),
+    time_to: Optional[str] = Query(None),
+    _=Depends(require_room_access),
+):
+    return _query_events(room_id, type, user_name, time_from, time_to, limit, offset)
+
+
+def _make_typed_endpoint(event_type: str):
+    async def handler(
+        room_id: int = Query(...),
+        user_name: Optional[str] = Query(None),
+        limit: int = Query(2000, ge=1, le=5000),
+        offset: int = Query(0, ge=0),
+        time_from: Optional[str] = Query(None),
+        time_to: Optional[str] = Query(None),
+        _=Depends(require_room_access),
+    ):
+        return _query_events(room_id, event_type, user_name, time_from, time_to, limit, offset)
+    return handler
+
+
+for _t in ("danmu", "gift", "guard", "superchat"):
+    router.add_api_route(f"/api/events/{_t}", _make_typed_endpoint(_t), methods=["GET"])
 
 
 @router.get("/api/stats")

@@ -1,12 +1,12 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import { CheckPicker, DateRangePicker, Checkbox, Table, Pagination } from 'rsuite'
 import type { DateRange } from 'rsuite/DateRangePicker'
 
 import type { LiveEvent, GiftUser, GiftGifItem } from '../types'
-import { formatTime, formatBattery, fixUrl, fmtDateTime } from '../lib/formatters'
+import { fetchEventsByType } from '../api/client'
+import { formatTime, formatBattery, fixUrl, fmtDateTime, localToUTC } from '../lib/formatters'
 import { GenerateImageButton } from './GenerateImageButton'
 import { ClipDownloadButton, isClippable } from './ClipDownloadButton'
-import { EVENT_GUARD } from '../lib/constants'
 import { PREDEFINED_RANGES } from '../lib/dateRanges'
 import { generateGiftCard } from '../lib/giftCard'
 import { stackCanvasesVertically } from '../lib/canvasUtils'
@@ -17,7 +17,7 @@ const { Column, HeaderCell, Cell } = Table
 const GUARD_NAMES: Record<number, string> = { 1: '总督', 2: '提督', 3: '舰长' }
 
 interface Props {
-  events: LiveEvent[]
+  roomId: number
   dateRange: DateRange
   onQueryRange: (from: string, to: string, range: DateRange) => void
   onShowCardPreview?: (imgUrl: string) => void
@@ -25,17 +25,22 @@ interface Props {
 }
 
 export function GuardPanel({
-  events, dateRange, onQueryRange, onShowCardPreview, onGenerateGiftGif,
+  roomId, dateRange, onQueryRange, onShowCardPreview, onGenerateGiftGif,
 }: Props) {
   const isMobile = useIsMobile()
   const [selectedUsers, setSelectedUsers] = useState<string[]>([])
   const [checkedKeys, setCheckedKeys] = useState<Set<string>>(new Set())
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
+  const [guardEvents, setGuardEvents] = useState<LiveEvent[]>([])
 
-  const guardEvents = useMemo(() =>
-    events.filter((ev) => ev.event_type === EVENT_GUARD),
-    [events])
+  useEffect(() => {
+    if (!dateRange) return
+    fetchEventsByType(roomId, 'guard', {
+      timeFrom: localToUTC(fmtDateTime(dateRange[0])),
+      timeTo: localToUTC(fmtDateTime(dateRange[1])),
+    }).then(setGuardEvents)
+  }, [roomId, dateRange])
 
   const userOptions = useMemo(() => {
     const names = new Set(guardEvents.map((ev) => ev.user_name || ''))

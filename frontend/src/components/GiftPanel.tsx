@@ -1,12 +1,12 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import { CheckPicker, DateRangePicker, Checkbox, Table, Pagination } from 'rsuite'
 import type { DateRange } from 'rsuite/DateRangePicker'
 
 import type { LiveEvent, GiftUser, GiftGifItem } from '../types'
-import { formatTime, formatBattery, fixUrl, fmtDateTime } from '../lib/formatters'
+import { fetchEventsByType } from '../api/client'
+import { formatTime, formatBattery, fixUrl, fmtDateTime, localToUTC } from '../lib/formatters'
 import { GenerateImageButton } from './GenerateImageButton'
 import { ClipDownloadButton, isClippable } from './ClipDownloadButton'
-import { EVENT_GIFT } from '../lib/constants'
 import { PREDEFINED_RANGES } from '../lib/dateRanges'
 import { generateGiftCard } from '../lib/giftCard'
 import { stackCanvasesVertically } from '../lib/canvasUtils'
@@ -15,7 +15,7 @@ import { useIsMobile } from '../hooks/useIsMobile'
 const { Column, HeaderCell, Cell } = Table
 
 interface Props {
-  events: LiveEvent[]
+  roomId: number
   dateRange: DateRange
   onQueryRange: (from: string, to: string, range: DateRange) => void
   onGenerateGiftImage: (userName: string) => Promise<void> | void
@@ -25,7 +25,7 @@ interface Props {
 }
 
 export function GiftPanel({
-  events, dateRange, onQueryRange,
+  roomId, dateRange, onQueryRange,
   onGenerateGiftImage, onGenerateBlindBoxImage, onShowCardPreview, onGenerateGiftGif,
 }: Props) {
   const isMobile = useIsMobile()
@@ -34,10 +34,15 @@ export function GiftPanel({
   const [checkedKeys, setCheckedKeys] = useState<Set<string>>(new Set())
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
+  const [giftEvents, setGiftEvents] = useState<LiveEvent[]>([])
 
-  const giftEvents = useMemo(() =>
-    events.filter((ev) => ev.event_type === EVENT_GIFT),
-    [events])
+  useEffect(() => {
+    if (!dateRange) return
+    fetchEventsByType(roomId, 'gift', {
+      timeFrom: localToUTC(fmtDateTime(dateRange[0])),
+      timeTo: localToUTC(fmtDateTime(dateRange[1])),
+    }).then(setGiftEvents)
+  }, [roomId, dateRange])
 
   const userOptions = useMemo(() => {
     const names = new Set(giftEvents.map((ev) => ev.user_name || ''))

@@ -1,30 +1,37 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { CheckPicker, DateRangePicker, Table, Pagination } from 'rsuite'
 import type { DateRange } from 'rsuite/DateRangePicker'
 
 import type { LiveEvent } from '../types'
-import { formatTime, formatBattery, fixUrl, fmtDateTime } from '../lib/formatters'
-import { EVENT_SUPERCHAT } from '../lib/constants'
+import { fetchEventsByType } from '../api/client'
+import { formatTime, formatBattery, fixUrl, fmtDateTime, localToUTC } from '../lib/formatters'
 import { PREDEFINED_RANGES } from '../lib/dateRanges'
 import { useIsMobile } from '../hooks/useIsMobile'
 
 const { Column, HeaderCell, Cell } = Table
 
 interface Props {
-  events: LiveEvent[]
+  roomId: number
   dateRange: DateRange
   onQueryRange: (from: string, to: string, range: DateRange) => void
 }
 
-export function SuperChatPanel({ events, dateRange, onQueryRange }: Props) {
+export function SuperChatPanel({ roomId, dateRange, onQueryRange }: Props) {
   const isMobile = useIsMobile()
   const [selectedUsers, setSelectedUsers] = useState<string[]>([])
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
+  const [scEvents, setScEvents] = useState<LiveEvent[]>([])
 
-  const scEvents = useMemo(() =>
-    events.filter((ev) => ev.event_type === EVENT_SUPERCHAT),
-    [events])
+  useEffect(() => {
+    if (!dateRange) return
+    fetchEventsByType(roomId, 'superchat', {
+      timeFrom: localToUTC(fmtDateTime(dateRange[0])),
+      timeTo: localToUTC(fmtDateTime(dateRange[1])),
+    }).then(setScEvents)
+  }, [roomId, dateRange])
+
+  useMemo(() => { setPage(1) }, [scEvents.length])
 
   const userOptions = useMemo(() => {
     const names = new Set(scEvents.map((ev) => ev.user_name || ''))

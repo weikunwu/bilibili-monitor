@@ -15,6 +15,18 @@ export async function fetchStats(roomId: number): Promise<Stats> {
   return res.json()
 }
 
+async function _fetchEventsUrl(url: string): Promise<LiveEvent[]> {
+  const res = await fetch(url)
+  const data: LiveEvent[] = await res.json()
+  return data.reverse().map((e) => {
+    if (typeof e.extra_json === 'string') {
+      try { e.extra = JSON.parse(e.extra_json) } catch { e.extra = {} as never }
+    }
+    if (!e.extra) e.extra = {} as never
+    return e
+  })
+}
+
 export async function fetchEvents(
   roomId: number,
   opts?: { timeFrom?: string; timeTo?: string; type?: string; userName?: string; limit?: number },
@@ -25,15 +37,19 @@ export async function fetchEvents(
   if (timeTo) url += `&time_to=${encodeURIComponent(timeTo)}`
   if (type) url += `&type=${encodeURIComponent(type)}`
   if (userName) url += `&user_name=${encodeURIComponent(userName)}`
-  const res = await fetch(url)
-  const data: LiveEvent[] = await res.json()
-  return data.reverse().map((e) => {
-    if (typeof e.extra_json === 'string') {
-      try { e.extra = JSON.parse(e.extra_json) } catch { e.extra = {} as never }
-    }
-    if (!e.extra) e.extra = {} as never
-    return e
-  })
+  return _fetchEventsUrl(url)
+}
+
+export async function fetchEventsByType(
+  roomId: number,
+  type: 'danmu' | 'gift' | 'guard' | 'superchat',
+  opts?: { timeFrom?: string; timeTo?: string; limit?: number },
+): Promise<LiveEvent[]> {
+  const { timeFrom, timeTo, limit = 2000 } = opts || {}
+  let url = `/api/events/${type}?limit=${limit}&room_id=${roomId}`
+  if (timeFrom) url += `&time_from=${encodeURIComponent(timeFrom)}`
+  if (timeTo) url += `&time_to=${encodeURIComponent(timeTo)}`
+  return _fetchEventsUrl(url)
 }
 
 export async function fetchBotStatus(roomId: number): Promise<{ logged_in: boolean; uid: number }> {
