@@ -230,6 +230,9 @@ class BiliLiveClient:
     async def _connect_and_listen(self):
         await self.get_buvid()
         await self.get_room_info()
+        # If we connected mid-stream, no LIVE cmd will fire — start recorder now.
+        if self.live_status == 1 and get_room_auto_clip(self.room_id):
+            asyncio.create_task(recorder.start_for(self.real_room_id, self.cookies))
         danmu_info = await self.get_danmu_info()
         if not danmu_info:
             raise Exception("获取弹幕服务器信息失败")
