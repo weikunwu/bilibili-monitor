@@ -215,18 +215,19 @@ class BiliLiveClient:
         if event.get("event_type") not in ("gift", "guard"):
             return
         extra = event.get("extra") or {}
-        # Prefer total_coin (gifts) else price*num (guard events don't set total_coin).
-        coin = extra.get("total_coin")
-        if coin is None:
-            coin = (extra.get("price") or 0) * (extra.get("num") or 1)
-        if coin < self.CLIP_GIFT_THRESHOLD:
+        # Use unit price only — combos of cheap gifts shouldn't trigger
+        # clips even when the total crosses the threshold. For guards/SC
+        # `price` already represents per-unit cost in 电池.
+        unit_coin = extra.get("price") or 0
+        if unit_coin < self.CLIP_GIFT_THRESHOLD:
             return
         label = event.get("user_name", "") or event.get("event_type", "")
         gift_id = int(extra.get("gift_id") or 0)
         effect_id = int(extra.get("effect_id") or 0)
         if event.get("event_type") == "guard" and not gift_id:
             gift_id = self.GUARD_VAP_GIFT_IDS.get(extra.get("guard_level") or 0, 0)
-        asyncio.create_task(session.request_clip(gift_id, effect_id, label))
+        num = int(extra.get("num") or 1)
+        asyncio.create_task(session.request_clip(gift_id, effect_id, label, num))
 
     def _maybe_broadcast_blind(self, event: dict):
         """Accumulate a user's blind-box events and emit one summary danmu

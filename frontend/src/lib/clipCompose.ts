@@ -35,6 +35,7 @@ interface ClipMeta {
     label: string
     gift_id: number
     effect_id: number
+    num?: number
     vap_mp4?: string
     vap_json?: string
   }[]
@@ -118,7 +119,7 @@ export async function composeClipInBrowser(
     return baseBlob
   }
 
-  const vapAssets = await Promise.all(
+  const rawVapAssets = await Promise.all(
     overlays.map(async (ov) => {
       const [mp4Blob, info] = await Promise.all([
         fetch(proxied(ov.vap_mp4!)).then((r) => r.blob()),
@@ -126,9 +127,27 @@ export async function composeClipInBrowser(
           .then((r) => r.json())
           .then((j) => (j.info || j) as VapSidecarInfo),
       ])
-      return { mp4Blob, info, offset: ov.offset_sec + GIFT_START_OFFSET_SEC }
+      return {
+        mp4Blob,
+        info,
+        offset: ov.offset_sec + GIFT_START_OFFSET_SEC,
+        num: Math.max(1, ov.num || 1),
+      }
     }),
   )
+
+  // Bilibili plays the special-effect once per gift, even for combos —
+  // a 浪漫城堡 x2 yields two effect plays on stream. Replicate each
+  // overlay `num` times back-to-back, staggered by the VAP duration so
+  // copies don't visually stack.
+  const vapAssets = rawVapAssets.flatMap((a) => {
+    const dur = a.info.fps ? a.info.f / a.info.fps : 12
+    return Array.from({ length: a.num }, (_, i) => ({
+      mp4Blob: a.mp4Blob,
+      info: a.info,
+      offset: a.offset + i * dur,
+    }))
+  })
 
   onProgress?.({ stage: 'loading' })
 

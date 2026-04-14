@@ -64,6 +64,7 @@ class _Trigger:
     gift_id: int
     effect_id: int
     label: str
+    num: int = 1
 
 
 @dataclass
@@ -137,7 +138,7 @@ class RecorderSession:
     POST_SEC_FALLBACK = 15.0    # used when VAP metadata isn't available
     MAX_TOTAL_SEC = 120.0       # cap to avoid runaway coalescing
 
-    async def request_clip(self, gift_id: int, effect_id: int, label: str):
+    async def request_clip(self, gift_id: int, effect_id: int, label: str, num: int = 1):
         """Async: register a clip trigger at the current wall time.
 
         close_at for each trigger is set to (trigger_wall + animation_dur +
@@ -153,7 +154,7 @@ class RecorderSession:
             log.warning(f"[recorder] room {self.room_id} clip skipped: not buffering")
             return
         now = time.time()
-        trig = _Trigger(wall_ts=now, gift_id=gift_id, effect_id=effect_id, label=label)
+        trig = _Trigger(wall_ts=now, gift_id=gift_id, effect_id=effect_id, label=label, num=max(1, num))
 
         # Resolve this trigger's animation duration (network fetch, cached).
         urls = effect_catalog.get_by_gift(gift_id) or effect_catalog.get_by_effect(effect_id)
@@ -162,7 +163,10 @@ class RecorderSession:
             anim_dur = await effect_catalog.fetch_duration(urls[1])
         if anim_dur is None:
             anim_dur = self.POST_SEC_FALLBACK - self.POST_TAIL_SEC  # default keeps total = FALLBACK
-        trigger_close = now + anim_dur + self.POST_TAIL_SEC
+        # Combos play VAP num times back-to-back on the frontend; reserve
+        # enough recorded tail to cover all replays plus the standard
+        # POST_TAIL_SEC settle window.
+        trigger_close = now + anim_dur * trig.num + self.POST_TAIL_SEC
 
         p = self._pending_clip
         if p is not None:
@@ -290,6 +294,7 @@ class RecorderSession:
                     "trigger_ts": _iso(t.wall_ts),
                     "gift_id": t.gift_id,
                     "effect_id": t.effect_id,
+                    "num": t.num,
                     "label": t.label,
                 }
                 if urls:

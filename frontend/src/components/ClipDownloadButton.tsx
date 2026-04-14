@@ -10,9 +10,10 @@ export const CLIP_MIN_COIN = 10000
 
 export function isClippable(ev: LiveEvent): boolean {
   if (ev.event_type !== EVENT_GIFT && ev.event_type !== EVENT_GUARD) return false
-  const extra = ev.extra || {}
-  const coin = extra.total_coin ?? (extra.price || 0) * (extra.num || 1)
-  return coin >= CLIP_MIN_COIN
+  // Unit-price gate (matches server-side CLIP_GIFT_THRESHOLD) — a combo of
+  // cheap gifts shouldn't show the download button.
+  const unit = ev.extra?.price || 0
+  return unit >= CLIP_MIN_COIN
 }
 
 // Module-level cache so every row in the panel doesn't refetch the
