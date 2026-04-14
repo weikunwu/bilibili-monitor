@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { CheckPicker, DateRangePicker, Tag, Divider, Whisper, Tooltip } from 'rsuite'
 import type { DateRange } from 'rsuite/DateRangePicker'
 import { fetchBlindBoxSummary, type BlindBoxUser } from '../api/client'
@@ -38,6 +38,12 @@ export function BlindBoxPanel({ roomId }: Props) {
       setLoading(false)
     }
   }
+
+  // Initial load + refetch when switching rooms.
+  useEffect(() => {
+    if (dateRange) handleQuery(dateRange)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomId])
 
   const userOptions = useMemo(
     () => allUsers.map((u) => ({ label: u.user_name, value: u.user_name })),

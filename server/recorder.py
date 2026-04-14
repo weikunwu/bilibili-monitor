@@ -201,6 +201,30 @@ class RecorderSession:
             if not selected:
                 log.warning(f"[recorder] room {self.room_id} clip: no segments in window")
                 return
+            # Seq numbers must be strictly contiguous; a gap means a segment
+            # fetch was dropped and the H.264 bitstream will have unresolvable
+            # references after that point. Take the longest contiguous run
+            # that still covers the trigger.
+            selected.sort(key=lambda s: s.seq)
+            trigger_wall = p.first_wall
+            runs: list[list[_Segment]] = [[selected[0]]]
+            for s in selected[1:]:
+                if s.seq == runs[-1][-1].seq + 1:
+                    runs[-1].append(s)
+                else:
+                    runs.append([s])
+            # Prefer a run containing the trigger; else fall back to longest.
+            run = next(
+                (r for r in runs if r[0].wall_ts <= trigger_wall <= r[-1].wall_ts + r[-1].duration),
+                max(runs, key=len),
+            )
+            if len(run) != len(selected):
+                gaps = len(runs) - 1
+                log.warning(
+                    f"[recorder] room {self.room_id} clip has {gaps} seq gap(s); "
+                    f"keeping {len(run)}/{len(selected)} segments to avoid broken bitstream"
+                )
+            selected = run
             init_path = self._init_path
             if not init_path:
                 log.warning(f"[recorder] room {self.room_id} clip: no init segment")
@@ -379,14 +403,30 @@ class RecorderSession:
         for seq, dur, uri in pending:
             if seq in self._seen_seqs:
                 continue
-            self._seen_seqs.add(seq)
             seg_url = uri if uri.startswith("http") else self._seg_host + uri
-            try:
-                async with self._session.get(seg_url) as r:
-                    body = await r.read()
-            except Exception as ex:
-                log.info(f"[recorder] seg {seq} fetch err: {type(ex).__name__}: {ex}")
+            # Retry transient network failures (ConnectionResetError,
+            # ClientPayloadError). A single missed segment creates a gap in
+            # the H.264 bitstream: later P/B-frames reference frames that
+            # never made it, and the decoder fails every subsequent frame —
+            # the whole clip ends up black.
+            body = None
+            last_err: Optional[Exception] = None
+            for attempt in range(3):
+                try:
+                    async with self._session.get(seg_url) as r:
+                        body = await r.read()
+                    break
+                except Exception as ex:
+                    last_err = ex
+                    if attempt < 2:
+                        await asyncio.sleep(0.3 * (attempt + 1))
+            if body is None:
+                log.info(f"[recorder] seg {seq} fetch err after retries: "
+                         f"{type(last_err).__name__}: {last_err}")
+                # Don't add to _seen_seqs so the next poll may still pick it
+                # up if it's still in the playlist window.
                 continue
+            self._seen_seqs.add(seq)
             seg_path = self._buf_dir / f"{seq}.m4s"
             seg_path.write_bytes(body)
             self._segments.append(_Segment(seq, dur, str(seg_path), len(body), time.time()))

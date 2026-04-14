@@ -155,7 +155,21 @@ export async function composeClipInBrowser(
   const vapStarted = vaps.map(() => false)
 
   await new Promise<void>((resolve) => {
+    let done = false
+    const finish = () => { if (!done) { done = true; resolve() } }
+
+    // The loop below may stall in a couple of ways: rVFC stops firing once the
+    // base reaches EOF (so we'd never see ended checked again); or decoding
+    // hits a bad frame and neither ended nor more rVFC callbacks come. Belt-
+    // and-braces: listen to ended/error, and hard-cap at (duration + 5s) of
+    // wall-clock so the button can't spin forever.
+    baseVideo.addEventListener('ended', finish, { once: true })
+    baseVideo.addEventListener('error', finish, { once: true })
+    const wallCap = ((baseVideo.duration || meta.duration_sec || 60) + 5) * 1000
+    setTimeout(finish, wallCap)
+
     const draw = () => {
+      if (done) return
       ctx.drawImage(baseVideo, 0, 0, W, H)
       const t = baseVideo.currentTime
 
@@ -174,11 +188,11 @@ export async function composeClipInBrowser(
       const dur = baseVideo.duration || meta.duration_sec
       if (dur > 0) onProgress?.({ stage: 'recording', ratio: Math.min(1, t / dur) })
 
-      if (baseVideo.ended) {
-        resolve()
+      // Explicitly catch EOF — rVFC won't fire again once no more frames decode.
+      if (baseVideo.ended || (dur > 0 && t >= dur - 0.05)) {
+        finish()
         return
       }
-      // rVFC gives tight sync to base's natural frame rate; fallback for Safari.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const rvfc = (baseVideo as any).requestVideoFrameCallback?.bind(baseVideo)
       if (rvfc) rvfc(draw)

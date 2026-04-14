@@ -196,6 +196,9 @@ class BiliLiveClient:
     # level 1=总督, 2=提督, 3=舰长
     GUARD_VAP_GIFT_IDS = {1: 34639, 2: 34638, 3: 34637}
 
+    # Cheap gifts allow-listed for clip testing even below CLIP_GIFT_THRESHOLD.
+    CLIP_TEST_GIFT_NAMES = {"肥肥鲨盒"}
+
     def _maybe_clip(self, event: dict):
         if not get_room_auto_clip(self.room_id):
             return
@@ -209,7 +212,8 @@ class BiliLiveClient:
         coin = extra.get("total_coin")
         if coin is None:
             coin = (extra.get("price") or 0) * (extra.get("num") or 1)
-        if coin < self.CLIP_GIFT_THRESHOLD:
+        gift_name = extra.get("gift_name") or ""
+        if coin < self.CLIP_GIFT_THRESHOLD and gift_name not in self.CLIP_TEST_GIFT_NAMES:
             return
         label = event.get("user_name", "") or event.get("event_type", "")
         gift_id = int(extra.get("gift_id") or 0)
