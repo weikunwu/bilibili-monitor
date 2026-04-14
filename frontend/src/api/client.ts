@@ -84,6 +84,18 @@ export async function authLogout(): Promise<void> {
   await fetch('/api/logout', { method: 'POST' })
 }
 
+export async function changePassword(
+  oldPassword: string,
+  newPassword: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const res = await fetch('/api/change-password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ old_password: oldPassword, new_password: newPassword }),
+  })
+  return res.json()
+}
+
 export async function fetchMe(): Promise<CurrentUser | null> {
   const res = await fetch('/api/me')
   if (!res.ok) return null

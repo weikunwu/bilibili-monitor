@@ -131,6 +131,29 @@ async def handle_login(request: Request):
     return resp
 
 
+async def handle_change_password(request: Request):
+    user_id = getattr(request.state, "user_id", None)
+    if not user_id:
+        return HTMLResponse('{"ok":false,"error":"未登录"}', status_code=401)
+    body = await request.json()
+    old_pw = body.get("old_password", "")
+    new_pw = body.get("new_password", "")
+    if len(new_pw) < 6:
+        return HTMLResponse('{"ok":false,"error":"新密码至少6位"}', status_code=400)
+    conn = sqlite3.connect(str(DB_PATH))
+    row = conn.execute("SELECT password_hash FROM users WHERE id=?", (user_id,)).fetchone()
+    if not row or not verify_password(old_pw, row[0]):
+        conn.close()
+        return HTMLResponse('{"ok":false,"error":"原密码错误"}', status_code=403)
+    conn.execute("UPDATE users SET password_hash=? WHERE id=?", (hash_password(new_pw), user_id))
+    # Invalidate all other sessions; keep the current one so the user stays in.
+    cur_token = request.cookies.get("auth_token")
+    conn.execute("DELETE FROM sessions WHERE user_id=? AND token!=?", (user_id, cur_token or ""))
+    conn.commit()
+    conn.close()
+    return HTMLResponse('{"ok":true}')
+
+
 async def handle_logout(request: Request):
     token = request.cookies.get("auth_token")
     if token:

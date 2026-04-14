@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import BASE_DIR, log
 from .db import init_db, cleanup_old_events
-from .auth import AuthMiddleware, get_session_user, get_user_allowed_rooms, handle_login, handle_logout
+from .auth import AuthMiddleware, get_session_user, get_user_allowed_rooms, handle_login, handle_logout, handle_change_password
 from .manager import manager
 from . import recorder, effect_catalog
 from .routes import events, rooms, bot, admin, clips
@@ -41,6 +41,11 @@ async def auth_login(request: Request):
 @app.post("/api/logout")
 async def auth_logout(request: Request):
     return await handle_logout(request)
+
+
+@app.post("/api/change-password")
+async def auth_change_password(request: Request):
+    return await handle_change_password(request)
 
 
 @app.get("/api/me")
