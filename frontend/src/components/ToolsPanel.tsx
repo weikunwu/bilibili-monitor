@@ -52,7 +52,7 @@ export function ToolsPanel({ roomId }: Props) {
       <div className="cmd-item">
         <div className="cmd-info">
           <div className="cmd-name">礼物自动剪辑</div>
-          <div className="cmd-desc">直播中，收到 ≥¥1000 礼物时自动录制前后片段</div>
+          <div className="cmd-desc">直播是收到 ≥¥1000 礼物时自动录制前后片段，可在礼物，大航海和醒目留言列表下载</div>
         </div>
         <Toggle checked={autoClip} onChange={handleAutoClipToggle} size="sm" />
       </div>
