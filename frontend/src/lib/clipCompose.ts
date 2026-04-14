@@ -85,7 +85,7 @@ function giftUserFromEvent(ev: LiveEvent): GiftUser | null {
   const coin = isGuard
     ? ((extra.price || 0) * num)
     : (extra.total_coin || (extra.price || 0) * num || 0)
-  const action = extra.blind_name ? `${extra.blind_name} 爆出` : (extra.action || '投喂')
+  const action = extra.blind_name ? `投喂 ${extra.blind_name} 爆出` : (extra.action || '投喂')
   return {
     user_name: ev.user_name || '',
     avatar: extra.avatar || '',
@@ -100,42 +100,94 @@ function giftUserFromEvent(ev: LiveEvent): GiftUser | null {
 }
 
 // Single-line text strip for the bottom mirror card: just "用户名 投喂 礼物名".
-// No avatar, no guard frame, no gift image, no count — distinct from the
-// main card so the bottom doesn't repeat the same visual.
-function renderSmallCardLine(ev: LiveEvent): HTMLCanvasElement | null {
+// Rendered lazily per frame (not a static canvas) so we can marquee-scroll
+// the text if it overflows the 70%-of-viewport pill width.
+interface SmallCardSegment {
+  text: string
+  color: string
+}
+interface SmallCardSpec {
+  segments: SmallCardSegment[]
+  font: string
+  fontSize: number
+  padX: number
+  padY: number
+  textW: number       // total rendered width across all segments
+  h: number
+  bgColor: string
+  bgImage: HTMLImageElement | null   // matches the main card's tier gradient
+  avatar: HTMLImageElement | null
+  avatarSize: number
+  avatarGap: number
+}
+
+async function buildSmallCardSpec(ev: LiveEvent): Promise<SmallCardSpec | null> {
   const extra = ev.extra || {}
   const isGuard = ev.event_type === 'guard'
   const giftName = isGuard
     ? (extra.guard_name || '舰长')
     : (extra.gift_name || ev.content || '礼物')
-  const verb = isGuard ? '开通' : (extra.blind_name ? `${extra.blind_name} 爆出` : '投喂')
-  const text = `${ev.user_name || ''} ${verb} ${giftName}`
-  const c = document.createElement('canvas')
-  const ctx = c.getContext('2d')!
-  const fontSize = 36
-  ctx.font = `600 ${fontSize}px -apple-system, "PingFang SC", sans-serif`
-  const textW = Math.ceil(ctx.measureText(text).width)
-  const padX = 28
-  const padY = 14
-  c.width = textW + padX * 2
-  c.height = fontSize + padY * 2
-  // Re-set font after canvas resize (which clears state).
-  const ctx2 = c.getContext('2d')!
-  ctx2.font = `600 ${fontSize}px -apple-system, "PingFang SC", sans-serif`
-  ctx2.textBaseline = 'middle'
-  // Pill background
-  const r = c.height / 2
-  ctx2.fillStyle = 'rgba(0,0,0,0.55)'
-  ctx2.beginPath()
-  ctx2.moveTo(r, 0)
-  ctx2.lineTo(c.width - r, 0)
-  ctx2.arc(c.width - r, r, r, -Math.PI / 2, Math.PI / 2)
-  ctx2.lineTo(r, c.height)
-  ctx2.arc(r, r, r, Math.PI / 2, -Math.PI / 2)
-  ctx2.fill()
-  ctx2.fillStyle = '#fff'
-  ctx2.fillText(text, padX, c.height / 2)
-  return c
+  const fontSize = 14
+  const font = `600 ${fontSize}px -apple-system, "PingFang SC", sans-serif`
+  const padX = 12
+  const padY = 6
+  const WHITE = '#fff'
+  const YELLOW = '#FFF176'  // brighter than the B站 reference; pops on gold pill
+  const segments: SmallCardSegment[] = []
+  const userName = ev.user_name || ''
+  if (isGuard) {
+    segments.push({ text: userName, color: YELLOW })
+    segments.push({ text: ' 开通 ', color: WHITE })
+    segments.push({ text: giftName, color: WHITE })
+  } else if (extra.blind_name) {
+    segments.push({ text: userName, color: YELLOW })
+    segments.push({ text: ' 投喂 ', color: WHITE })
+    segments.push({ text: extra.blind_name, color: WHITE })
+    segments.push({ text: ' 爆出 ', color: WHITE })
+    segments.push({ text: giftName, color: WHITE })
+  } else {
+    segments.push({ text: userName, color: YELLOW })
+    segments.push({ text: ' 投喂 ', color: WHITE })
+    segments.push({ text: giftName, color: WHITE })
+  }
+  const meas = document.createElement('canvas').getContext('2d')!
+  meas.font = font
+  let textW = 0
+  for (const s of segments) textW += Math.ceil(meas.measureText(s.text).width)
+  // Clips only trigger for unit price ≥ ¥1000 (10000 电池), so the pill
+  // always uses the gold tier. Fallback colour mirrors the gold PNG.
+  const bgColor = 'rgba(198, 138, 56, 0.85)'
+  const bgImage = await new Promise<HTMLImageElement | null>((resolve) => {
+    const img = new Image()
+    img.onload = () => resolve(img)
+    img.onerror = () => resolve(null)
+    img.src = '/static/card_tpl_gold.png'
+  })
+  const avatar = extra.avatar ? await new Promise<HTMLImageElement | null>((resolve) => {
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    img.onload = () => resolve(img)
+    img.onerror = () => resolve(null)
+    img.src = `/api/proxy-image?url=${encodeURIComponent(extra.avatar!)}`
+  }) : null
+  const avatarSize = fontSize + padY * 2 - 6   // inset from pill height so it clearly sits inside the rounded cap
+  const avatarGap = 6
+  return {
+    segments, font, fontSize, padX, padY, textW,
+    h: fontSize + padY * 2, bgColor, bgImage,
+    avatar, avatarSize, avatarGap,
+  }
+}
+
+function drawPillPath(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) {
+  const r = h / 2
+  ctx.beginPath()
+  ctx.moveTo(x + r, y)
+  ctx.lineTo(x + w - r, y)
+  ctx.arc(x + w - r, y + r, r, -Math.PI / 2, Math.PI / 2)
+  ctx.lineTo(x + r, y + h)
+  ctx.arc(x + r, y + r, r, Math.PI / 2, -Math.PI / 2)
+  ctx.closePath()
 }
 
 
@@ -281,7 +333,7 @@ export async function composeClipInBrowser(
   // Pre-render the gift card strip (if the caller passed an event). We'll
   // overlay it at the bottom once playback reaches the trigger offset.
   let cardCanvas: HTMLCanvasElement | null = null
-  let smallCardCanvas: HTMLCanvasElement | null = null
+  let smallCardSpec: SmallCardSpec | null = null
   let cardStart = 0
   if (event) {
     const u = giftUserFromEvent(event)
@@ -290,7 +342,7 @@ export async function composeClipInBrowser(
         const c = document.createElement('canvas')
         await generateGiftCard(c, u)
         cardCanvas = c
-        smallCardCanvas = renderSmallCardLine(event)
+        smallCardSpec = await buildSmallCardSpec(event)
         // Match the 0.5s gift-animation delay so the card appears with it.
         cardStart = vaps[0]?.offset ?? (overlays[0]?.offset_sec ?? 0)
       } catch { /* non-fatal — just skip card overlay */ }
@@ -335,15 +387,40 @@ export async function composeClipInBrowser(
   // and let them play through; we draw whichever is within its time window.
   const vapStarted = vaps.map(() => false)
 
+  // Hoisted per-composition constants — don't recompute these every frame.
+  const FADE = 0.4
+  const CARD_MAX_ALPHA = 0.85
+  const SMALL_DUR = 13
+  const MAIN_DUR = Math.max(0, (baseVideo.duration || Infinity) - cardStart)
+  // Main card geometry is constant across frames (cardCanvas doesn't resize).
+  let mainTargetW = 0, mainTargetH = 0, mainFinalX = 0, mainY = 0
+  if (cardCanvas) {
+    mainTargetW = Math.round(OUT_W * 0.65)
+    mainTargetH = Math.round(cardCanvas.height * (mainTargetW / cardCanvas.width))
+    mainFinalX = Math.round(OUT_W * 0.03)
+    // Landscape source: card in the gutter below the base video.
+    // Portrait: 10% below center on top of the video.
+    mainY = fitMode === 'contain'
+      ? baseDy + baseDh + 8
+      : Math.round((OUT_H - mainTargetH) / 2 + OUT_H * 0.10)
+  }
+  // Small pill geometry is also constant (text/avatar widths fixed).
+  let pillW = 0, pillH = 0, pillX = 0, pillY = 0, avatarSlot = 0
+  if (smallCardSpec) {
+    avatarSlot = smallCardSpec.avatarSize + smallCardSpec.avatarGap
+    const natural = smallCardSpec.textW + smallCardSpec.padX * 2 + avatarSlot
+    pillW = Math.min(natural, Math.round(OUT_W * 0.7))
+    pillH = smallCardSpec.h
+    pillX = Math.round((OUT_W - pillW) / 2)
+    pillY = OUT_H - pillH - 60
+  }
+
   await new Promise<void>((resolve) => {
     let done = false
     const finish = () => { if (!done) { done = true; resolve() } }
 
-    // The loop below may stall in a couple of ways: rVFC stops firing once the
-    // base reaches EOF (so we'd never see ended checked again); or decoding
-    // hits a bad frame and neither ended nor more rVFC callbacks come. Belt-
-    // and-braces: listen to ended/error, and hard-cap at (duration + 5s) of
-    // wall-clock so the button can't spin forever.
+    // Belt-and-braces termination: rVFC stops firing at EOF, decoder may
+    // stall on a bad frame. Listen for ended/error and hard-cap wall-clock.
     baseVideo.addEventListener('ended', finish, { once: true })
     baseVideo.addEventListener('error', finish, { once: true })
     const wallCap = ((baseVideo.duration || meta.duration_sec || 60) + 5) * 1000
@@ -351,66 +428,116 @@ export async function composeClipInBrowser(
 
     const draw = () => {
       if (done) return
-      // Backdrop first (cheap copy from pre-rendered bgCanvas).
       if (fitMode === 'contain') ctx.drawImage(bgCanvas, 0, 0)
       ctx.drawImage(baseVideo, baseDx, baseDy, baseDw, baseDh)
       const t = baseVideo.currentTime
-
-      // Gift card at half width, left-aligned, offset ~10% below vertical
-      // center. Visible 5s with 0.4s fade in/out and slight transparency.
-      // Draw the card BEFORE the VAP so particles visibly burst over the
-      // card rather than being hidden behind it.
-      const CARD_DUR = 5
-      const FADE = 0.4
-      const CARD_MAX_ALPHA = 0.85
       const cardElapsed = t - cardStart
-      if (cardCanvas && cardElapsed >= 0 && cardElapsed < CARD_DUR) {
-        const targetW = Math.round(OUT_W * 0.65)
-        const scale = targetW / cardCanvas.width
-        const targetH = Math.round(cardCanvas.height * scale)
-        const finalX = Math.round(OUT_W * 0.03)
-        // Landscape source: place the card in the backdrop gutter below the
-        // base video (centered vertically in that strip). Portrait source:
-        // keep the existing 10%-below-center placement on top of the video.
-        const y = fitMode === 'contain'
-          ? baseDy + baseDh + 8
-          : Math.round((OUT_H - targetH) / 2 + OUT_H * 0.10)
-        // Main card: slide in from off-screen left to finalX during the
-        // FADE window, hold, then fade out in place.
-        const slideT = Math.min(1, cardElapsed / FADE)
-        const slideEase = 1 - Math.pow(1 - slideT, 3)  // ease-out cubic
-        const x = Math.round(-targetW + (finalX + targetW) * slideEase)
-        const fadeAlpha = cardElapsed > CARD_DUR - FADE
-          ? (CARD_DUR - cardElapsed) / FADE
+
+      // Main card — slide in from off-screen left during FADE, hold until
+      // video end, fade out last FADE seconds. Drawn BEFORE the VAP so
+      // particles visibly burst over it.
+      if (cardCanvas && cardElapsed >= 0 && cardElapsed < MAIN_DUR) {
+        const slideEase = 1 - Math.pow(1 - Math.min(1, cardElapsed / FADE), 3)
+        const x = Math.round(-mainTargetW + (mainFinalX + mainTargetW) * slideEase)
+        const fadeAlpha = cardElapsed > MAIN_DUR - FADE
+          ? (MAIN_DUR - cardElapsed) / FADE
           : 1
         ctx.save()
         ctx.globalAlpha = Math.max(0, Math.min(1, fadeAlpha)) * CARD_MAX_ALPHA
-        ctx.drawImage(cardCanvas, x, y, targetW, targetH)
+        ctx.drawImage(cardCanvas, x, mainY, mainTargetW, mainTargetH)
+        ctx.restore()
+      }
+
+      // Bottom pill — independent 13s lifetime. Scroll-unfurl entrance,
+      // marquee-scroll text if it overflows the 70%-of-viewport cap.
+      if (smallCardSpec && cardElapsed >= 0 && cardElapsed < SMALL_DUR) {
+        const revealEase = 1 - Math.pow(1 - Math.min(1, cardElapsed / FADE), 3)
+        const revealW = Math.round(pillW * revealEase)
+        const smallAlpha = cardElapsed > SMALL_DUR - FADE
+          ? (SMALL_DUR - cardElapsed) / FADE
+          : 1
+        ctx.save()
+        ctx.globalAlpha = Math.max(0, Math.min(1, smallAlpha)) * CARD_MAX_ALPHA
+        // Outer clip: unfurl rect. Caps how much of the pill is visible.
+        ctx.beginPath()
+        ctx.rect(pillX, pillY, revealW, pillH)
+        ctx.clip()
+
+        // Pill background: sample a 1px-tall middle strip of the gradient
+        // PNG and stretch it into the pill. Squishing the tall card image
+        // vertically distorts the gradient across the rounded caps;
+        // sampling a thin strip keeps verticals uniform so the semicircles
+        // look clean. Solid tier colour is the fallback.
+        ctx.save()
+        drawPillPath(ctx, pillX, pillY, pillW, pillH)
+        ctx.clip()
+        if (smallCardSpec.bgImage) {
+          const img = smallCardSpec.bgImage
+          const midY = Math.floor(img.naturalHeight / 2)
+          ctx.drawImage(img, 0, midY, img.naturalWidth, 1, pillX, pillY, pillW, pillH)
+        } else {
+          ctx.fillStyle = smallCardSpec.bgColor
+          ctx.fillRect(pillX, pillY, pillW, pillH)
+        }
         ctx.restore()
 
-        // Single-line text pill at the bottom — scroll-unfurl from left.
-        if (smallCardCanvas) {
-          const maxSmallW = Math.round(OUT_W * 0.9)
-          const naturalW = smallCardCanvas.width
-          const smallScale = Math.min(1, maxSmallW / naturalW)
-          const smallW = Math.round(naturalW * smallScale)
-          const smallH = Math.round(smallCardCanvas.height * smallScale)
-          const smallX = Math.round((OUT_W - smallW) / 2)
-          const smallY = OUT_H - smallH - 30   // lifted off the bottom edge
-          const revealT = Math.min(1, cardElapsed / FADE)
-          const revealEase = 1 - Math.pow(1 - revealT, 3)
-          const revealW = Math.round(smallW * revealEase)
-          const smallAlpha = cardElapsed > CARD_DUR - FADE
-            ? (CARD_DUR - cardElapsed) / FADE
-            : 1
+        // Avatar — circular, inset so the whole disc lives inside the
+        // pill's left semicircle with visible padding. Falls back to a
+        // placeholder disc with the user's first initial.
+        {
+          const as = smallCardSpec.avatarSize
+          const ax = pillX + (pillH - as) / 2 + 2
+          const ay = pillY + (pillH - as) / 2
           ctx.save()
-          ctx.globalAlpha = Math.max(0, Math.min(1, smallAlpha)) * CARD_MAX_ALPHA
           ctx.beginPath()
-          ctx.rect(smallX, smallY, revealW, smallH)
+          ctx.arc(ax + as / 2, ay + as / 2, as / 2, 0, Math.PI * 2)
           ctx.clip()
-          ctx.drawImage(smallCardCanvas, smallX, smallY, smallW, smallH)
+          if (smallCardSpec.avatar) {
+            ctx.drawImage(smallCardSpec.avatar, ax, ay, as, as)
+          } else {
+            ctx.fillStyle = 'rgba(255,255,255,0.25)'
+            ctx.fillRect(ax, ay, as, as)
+            const firstChar = (event?.user_name || '?').trim().charAt(0) || '?'
+            ctx.fillStyle = '#fff'
+            ctx.font = `700 ${Math.round(as * 0.55)}px -apple-system, "PingFang SC", sans-serif`
+            ctx.textAlign = 'center'
+            ctx.textBaseline = 'middle'
+            ctx.fillText(firstChar, ax + as / 2, ay + as / 2 + 1)
+            ctx.textAlign = 'start'
+          }
           ctx.restore()
         }
+
+        // Text. Single line, multi-coloured segments. Wait until the
+        // unfurl finishes before the marquee kicks in so entrance stays clean.
+        ctx.font = smallCardSpec.font
+        ctx.textBaseline = 'middle'
+        const textInnerLeft = pillX + smallCardSpec.padX + avatarSlot
+        const textInnerRight = pillX + pillW - smallCardSpec.padX
+        const textBaselineY = pillY + pillH / 2
+        const drawSegments = (startX: number) => {
+          let cursor = startX
+          for (const s of smallCardSpec!.segments) {
+            ctx.fillStyle = s.color
+            ctx.fillText(s.text, cursor, textBaselineY)
+            cursor += ctx.measureText(s.text).width
+          }
+        }
+        if (smallCardSpec.textW <= textInnerRight - textInnerLeft) {
+          drawSegments(textInnerLeft)
+        } else {
+          ctx.save()
+          ctx.beginPath()
+          ctx.rect(textInnerLeft, pillY, textInnerRight - textInnerLeft, pillH)
+          ctx.clip()
+          const cycleW = smallCardSpec.textW + 40  // text + gap
+          const scrollT = Math.max(0, cardElapsed - FADE)
+          const offset = (scrollT * 30) % cycleW   // 30 px/sec
+          drawSegments(textInnerLeft - offset)
+          drawSegments(textInnerLeft - offset + cycleW)
+          ctx.restore()
+        }
+        ctx.restore()
       }
 
       for (let i = 0; i < vaps.length; i++) {
@@ -421,7 +548,7 @@ export async function composeClipInBrowser(
             v.video.play().catch(() => { /* ignore */ })
             vapStarted[i] = true
           }
-          drawVapFrame(ctx, v, baseDw, baseDh, baseDx, baseDy)
+          drawVapFrame(ctx, v)
         }
       }
 
@@ -456,20 +583,10 @@ export async function composeClipInBrowser(
   return new Blob(chunks, { type: recorder.mimeType || 'video/webm' })
 }
 
-// Composite one VAP frame: alpha half masks the RGB half. We do it by reading
-// both pixel regions, multiplying the alpha channel, and drawing the result
-// onto the main canvas at the correct position.
-function drawVapFrame(
-  mainCtx: CanvasRenderingContext2D,
-  v: LoadedVap,
-  // Unused — kept for call-site compatibility. VAP is positioned against the
-  // fixed OUT canvas so its screen placement is identical whether or not a
-  // backdrop letterbox is in play.
-  _baseW: number,
-  _baseH: number,
-  _baseX: number = 0,
-  _baseY: number = 0,
-) {
+// Composite one VAP frame: alpha half masks the RGB half. We read both
+// pixel regions, copy the alpha channel (as luminance) onto the RGB half,
+// and draw the result anchored to the OUT canvas at a fixed position.
+function drawVapFrame(mainCtx: CanvasRenderingContext2D, v: LoadedVap) {
   const { video, tmp, tmpCtx, info } = v
   const [rx, ry, rw, rh] = info.rgbFrame
   const [ax, ay, aw, ah] = info.aFrame
@@ -491,12 +608,11 @@ function drawVapFrame(
   }
   tmpCtx.putImageData(rgbData, 0, 0)
 
-  // Anchor to the OUT canvas (not the base) so the gift appears in the same
-  // on-screen spot regardless of cover/contain fit. ~10% down from the top,
-  // full output width.
+  // Anchor to the OUT canvas so the effect appears in the same spot no
+  // matter the base fit mode. ~15% down from the top, full output width.
   const targetW = OUT_W
   const targetH = Math.round((info.h * targetW) / info.w)
-  const targetY = Math.round(OUT_H * 0.10)
+  const targetY = Math.round(OUT_H * 0.15)
   mainCtx.drawImage(tmp, 0, targetY, targetW, targetH)
 }
 
