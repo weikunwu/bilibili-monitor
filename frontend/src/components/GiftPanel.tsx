@@ -175,6 +175,7 @@ export function GiftPanel({
       }
     }
     if (items.length === 0) { alert('所选礼物均无动态图'); return }
+    if (items.length > 10) { alert('动态截图一次最多生成 10 个，请减少选择'); return }
     await onGenerateGiftGif?.(items)
   }, [aggregateChecked, onGenerateGiftGif])
 

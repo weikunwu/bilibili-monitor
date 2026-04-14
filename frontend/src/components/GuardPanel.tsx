@@ -174,6 +174,7 @@ export function GuardPanel({
       if (item) items.push(item)
     }
     if (items.length === 0) { alert('所选大航海均无动态图'); return }
+    if (items.length > 10) { alert('动态截图一次最多生成 10 个，请减少选择'); return }
     await onGenerateGiftGif?.(items)
   }, [filtered, checkedKeys, onGenerateGiftGif])
 
