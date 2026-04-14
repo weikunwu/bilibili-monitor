@@ -13,11 +13,11 @@ from .config import (
     WS_OP_AUTH, WS_OP_HEARTBEAT, PERIOD_LABELS, DANMU_PERIOD_MAP, DB_PATH, log,
 )
 from .protocol import make_packet, parse_packets, handle_message, build_guard_event
-from .bili_api import get_wbi_key, wbi_sign, fetch_user_avatar
+from .bili_api import get_wbi_key, wbi_sign, fetch_user_avatar, fetch_user_ip_location
 from . import recorder
 from .db import (
     save_event, get_command, get_room_save_danmu, get_room_auto_clip,
-    get_nickname, upsert_nickname, delete_nickname,
+    get_nickname, upsert_nickname, delete_nickname, list_room_users,
 )
 from .time_utils import beijing_time_range
 
@@ -336,6 +336,13 @@ class BiliLiveClient:
                                             cmd_cfg = get_command(self.real_room_id, "auto_gift")
                                             if cmd_cfg and cmd_cfg["enabled"] and content == cmd_cfg["config"]["trigger"]:
                                                 asyncio.create_task(self.send_gift(cmd_cfg["config"]))
+                                            ip_cmd = get_command(self.real_room_id, "query_ip")
+                                            if ip_cmd and ip_cmd["enabled"] and self.bot_uid:
+                                                trigger = ip_cmd["config"].get("trigger", "查询ip")
+                                                if content.lower().startswith(trigger.lower()):
+                                                    target = content[len(trigger):].lstrip(" @").strip()
+                                                    if target:
+                                                        asyncio.create_task(self.handle_query_ip(target))
                                         # 设置/清除昵称
                                         if self.bot_uid and uid:
                                             if content == "清除昵称":
@@ -413,6 +420,24 @@ class BiliLiveClient:
                         await asyncio.sleep(2)
         except Exception as e:
             log.warning(f"[发弹幕] 异常: {e}")
+
+    async def handle_query_ip(self, target: str):
+        """Streamer command: reply with the IP 属地 of a chat user by name.
+        Match is case-sensitive exact first, then case-insensitive substring
+        within the room's recent speakers (from the events table)."""
+        users = list_room_users(self.real_room_id, target)
+        match = next((u for u in users if u["user_name"] == target), None)
+        if not match and users:
+            low = target.lower()
+            match = next((u for u in users if low in u["user_name"].lower()), None)
+        if not match:
+            await self.send_danmu(f"未在本房间找到用户 {target}")
+            return
+        loc = await fetch_user_ip_location(match["user_id"], self._make_cookie_header())
+        if loc:
+            await self.send_danmu(f"{match['user_name']} 的 IP 属地：{loc}")
+        else:
+            await self.send_danmu(f"{match['user_name']} 的 IP 属地未公开")
 
     async def handle_set_nickname(self, user_id: int, user_name: str, nickname: str):
         """Handle '叫我xxx' danmu command: upsert this user's nickname for this room."""

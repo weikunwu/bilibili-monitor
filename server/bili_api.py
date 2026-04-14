@@ -47,6 +47,34 @@ def wbi_sign(params: dict, wbi_key: str) -> dict:
 _avatar_cache: dict[int, str] = {}
 
 
+async def fetch_user_ip_location(uid: int, headers: dict) -> str:
+    """Return the IP 属地 (province) for a uid, or '' if unknown.
+    B站 space/wbi/acc/info returns it in the `ip_location` field — sometimes
+    prefixed with 'IP属地：', sometimes bare. The field may be missing for
+    some accounts (privacy setting)."""
+    if not uid:
+        return ""
+    try:
+        wbi_key = await get_wbi_key(headers)
+        if not wbi_key:
+            return ""
+        params = wbi_sign({"mid": uid}, wbi_key)
+        url = "https://api.bilibili.com/x/space/wbi/acc/info?" + urlencode(params)
+        async with aiohttp.ClientSession(headers=headers) as session:
+            async with session.get(url) as resp:
+                data = await resp.json(content_type=None)
+        if data.get("code") != 0:
+            log.info(f"[ip_loc] uid={uid} code={data.get('code')} msg={data.get('message')}")
+            return ""
+        loc = (data.get("data") or {}).get("ip_location") or ""
+        if loc.startswith("IP属地："):
+            loc = loc[len("IP属地："):]
+        return loc.strip()
+    except Exception as ex:
+        log.info(f"[ip_loc] uid={uid} err={ex}")
+        return ""
+
+
 async def fetch_user_avatar(uid: int, headers: dict) -> str:
     """Resolve a user's avatar URL by uid. Returns '' on any failure."""
     if not uid:
