@@ -144,7 +144,10 @@ export async function composeClipInBrowser(
     if (srcAspect > OUT_ASPECT) {
       baseDw = OUT_W
       baseDh = Math.round(OUT_W / srcAspect)
-      baseDy = Math.round((OUT_H - baseDh) / 2)
+      // Shift the base up ~10% of the output so the gift overlay (pinned
+      // near the top of OUT) sits inside the live picture, not the bottom
+      // backdrop gutter.
+      baseDy = Math.max(0, Math.round((OUT_H - baseDh) / 2 - OUT_H * 0.10))
     } else {
       baseDh = OUT_H
       baseDw = Math.round(OUT_H * srcAspect)
