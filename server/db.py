@@ -45,13 +45,12 @@ def init_db():
             config_json TEXT NOT NULL DEFAULT '{}'
         )
     """)
-    existing = conn.execute("SELECT COUNT(*) FROM commands").fetchone()[0]
-    if existing == 0:
-        for cmd in DEFAULT_COMMANDS:
-            conn.execute(
-                "INSERT OR IGNORE INTO commands (id, name, type, description, config_json) VALUES (?,?,?,?,?)",
-                (cmd["id"], cmd["name"], cmd["type"], cmd["description"], json.dumps(cmd["config"], ensure_ascii=False)),
-            )
+    # Idempotent seed so new DEFAULT_COMMANDS show up on already-populated DBs.
+    for cmd in DEFAULT_COMMANDS:
+        conn.execute(
+            "INSERT OR IGNORE INTO commands (id, name, type, description, config_json) VALUES (?,?,?,?,?)",
+            (cmd["id"], cmd["name"], cmd["type"], cmd["description"], json.dumps(cmd["config"], ensure_ascii=False)),
+        )
 
     conn.execute("""
         CREATE TABLE IF NOT EXISTS users (
