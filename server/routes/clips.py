@@ -226,7 +226,11 @@ async def _do_composite(base_mp4: Path, overlays: list, out_mp4: Path) -> bool:
         last = f"v{i}"
     filter_str = ";".join(parts)
 
-    args = ["ffmpeg", "-y", "-i", str(base_mp4)]
+    # `-err_detect ignore_err -fflags +discardcorrupt`: the base mp4 is remuxed
+    # (copy) from raw HLS segments and can have the occasional broken frame.
+    # Without these flags, ffmpeg bails at the first error and the composited
+    # output stops mid-clip (we saw a 21s base produce a 5s composite).
+    args = ["ffmpeg", "-y", "-err_detect", "ignore_err", "-fflags", "+discardcorrupt", "-i", str(base_mp4)]
     for v in prepared:
         args += ["-i", v["mp4"]]
     args += [
