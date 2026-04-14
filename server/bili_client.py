@@ -34,6 +34,7 @@ class BiliLiveClient:
         self.streamer_uid = 0
         self.streamer_name = ""
         self.streamer_avatar = ""
+        self.room_cover = ""
         self.live_status = 0
         self.popularity = 0
         self.followers = 0
@@ -87,6 +88,15 @@ class BiliLiveClient:
                     self.area_name = info.get("area_name", "")
                     self.parent_area_name = info.get("parent_area_name", "")
                     self.announcement = info.get("description", "")
+                    # Prefer anchor-set background; fall back to room cover,
+                    # then live keyframe. Used by the clip compose step as a
+                    # blurred backdrop when the base aspect doesn't match.
+                    self.room_cover = (
+                        info.get("background")
+                        or info.get("user_cover")
+                        or info.get("keyframe")
+                        or ""
+                    )
                     log.info(f"房间信息: {self.room_title} (真实ID: {self.real_room_id}, 主播UID: {self.streamer_uid})")
                     if self.streamer_uid:
                         try:

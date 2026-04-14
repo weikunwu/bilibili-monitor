@@ -24,6 +24,7 @@ async def _fetch_room_info(room_id: int) -> dict:
     base = {
         "room_id": room_id, "real_room_id": room_id,
         "streamer_name": "", "streamer_avatar": "", "room_title": "",
+        "room_cover": "",
         "live_status": 0, "ruid": 0, "followers": 0,
         "area_name": "", "parent_area_name": "", "announcement": "",
         "bot_uid": 0, "bot_name": "", "active": False,
@@ -42,6 +43,12 @@ async def _fetch_room_info(room_id: int) -> dict:
                     base["live_status"] = info.get("live_status", 0)
                     base["area_name"] = info.get("area_name", "")
                     base["parent_area_name"] = info.get("parent_area_name", "")
+                    base["room_cover"] = (
+                        info.get("background")
+                        or info.get("user_cover")
+                        or info.get("keyframe")
+                        or ""
+                    )
                     ruid = info.get("uid", 0)
                     base["ruid"] = ruid
                     if ruid:
@@ -86,6 +93,7 @@ async def get_rooms(request: Request):
                 "real_room_id": c.real_room_id,
                 "streamer_name": c.streamer_name,
                 "streamer_avatar": c.streamer_avatar,
+                "room_cover": c.room_cover,
                 "room_title": c.room_title,
                 "live_status": c.live_status if c._running else 0,
                 "streamer_uid": c.streamer_uid,

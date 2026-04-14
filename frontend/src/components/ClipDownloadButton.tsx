@@ -24,7 +24,7 @@ export function isClippable(ev: LiveEvent): boolean {
 // Module-level cache so every row in the panel doesn't refetch.
 const autoClipCache = new Map<number, boolean>()
 const autoClipFetches = new Map<number, Promise<boolean>>()
-const avatarCache = new Map<number, string>()
+const coverCache = new Map<number, string>()
 let roomsFetchPromise: Promise<void> | null = null
 
 function useAutoClip(roomId: number | undefined): boolean | undefined {
@@ -48,14 +48,14 @@ function useAutoClip(roomId: number | undefined): boolean | undefined {
 }
 
 // /api/rooms returns all rooms the user can see — cheap to call once and
-// keep the streamer_avatar for backdrop use.
-function useStreamerAvatar(roomId: number | undefined): string | undefined {
-  const [avatar, setAvatar] = useState<string | undefined>(
-    () => (roomId ? avatarCache.get(roomId) : undefined),
+// keep the room cover (background / user_cover / keyframe) for backdrop use.
+function useRoomCover(roomId: number | undefined): string | undefined {
+  const [cover, setCover] = useState<string | undefined>(
+    () => (roomId ? coverCache.get(roomId) : undefined),
   )
   useEffect(() => {
-    if (!roomId || avatarCache.has(roomId)) {
-      setAvatar(roomId ? avatarCache.get(roomId) : undefined)
+    if (!roomId || coverCache.has(roomId)) {
+      setCover(roomId ? coverCache.get(roomId) : undefined)
       return
     }
     if (!roomsFetchPromise) {
@@ -64,14 +64,15 @@ function useStreamerAvatar(roomId: number | undefined): string | undefined {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .then((list: any[]) => {
           for (const r of list) {
-            if (r?.room_id && r?.streamer_avatar) avatarCache.set(r.room_id, r.streamer_avatar)
+            const url = r?.room_cover || r?.streamer_avatar
+            if (r?.room_id && url) coverCache.set(r.room_id, url)
           }
         })
         .catch(() => { /* ignore */ })
     }
-    roomsFetchPromise.then(() => setAvatar(avatarCache.get(roomId)))
+    roomsFetchPromise.then(() => setCover(coverCache.get(roomId)))
   }, [roomId])
-  return avatar
+  return cover
 }
 
 interface Props {
@@ -81,7 +82,7 @@ interface Props {
 
 export function ClipDownloadButton({ event, size = 'sm' }: Props) {
   const autoClip = useAutoClip(event.room_id)
-  const streamerAvatar = useStreamerAvatar(event.room_id)
+  const roomCover = useRoomCover(event.room_id)
   const [busy, setBusy] = useState(false)
   const [missing, setMissing] = useState(false)
   const [progress, setProgress] = useState('')
@@ -96,7 +97,7 @@ export function ClipDownloadButton({ event, size = 'sm' }: Props) {
     try {
       const m = await matchClip(event.room_id, event.user_name, event.timestamp)
       if (!m) { setMissing(true); return }
-      const blob = await composeClipInBrowser(event.room_id, m.name, event, streamerAvatar, (p) => {
+      const blob = await composeClipInBrowser(event.room_id, m.name, event, roomCover, (p) => {
         if (p.stage === 'downloading') setProgress('下载中...')
         else if (p.stage === 'loading') setProgress('加载中...')
         else if (p.stage === 'recording') setProgress(`合成 ${Math.round((p.ratio || 0) * 100)}%`)

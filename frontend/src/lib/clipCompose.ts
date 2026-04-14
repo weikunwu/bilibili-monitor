@@ -98,7 +98,7 @@ export async function composeClipInBrowser(
   roomId: number,
   name: string,
   event?: LiveEvent | null,
-  streamerAvatar?: string,
+  backdropUrl?: string,
   onProgress?: (p: ComposeProgress) => void,
 ): Promise<Blob> {
   onProgress?.({ stage: 'downloading' })
@@ -154,13 +154,13 @@ export async function composeClipInBrowser(
 
   // Load the streamer avatar for the backdrop once, if we need one.
   let bgImg: HTMLImageElement | null = null
-  if (fitMode === 'contain' && streamerAvatar) {
+  if (fitMode === 'contain' && backdropUrl) {
     bgImg = await new Promise<HTMLImageElement | null>((resolve) => {
       const img = new Image()
       img.crossOrigin = 'anonymous'
       img.onload = () => resolve(img)
       img.onerror = () => resolve(null)
-      img.src = `/api/proxy-image?url=${encodeURIComponent(streamerAvatar)}`
+      img.src = `/api/proxy-image?url=${encodeURIComponent(backdropUrl)}`
     })
   }
 
