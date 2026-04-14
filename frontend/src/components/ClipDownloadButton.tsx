@@ -21,11 +21,10 @@ export function isClippable(ev: LiveEvent): boolean {
   return CLIP_TEST_BLIND_NAMES.has(blindName)
 }
 
-// Module-level cache so every row in the panel doesn't refetch.
+// Module-level cache so every row in the panel doesn't refetch the
+// auto-clip flag (decides whether the button renders at all).
 const autoClipCache = new Map<number, boolean>()
 const autoClipFetches = new Map<number, Promise<boolean>>()
-const coverCache = new Map<number, string>()
-let roomsFetchPromise: Promise<void> | null = null
 
 function useAutoClip(roomId: number | undefined): boolean | undefined {
   const [state, setState] = useState<boolean | undefined>(
@@ -47,32 +46,16 @@ function useAutoClip(roomId: number | undefined): boolean | undefined {
   return state
 }
 
-// /api/rooms returns all rooms the user can see — cheap to call once and
-// keep the room cover (background / user_cover / keyframe) for backdrop use.
-function useRoomCover(roomId: number | undefined): string | undefined {
-  const [cover, setCover] = useState<string | undefined>(
-    () => (roomId ? coverCache.get(roomId) : undefined),
-  )
-  useEffect(() => {
-    if (!roomId || coverCache.has(roomId)) {
-      setCover(roomId ? coverCache.get(roomId) : undefined)
-      return
-    }
-    if (!roomsFetchPromise) {
-      roomsFetchPromise = fetch('/api/rooms')
-        .then((r) => r.ok ? r.json() : [])
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .then((list: any[]) => {
-          for (const r of list) {
-            const url = r?.room_cover || r?.streamer_avatar
-            if (r?.room_id && url) coverCache.set(r.room_id, url)
-          }
-        })
-        .catch(() => { /* ignore */ })
-    }
-    roomsFetchPromise.then(() => setCover(coverCache.get(roomId)))
-  }, [roomId])
-  return cover
+// One-shot lookup at click time — clip download is a rare event, no caching needed.
+async function fetchRoomCover(roomId: number): Promise<string | undefined> {
+  try {
+    const list = await fetch('/api/rooms').then((r) => r.json())
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const room = (list as any[]).find((r) => r?.room_id === roomId)
+    return room?.room_cover || room?.streamer_avatar
+  } catch {
+    return undefined
+  }
 }
 
 interface Props {
@@ -82,7 +65,6 @@ interface Props {
 
 export function ClipDownloadButton({ event, size = 'sm' }: Props) {
   const autoClip = useAutoClip(event.room_id)
-  const roomCover = useRoomCover(event.room_id)
   const [busy, setBusy] = useState(false)
   const [missing, setMissing] = useState(false)
   const [progress, setProgress] = useState('')
@@ -95,9 +77,12 @@ export function ClipDownloadButton({ event, size = 'sm' }: Props) {
     setMissing(false)
     setProgress('匹配中...')
     try {
-      const m = await matchClip(event.room_id, event.user_name, event.timestamp)
+      const [m, cover] = await Promise.all([
+        matchClip(event.room_id, event.user_name, event.timestamp),
+        fetchRoomCover(event.room_id),
+      ])
       if (!m) { setMissing(true); return }
-      const blob = await composeClipInBrowser(event.room_id, m.name, event, roomCover, (p) => {
+      const blob = await composeClipInBrowser(event.room_id, m.name, event, cover, (p) => {
         if (p.stage === 'downloading') setProgress('下载中...')
         else if (p.stage === 'loading') setProgress('加载中...')
         else if (p.stage === 'recording') setProgress(`合成 ${Math.round((p.ratio || 0) * 100)}%`)

@@ -290,24 +290,27 @@ export async function composeClipInBrowser(
         }
       }
 
-      // Gift card centered vertically, visible for 5s with quick fade in/out.
+      // Gift card at half width, centered horizontally, offset ~10% below
+      // vertical center. Visible 5s with 0.4s fade in/out and slight
+      // transparency so it doesn't obscure the gift animation behind it.
       const CARD_DUR = 5
       const FADE = 0.4
+      const CARD_MAX_ALPHA = 0.85
       const cardElapsed = t - cardStart
       if (cardCanvas && cardElapsed >= 0 && cardElapsed < CARD_DUR) {
-        const pad = Math.round(OUT_W * 0.03)
-        const targetW = OUT_W - pad * 2
+        const targetW = Math.round(OUT_W * 0.5)
         const scale = targetW / cardCanvas.width
         const targetH = Math.round(cardCanvas.height * scale)
-        const y = Math.round((OUT_H - targetH) / 2)
-        const alpha = cardElapsed < FADE
+        const x = Math.round((OUT_W - targetW) / 2)
+        const y = Math.round((OUT_H - targetH) / 2 + OUT_H * 0.10)
+        const fadeAlpha = cardElapsed < FADE
           ? cardElapsed / FADE
           : cardElapsed > CARD_DUR - FADE
             ? (CARD_DUR - cardElapsed) / FADE
             : 1
         ctx.save()
-        ctx.globalAlpha = Math.max(0, Math.min(1, alpha))
-        ctx.drawImage(cardCanvas, pad, y, targetW, targetH)
+        ctx.globalAlpha = Math.max(0, Math.min(1, fadeAlpha)) * CARD_MAX_ALPHA
+        ctx.drawImage(cardCanvas, x, y, targetW, targetH)
         ctx.restore()
       }
 
