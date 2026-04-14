@@ -41,49 +41,6 @@ function useAutoClip(roomId: number | undefined): boolean | undefined {
   return state
 }
 
-// Per-room cache of clip trigger (label, trigger_ts) pairs. Lets each row
-// pre-check availability on mount so expired clips can render a permanently
-// disabled "已失效" button without a user click.
-interface ClipTrig { label: string; trigger_ts: string }
-const clipTrigsCache = new Map<number, ClipTrig[]>()
-const clipTrigsFetches = new Map<number, Promise<ClipTrig[]>>()
-
-function fetchClipTrigs(roomId: number): Promise<ClipTrig[]> {
-  const cached = clipTrigsCache.get(roomId)
-  if (cached) return Promise.resolve(cached)
-  let p = clipTrigsFetches.get(roomId)
-  if (!p) {
-    p = fetch(`/api/rooms/${roomId}/clips`)
-      .then((r) => (r.ok ? r.json() : []))
-      .then((list: Array<{ overlays?: ClipTrig[] }>) => {
-        const out: ClipTrig[] = []
-        for (const c of list) for (const ov of c.overlays || []) {
-          if (ov.trigger_ts) out.push({ label: ov.label || '', trigger_ts: ov.trigger_ts })
-        }
-        clipTrigsCache.set(roomId, out)
-        return out
-      })
-      .catch(() => [] as ClipTrig[])
-    clipTrigsFetches.set(roomId, p)
-  }
-  return p
-}
-
-// Mirror the server-side match logic in routes/clips.py so the on-mount
-// check agrees with what clicking would actually do.
-function hasMatch(trigs: ClipTrig[], userName: string, tsIso: string): boolean {
-  const eventMs = Date.parse(tsIso.replace(' ', 'T') + 'Z')
-  if (!Number.isFinite(eventMs)) return false
-  const safe = (userName.match(/[\w-]/g) || []).join('').slice(0, 32)
-  for (const t of trigs) {
-    const tMs = Date.parse(t.trigger_ts.replace(' ', 'T') + 'Z')
-    if (!Number.isFinite(tMs)) continue
-    if (Math.abs(tMs - eventMs) > 60_000) continue
-    if (t.label && safe && t.label === safe.slice(0, t.label.length)) return true
-  }
-  return false
-}
-
 // On-demand lookup — clip download is a rare event and the anchor could
 // swap their background mid-stream, so hit the backend fresh each click.
 async function fetchRoomBackground(roomId: number): Promise<string | undefined> {
@@ -105,18 +62,6 @@ export function ClipDownloadButton({ event, size = 'sm' }: Props) {
   const [busy, setBusy] = useState(false)
   const [missing, setMissing] = useState(false)
   const [progress, setProgress] = useState('')
-
-  // Pre-check availability once auto-clip is known enabled — expired clips
-  // stay permanently disabled without making the user click first.
-  useEffect(() => {
-    if (!autoClip || !event.room_id || !event.user_name || !event.timestamp) return
-    let cancelled = false
-    fetchClipTrigs(event.room_id).then((trigs) => {
-      if (cancelled) return
-      if (!hasMatch(trigs, event.user_name!, event.timestamp)) setMissing(true)
-    })
-    return () => { cancelled = true }
-  }, [autoClip, event.room_id, event.user_name, event.timestamp])
 
   if (!autoClip) return null
 
