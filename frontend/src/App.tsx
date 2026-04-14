@@ -78,7 +78,7 @@ function HomePage({ rooms, currentUser, onRoomsChanged }: { rooms: Room[]; curre
   return (
     <>
       <div className="header">
-        <h1>B站直播监控</h1>
+        <h1>大黄狗机器人</h1>
         <span style={{ flex: 1 }} />
         {currentUser && <ProfileMenu user={currentUser} />}
       </div>
