@@ -6,6 +6,12 @@
 import type { LiveEvent, GiftUser } from '../types'
 import { generateGiftCard } from './giftCard'
 
+// Fixed output dimensions — the rest of the canvas is filled with the
+// streamer's avatar (blurred) when the base aspect ratio doesn't match.
+const OUT_W = 430
+const OUT_H = 932
+const OUT_ASPECT = OUT_W / OUT_H
+
 interface VapSidecarInfo {
   w: number
   h: number
@@ -92,6 +98,7 @@ export async function composeClipInBrowser(
   roomId: number,
   name: string,
   event?: LiveEvent | null,
+  streamerAvatar?: string,
   onProgress?: (p: ComposeProgress) => void,
 ): Promise<Blob> {
   onProgress?.({ stage: 'downloading' })
@@ -123,8 +130,58 @@ export async function composeClipInBrowser(
 
   const baseUrl = URL.createObjectURL(baseBlob)
   const baseVideo = await loadVideo(baseUrl)
-  const W = baseVideo.videoWidth
-  const H = baseVideo.videoHeight
+  const srcW = baseVideo.videoWidth
+  const srcH = baseVideo.videoHeight
+
+  // Compute base placement on a fixed OUT_W×OUT_H canvas. If aspect ratios
+  // match closely, cover the whole thing; otherwise fit inside and leave a
+  // blurred-avatar backdrop for the gutters.
+  const srcAspect = srcW / srcH
+  const aspectDelta = Math.abs(srcAspect - OUT_ASPECT) / OUT_ASPECT
+  const fitMode: 'cover' | 'contain' = aspectDelta < 0.05 ? 'cover' : 'contain'
+  let baseDx = 0, baseDy = 0, baseDw = OUT_W, baseDh = OUT_H
+  if (fitMode === 'contain') {
+    if (srcAspect > OUT_ASPECT) {
+      baseDw = OUT_W
+      baseDh = Math.round(OUT_W / srcAspect)
+      baseDy = Math.round((OUT_H - baseDh) / 2)
+    } else {
+      baseDh = OUT_H
+      baseDw = Math.round(OUT_H * srcAspect)
+      baseDx = Math.round((OUT_W - baseDw) / 2)
+    }
+  }
+
+  // Load the streamer avatar for the backdrop once, if we need one.
+  let bgImg: HTMLImageElement | null = null
+  if (fitMode === 'contain' && streamerAvatar) {
+    bgImg = await new Promise<HTMLImageElement | null>((resolve) => {
+      const img = new Image()
+      img.crossOrigin = 'anonymous'
+      img.onload = () => resolve(img)
+      img.onerror = () => resolve(null)
+      img.src = `/api/proxy-image?url=${encodeURIComponent(streamerAvatar)}`
+    })
+  }
+
+  // Pre-render the backdrop to its own canvas so we don't re-blur per frame.
+  const bgCanvas = document.createElement('canvas')
+  bgCanvas.width = OUT_W
+  bgCanvas.height = OUT_H
+  const bgCtx = bgCanvas.getContext('2d', { alpha: false })!
+  if (bgImg) {
+    // Cover-fit the avatar, then blur.
+    const iAspect = bgImg.naturalWidth / bgImg.naturalHeight
+    let iw = OUT_W, ih = OUT_H, ix = 0, iy = 0
+    if (iAspect > OUT_ASPECT) { iw = Math.round(OUT_H * iAspect); ix = Math.round((OUT_W - iw) / 2) }
+    else { ih = Math.round(OUT_W / iAspect); iy = Math.round((OUT_H - ih) / 2) }
+    bgCtx.filter = 'blur(24px) brightness(0.55)'
+    bgCtx.drawImage(bgImg, ix, iy, iw, ih)
+    bgCtx.filter = 'none'
+  } else {
+    bgCtx.fillStyle = '#0a0a0a'
+    bgCtx.fillRect(0, 0, OUT_W, OUT_H)
+  }
 
   const vaps: LoadedVap[] = await Promise.all(
     vapAssets.map(async (a) => {
@@ -164,8 +221,8 @@ export async function composeClipInBrowser(
 
   // 2. Main canvas + capture stream.
   const canvas = document.createElement('canvas')
-  canvas.width = W
-  canvas.height = H
+  canvas.width = OUT_W
+  canvas.height = OUT_H
   const ctx = canvas.getContext('2d', { alpha: false })!
   const stream = canvas.captureStream(30)
 
@@ -216,7 +273,9 @@ export async function composeClipInBrowser(
 
     const draw = () => {
       if (done) return
-      ctx.drawImage(baseVideo, 0, 0, W, H)
+      // Backdrop first (cheap copy from pre-rendered bgCanvas).
+      if (fitMode === 'contain') ctx.drawImage(bgCanvas, 0, 0)
+      ctx.drawImage(baseVideo, baseDx, baseDy, baseDw, baseDh)
       const t = baseVideo.currentTime
 
       for (let i = 0; i < vaps.length; i++) {
@@ -227,21 +286,27 @@ export async function composeClipInBrowser(
             v.video.play().catch(() => { /* ignore */ })
             vapStarted[i] = true
           }
-          drawVapFrame(ctx, v, W, H)
+          drawVapFrame(ctx, v, baseDw, baseDh, baseDx, baseDy)
         }
       }
 
-      // Gift card strip along the bottom, fades in at trigger and stays.
-      if (cardCanvas && t >= cardStart) {
-        const pad = Math.round(W * 0.03)
-        const targetW = W - pad * 2
+      // Gift card centered vertically, visible for 5s with quick fade in/out.
+      const CARD_DUR = 5
+      const FADE = 0.4
+      const cardElapsed = t - cardStart
+      if (cardCanvas && cardElapsed >= 0 && cardElapsed < CARD_DUR) {
+        const pad = Math.round(OUT_W * 0.03)
+        const targetW = OUT_W - pad * 2
         const scale = targetW / cardCanvas.width
         const targetH = Math.round(cardCanvas.height * scale)
-        const y = H - targetH - pad
-        // Quick 0.4s fade-in once the trigger hits.
-        const alpha = Math.min(1, (t - cardStart) / 0.4)
+        const y = Math.round((OUT_H - targetH) / 2)
+        const alpha = cardElapsed < FADE
+          ? cardElapsed / FADE
+          : cardElapsed > CARD_DUR - FADE
+            ? (CARD_DUR - cardElapsed) / FADE
+            : 1
         ctx.save()
-        ctx.globalAlpha = alpha
+        ctx.globalAlpha = Math.max(0, Math.min(1, alpha))
         ctx.drawImage(cardCanvas, pad, y, targetW, targetH)
         ctx.restore()
       }
@@ -283,8 +348,10 @@ export async function composeClipInBrowser(
 function drawVapFrame(
   mainCtx: CanvasRenderingContext2D,
   v: LoadedVap,
-  W: number,
-  _H: number,
+  baseW: number,
+  baseH: number,
+  baseX: number = 0,
+  baseY: number = 0,
 ) {
   const { video, tmp, tmpCtx, info } = v
   const [rx, ry, rw, rh] = info.rgbFrame
@@ -307,12 +374,12 @@ function drawVapFrame(
   }
   tmpCtx.putImageData(rgbData, 0, 0)
 
-  // Scale to full width of main canvas. Keep VAP's aspect ratio. Position
-  // roughly below the middle of the base (matches the old ffmpeg y=50 at 480p).
-  const targetW = W
+  // Scale VAP to the base-image width and drop it ~15% down from the top of
+  // the base — matches the old ffmpeg y=50 @ 480p layout.
+  const targetW = baseW
   const targetH = Math.round((info.h * targetW) / info.w)
-  const targetY = Math.round(_H * 0.15)
-  mainCtx.drawImage(tmp, 0, targetY, targetW, targetH)
+  const targetY = baseY + Math.round(baseH * 0.15)
+  mainCtx.drawImage(tmp, baseX, targetY, targetW, targetH)
 }
 
 export function downloadBlob(blob: Blob, filename: string) {
