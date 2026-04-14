@@ -160,6 +160,44 @@ async def get_room_background(room_id: int, _=Depends(require_room_access)):
     return {"url": url}
 
 
+@router.get("/api/rooms/{room_id}/streamer-info")
+async def get_streamer_info(room_id: int, _=Depends(require_room_access)):
+    """Fetch live streamer display info (name/avatar/followers) from B站 each
+    call. The client-side cache in bili_client is populated once at startup
+    and never refreshes, so a renamed/re-faced anchor would show stale data
+    until process restart. Also updates the in-memory client so subsequent
+    WS broadcasts carry the fresh values."""
+    client = manager.get(room_id)
+    uid = client.streamer_uid if client else 0
+    if not uid:
+        # Fall back to room info → streamer uid lookup.
+        try:
+            async with aiohttp.ClientSession(headers=HEADERS) as session:
+                async with session.get(ROOM_INFO_API, params={"room_id": room_id}) as resp:
+                    d = await resp.json(content_type=None)
+                    if d.get("code") == 0:
+                        uid = (d.get("data") or {}).get("uid") or 0
+        except Exception:
+            pass
+    if not uid:
+        return {"streamer_uid": 0, "streamer_name": "", "streamer_avatar": "", "followers": 0}
+    try:
+        async with aiohttp.ClientSession(headers=HEADERS) as session:
+            async with session.get(MASTER_INFO_API, params={"uid": uid}) as resp:
+                d = await resp.json(content_type=None)
+        info = (d.get("data") or {}).get("info") or {}
+        name = info.get("uname", "") or ""
+        face = info.get("face", "") or ""
+        followers = (d.get("data") or {}).get("follower_num", 0) or 0
+        if client:
+            client.streamer_name = name or client.streamer_name
+            client.streamer_avatar = face or client.streamer_avatar
+            client.followers = followers or client.followers
+        return {"streamer_uid": uid, "streamer_name": name, "streamer_avatar": face, "followers": followers}
+    except Exception:
+        return {"streamer_uid": uid, "streamer_name": "", "streamer_avatar": "", "followers": 0}
+
+
 @router.get("/api/rooms/{room_id}/auto-clip")
 async def get_auto_clip(room_id: int, _=Depends(require_room_access)):
     return {"enabled": get_room_auto_clip(room_id)}

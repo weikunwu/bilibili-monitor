@@ -1,7 +1,7 @@
 """B站机器人绑定 API（QR 扫码）"""
 
 import sqlite3
-from typing import Optional
+import time
 
 import requests as req
 from fastapi import APIRouter, Depends, Query
@@ -13,7 +13,19 @@ from ..manager import manager
 
 router = APIRouter()
 
-qr_session: Optional[req.Session] = None
+# Keyed by qrcode_key so concurrent binds across different rooms don't
+# clobber each other's target room id. Previously a single global
+# `qr_session` was reused — if user B requested a QR for room 200 while
+# user A was still scanning for room 100, A's cookies would bind to B's
+# room after poll read the overwritten global.
+_qr_sessions: dict[str, tuple[req.Session, int, float]] = {}
+_QR_TTL_SEC = 300  # QR codes themselves expire in ~3 min; give a little slack.
+
+
+def _gc_qr_sessions():
+    now = time.time()
+    for k in [k for k, (_, _, ts) in _qr_sessions.items() if now - ts > _QR_TTL_SEC]:
+        _qr_sessions.pop(k, None)
 
 
 @router.get("/api/bot/status")
@@ -41,30 +53,31 @@ async def bot_logout(room_id: int = Query(...), _=Depends(require_room_access)):
 
 @router.get("/api/bot/qrcode")
 async def bot_qrcode(room_id: int = Query(...), _=Depends(require_room_access)):
-    global qr_session
-    qr_session = req.Session()
-    qr_session._target_room_id = room_id  # type: ignore
-    resp = qr_session.get(QR_GENERATE_API, headers=HEADERS)
+    _gc_qr_sessions()
+    session = req.Session()
+    resp = session.get(QR_GENERATE_API, headers=HEADERS)
     data = resp.json()
     if data.get("code") != 0:
         return {"error": "生成二维码失败"}
-    return {"url": data["data"]["url"], "qrcode_key": data["data"]["qrcode_key"]}
+    qrcode_key = data["data"]["qrcode_key"]
+    _qr_sessions[qrcode_key] = (session, room_id, time.time())
+    return {"url": data["data"]["url"], "qrcode_key": qrcode_key}
 
 
 @router.get("/api/bot/poll")
 async def bot_poll(qrcode_key: str):
-    global qr_session
-    if not qr_session:
+    entry = _qr_sessions.get(qrcode_key)
+    if not entry:
         return {"code": -1, "message": "请先获取二维码"}
-    target_room_id = getattr(qr_session, "_target_room_id", 0)
-    resp = qr_session.get(QR_POLL_API, params={"qrcode_key": qrcode_key}, headers=HEADERS)
+    session, target_room_id, _ts = entry
+    resp = session.get(QR_POLL_API, params={"qrcode_key": qrcode_key}, headers=HEADERS)
     poll_data = resp.json().get("data", {})
     code = poll_data.get("code", -1)
 
     if code == 0:
         cookies = {}
         for key in ("SESSDATA", "bili_jct", "DedeUserID", "DedeUserID__ckMd5", "sid"):
-            val = qr_session.cookies.get(key) or resp.cookies.get(key)
+            val = session.cookies.get(key) or resp.cookies.get(key)
             if val:
                 cookies[key] = val
         url_str = poll_data.get("url", "")
@@ -77,6 +90,7 @@ async def bot_poll(qrcode_key: str):
             client.cookies = cookies
             client.bot_uid = uid
             client.request_reconnect()
+        _qr_sessions.pop(qrcode_key, None)
         log.info(f"房间 {target_room_id} 扫码绑定成功 (UID: {uid})")
         return {"code": 0, "message": "绑定成功", "uid": uid}
     elif code == 86101:
@@ -84,6 +98,7 @@ async def bot_poll(qrcode_key: str):
     elif code == 86090:
         return {"code": 86090, "message": "已扫码，请确认"}
     elif code == 86038:
+        _qr_sessions.pop(qrcode_key, None)
         return {"code": 86038, "message": "二维码已过期"}
     else:
         return {"code": code, "message": "未知状态"}

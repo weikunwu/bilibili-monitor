@@ -1,9 +1,26 @@
+import { useEffect, useState } from 'react'
 import { MdCircle } from 'react-icons/md'
 import { Button, ButtonToolbar, useToaster, Message } from 'rsuite'
 import PlayOutlineIcon from '@rsuite/icons/PlayOutline'
 import CloseOutlineIcon from '@rsuite/icons/CloseOutline'
 import ChangeListIcon from '@rsuite/icons/ChangeList'
 import type { Room } from '../types'
+
+// Per-tab cache of fresh streamer-info so we re-hit B站 once per room,
+// not once per card remount. Server caches the client-side value forever
+// so the bulk /api/rooms response can be stale for renamed anchors.
+interface StreamerInfo { streamer_name: string; streamer_avatar: string; followers: number }
+const streamerInfoCache = new Map<number, Promise<StreamerInfo>>()
+function fetchStreamerInfo(roomId: number): Promise<StreamerInfo> {
+  let p = streamerInfoCache.get(roomId)
+  if (!p) {
+    p = fetch(`/api/rooms/${roomId}/streamer-info`)
+      .then((r) => (r.ok ? r.json() : { streamer_name: '', streamer_avatar: '', followers: 0 }))
+      .catch(() => ({ streamer_name: '', streamer_avatar: '', followers: 0 }))
+    streamerInfoCache.set(roomId, p)
+  }
+  return p
+}
 
 interface Props {
   rooms: Room[]
@@ -15,6 +32,35 @@ interface Props {
 function formatFans(n: number): string {
   if (n >= 10000) return (n / 10000).toFixed(1).replace(/\.0$/, '') + '万'
   return n.toLocaleString()
+}
+
+function StreamerBlock({ room }: { room: Room }) {
+  const [fresh, setFresh] = useState<StreamerInfo | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    fetchStreamerInfo(room.room_id).then((v) => {
+      if (!cancelled && (v.streamer_avatar || v.streamer_name)) setFresh(v)
+    })
+    return () => { cancelled = true }
+  }, [room.room_id])
+  const avatar = fresh?.streamer_avatar || room.streamer_avatar
+  const name = fresh?.streamer_name || room.streamer_name
+  const followers = fresh?.followers ?? room.followers
+  return (
+    <div className="rc-streamer">
+      {avatar ? (
+        <img className="rc-avatar" src={avatar} referrerPolicy="no-referrer" alt="" />
+      ) : (
+        <div className="rc-avatar rc-avatar-placeholder" />
+      )}
+      <div className="rc-streamer-info">
+        <div className="rc-streamer-name">{name}</div>
+        <div className="rc-streamer-meta">
+          粉丝: {formatFans(followers)} · UID: {room.streamer_uid}
+        </div>
+      </div>
+    </div>
+  )
 }
 
 export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot }: Props) {
@@ -55,19 +101,7 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot }: Pro
 
             {/* Streamer info + area/announcement */}
             <div className="rc-body">
-              <div className="rc-streamer">
-                {r.streamer_avatar ? (
-                  <img className="rc-avatar" src={r.streamer_avatar} referrerPolicy="no-referrer" alt="" />
-                ) : (
-                  <div className="rc-avatar rc-avatar-placeholder" />
-                )}
-                <div className="rc-streamer-info">
-                  <div className="rc-streamer-name">{r.streamer_name}</div>
-                  <div className="rc-streamer-meta">
-                    粉丝: {formatFans(r.followers)} · UID: {r.streamer_uid}
-                  </div>
-                </div>
-              </div>
+              <StreamerBlock room={r} />
               <div className="rc-details">
                 {(r.parent_area_name || r.area_name) && (
                   <div className="rc-detail-row">
