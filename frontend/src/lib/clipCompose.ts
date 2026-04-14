@@ -326,21 +326,42 @@ export async function composeClipInBrowser(
         const targetW = Math.round(OUT_W * 0.5)
         const scale = targetW / cardCanvas.width
         const targetH = Math.round(cardCanvas.height * scale)
-        const x = Math.round(OUT_W * 0.03)
+        const finalX = Math.round(OUT_W * 0.03)
         // Landscape source: place the card in the backdrop gutter below the
         // base video (centered vertically in that strip). Portrait source:
         // keep the existing 10%-below-center placement on top of the video.
         const y = fitMode === 'contain'
           ? baseDy + baseDh + 8
           : Math.round((OUT_H - targetH) / 2 + OUT_H * 0.10)
-        const fadeAlpha = cardElapsed < FADE
-          ? cardElapsed / FADE
-          : cardElapsed > CARD_DUR - FADE
-            ? (CARD_DUR - cardElapsed) / FADE
-            : 1
+        // Unfurl like a scroll: card sits at finalX, but a clip rect
+        // grows from width 0 → targetW during the FADE window so the
+        // image is revealed left-to-right. Eased so the unfurl decelerates.
+        const revealT = Math.min(1, cardElapsed / FADE)
+        const ease = 1 - Math.pow(1 - revealT, 3)  // ease-out cubic
+        const revealW = Math.round(targetW * ease)
+        const fadeAlpha = cardElapsed > CARD_DUR - FADE
+          ? (CARD_DUR - cardElapsed) / FADE
+          : 1
         ctx.save()
         ctx.globalAlpha = Math.max(0, Math.min(1, fadeAlpha)) * CARD_MAX_ALPHA
-        ctx.drawImage(cardCanvas, x, y, targetW, targetH)
+        ctx.beginPath()
+        ctx.rect(finalX, y, revealW, targetH)
+        ctx.clip()
+        ctx.drawImage(cardCanvas, finalX, y, targetW, targetH)
+        ctx.restore()
+
+        // Smaller mirror card at bottom-center — pure fade in/out, no slide.
+        const smallW = Math.round(OUT_W * 0.32)
+        const smallH = Math.round(cardCanvas.height * (smallW / cardCanvas.width))
+        const smallX = Math.round((OUT_W - smallW) / 2)
+        const smallY = OUT_H - smallH - 16
+        const smallFadeIn = Math.min(1, cardElapsed / FADE)
+        const smallAlpha = (cardElapsed > CARD_DUR - FADE
+          ? (CARD_DUR - cardElapsed) / FADE
+          : smallFadeIn)
+        ctx.save()
+        ctx.globalAlpha = Math.max(0, Math.min(1, smallAlpha)) * CARD_MAX_ALPHA
+        ctx.drawImage(cardCanvas, smallX, smallY, smallW, smallH)
         ctx.restore()
       }
 
