@@ -99,6 +99,46 @@ function giftUserFromEvent(ev: LiveEvent): GiftUser | null {
   }
 }
 
+// Single-line text strip for the bottom mirror card: just "用户名 投喂 礼物名".
+// No avatar, no guard frame, no gift image, no count — distinct from the
+// main card so the bottom doesn't repeat the same visual.
+function renderSmallCardLine(ev: LiveEvent): HTMLCanvasElement | null {
+  const extra = ev.extra || {}
+  const isGuard = ev.event_type === 'guard'
+  const giftName = isGuard
+    ? (extra.guard_name || '舰长')
+    : (extra.gift_name || ev.content || '礼物')
+  const verb = isGuard ? '开通' : (extra.blind_name ? `${extra.blind_name} 爆出` : '投喂')
+  const text = `${ev.user_name || ''} ${verb} ${giftName}`
+  const c = document.createElement('canvas')
+  const ctx = c.getContext('2d')!
+  const fontSize = 36
+  ctx.font = `600 ${fontSize}px -apple-system, "PingFang SC", sans-serif`
+  const textW = Math.ceil(ctx.measureText(text).width)
+  const padX = 28
+  const padY = 14
+  c.width = textW + padX * 2
+  c.height = fontSize + padY * 2
+  // Re-set font after canvas resize (which clears state).
+  const ctx2 = c.getContext('2d')!
+  ctx2.font = `600 ${fontSize}px -apple-system, "PingFang SC", sans-serif`
+  ctx2.textBaseline = 'middle'
+  // Pill background
+  const r = c.height / 2
+  ctx2.fillStyle = 'rgba(0,0,0,0.55)'
+  ctx2.beginPath()
+  ctx2.moveTo(r, 0)
+  ctx2.lineTo(c.width - r, 0)
+  ctx2.arc(c.width - r, r, r, -Math.PI / 2, Math.PI / 2)
+  ctx2.lineTo(r, c.height)
+  ctx2.arc(r, r, r, Math.PI / 2, -Math.PI / 2)
+  ctx2.fill()
+  ctx2.fillStyle = '#fff'
+  ctx2.fillText(text, padX, c.height / 2)
+  return c
+}
+
+
 export async function composeClipInBrowser(
   roomId: number,
   name: string,
@@ -241,6 +281,7 @@ export async function composeClipInBrowser(
   // Pre-render the gift card strip (if the caller passed an event). We'll
   // overlay it at the bottom once playback reaches the trigger offset.
   let cardCanvas: HTMLCanvasElement | null = null
+  let smallCardCanvas: HTMLCanvasElement | null = null
   let cardStart = 0
   if (event) {
     const u = giftUserFromEvent(event)
@@ -249,6 +290,7 @@ export async function composeClipInBrowser(
         const c = document.createElement('canvas')
         await generateGiftCard(c, u)
         cardCanvas = c
+        smallCardCanvas = renderSmallCardLine(event)
         // Match the 0.5s gift-animation delay so the card appears with it.
         cardStart = vaps[0]?.offset ?? (overlays[0]?.offset_sec ?? 0)
       } catch { /* non-fatal — just skip card overlay */ }
@@ -323,7 +365,7 @@ export async function composeClipInBrowser(
       const CARD_MAX_ALPHA = 0.85
       const cardElapsed = t - cardStart
       if (cardCanvas && cardElapsed >= 0 && cardElapsed < CARD_DUR) {
-        const targetW = Math.round(OUT_W * 0.5)
+        const targetW = Math.round(OUT_W * 0.65)
         const scale = targetW / cardCanvas.width
         const targetH = Math.round(cardCanvas.height * scale)
         const finalX = Math.round(OUT_W * 0.03)
@@ -346,24 +388,29 @@ export async function composeClipInBrowser(
         ctx.drawImage(cardCanvas, x, y, targetW, targetH)
         ctx.restore()
 
-        // Smaller mirror card at bottom-center — scroll-unfurl from left.
-        const smallW = Math.round(OUT_W * 0.32)
-        const smallH = Math.round(cardCanvas.height * (smallW / cardCanvas.width))
-        const smallX = Math.round((OUT_W - smallW) / 2)
-        const smallY = OUT_H - smallH - 16
-        const revealT = Math.min(1, cardElapsed / FADE)
-        const revealEase = 1 - Math.pow(1 - revealT, 3)
-        const revealW = Math.round(smallW * revealEase)
-        const smallAlpha = cardElapsed > CARD_DUR - FADE
-          ? (CARD_DUR - cardElapsed) / FADE
-          : 1
-        ctx.save()
-        ctx.globalAlpha = Math.max(0, Math.min(1, smallAlpha)) * CARD_MAX_ALPHA
-        ctx.beginPath()
-        ctx.rect(smallX, smallY, revealW, smallH)
-        ctx.clip()
-        ctx.drawImage(cardCanvas, smallX, smallY, smallW, smallH)
-        ctx.restore()
+        // Single-line text pill at the bottom — scroll-unfurl from left.
+        if (smallCardCanvas) {
+          const maxSmallW = Math.round(OUT_W * 0.9)
+          const naturalW = smallCardCanvas.width
+          const smallScale = Math.min(1, maxSmallW / naturalW)
+          const smallW = Math.round(naturalW * smallScale)
+          const smallH = Math.round(smallCardCanvas.height * smallScale)
+          const smallX = Math.round((OUT_W - smallW) / 2)
+          const smallY = OUT_H - smallH - 30   // lifted off the bottom edge
+          const revealT = Math.min(1, cardElapsed / FADE)
+          const revealEase = 1 - Math.pow(1 - revealT, 3)
+          const revealW = Math.round(smallW * revealEase)
+          const smallAlpha = cardElapsed > CARD_DUR - FADE
+            ? (CARD_DUR - cardElapsed) / FADE
+            : 1
+          ctx.save()
+          ctx.globalAlpha = Math.max(0, Math.min(1, smallAlpha)) * CARD_MAX_ALPHA
+          ctx.beginPath()
+          ctx.rect(smallX, smallY, revealW, smallH)
+          ctx.clip()
+          ctx.drawImage(smallCardCanvas, smallX, smallY, smallW, smallH)
+          ctx.restore()
+        }
       }
 
       for (let i = 0; i < vaps.length; i++) {
