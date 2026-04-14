@@ -72,13 +72,6 @@ DEFAULT_COMMANDS = [
             "gift_num": 10,
         },
     },
-    {
-        "id": "query_ip",
-        "name": "查询IP属地",
-        "type": "streamer_danmu",
-        "description": '主播发送"查询ip 用户名"时，机器人回复该用户的 IP 属地（省份）',
-        "config": {"trigger": "查询ip"},
-    },
 ]
 
 # ── Wbi Signing ──

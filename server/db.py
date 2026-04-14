@@ -51,6 +51,29 @@ def init_db():
             "INSERT OR IGNORE INTO commands (id, name, type, description, config_json) VALUES (?,?,?,?,?)",
             (cmd["id"], cmd["name"], cmd["type"], cmd["description"], json.dumps(cmd["config"], ensure_ascii=False)),
         )
+    # Drop stale commands that have been removed from DEFAULT_COMMANDS, and
+    # strip their per-room enabled flags from rooms.settings_json so the UI
+    # doesn't carry dangling toggle state.
+    valid_ids = {c["id"] for c in DEFAULT_COMMANDS}
+    stale = [row[0] for row in conn.execute("SELECT id FROM commands").fetchall() if row[0] not in valid_ids]
+    if stale:
+        conn.executemany("DELETE FROM commands WHERE id=?", [(s,) for s in stale])
+        for room_id, settings_json in conn.execute("SELECT room_id, settings_json FROM rooms").fetchall():
+            try:
+                settings = json.loads(settings_json or "{}")
+            except json.JSONDecodeError:
+                continue
+            cmds = settings.get("commands") or {}
+            changed = False
+            for sid in stale:
+                if sid in cmds:
+                    cmds.pop(sid)
+                    changed = True
+            if changed:
+                conn.execute(
+                    "UPDATE rooms SET settings_json=? WHERE room_id=?",
+                    (json.dumps(settings, ensure_ascii=False), room_id),
+                )
 
     conn.execute("""
         CREATE TABLE IF NOT EXISTS users (
