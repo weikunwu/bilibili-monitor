@@ -133,7 +133,7 @@ class RecorderSession:
 
     # Clip window parameters.
     PRE_SEC = 5.0
-    POST_TAIL_SEC = 3.0         # record this long after each animation ends
+    POST_TAIL_SEC = 5.0         # record this long after each animation ends
     POST_SEC_FALLBACK = 15.0    # used when VAP metadata isn't available
     MAX_TOTAL_SEC = 120.0       # cap to avoid runaway coalescing
 

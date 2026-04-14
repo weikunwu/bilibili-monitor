@@ -12,6 +12,10 @@ const OUT_W = 430
 const OUT_H = 932
 const OUT_ASPECT = OUT_W / OUT_H
 
+// Delay the gift animation + card overlay this many seconds past the raw
+// trigger time so the overlay has a moment to breathe before the big effect.
+const GIFT_START_OFFSET_SEC = 0.5
+
 interface VapSidecarInfo {
   w: number
   h: number
@@ -122,7 +126,7 @@ export async function composeClipInBrowser(
           .then((r) => r.json())
           .then((j) => (j.info || j) as VapSidecarInfo),
       ])
-      return { mp4Blob, info, offset: ov.offset_sec }
+      return { mp4Blob, info, offset: ov.offset_sec + GIFT_START_OFFSET_SEC }
     }),
   )
 
@@ -217,7 +221,8 @@ export async function composeClipInBrowser(
         const c = document.createElement('canvas')
         await generateGiftCard(c, u)
         cardCanvas = c
-        cardStart = overlays[0]?.offset_sec ?? 0
+        // Match the 0.5s gift-animation delay so the card appears with it.
+        cardStart = vaps[0]?.offset ?? (overlays[0]?.offset_sec ?? 0)
       } catch { /* non-fatal — just skip card overlay */ }
     }
   }
