@@ -301,7 +301,7 @@ export async function composeClipInBrowser(
         const targetW = Math.round(OUT_W * 0.5)
         const scale = targetW / cardCanvas.width
         const targetH = Math.round(cardCanvas.height * scale)
-        const x = Math.round((OUT_W - targetW) / 2)
+        const x = Math.round(OUT_W * 0.03)
         const y = Math.round((OUT_H - targetH) / 2 + OUT_H * 0.10)
         const fadeAlpha = cardElapsed < FADE
           ? cardElapsed / FADE
@@ -351,10 +351,13 @@ export async function composeClipInBrowser(
 function drawVapFrame(
   mainCtx: CanvasRenderingContext2D,
   v: LoadedVap,
-  baseW: number,
-  baseH: number,
-  baseX: number = 0,
-  baseY: number = 0,
+  // Unused — kept for call-site compatibility. VAP is positioned against the
+  // fixed OUT canvas so its screen placement is identical whether or not a
+  // backdrop letterbox is in play.
+  _baseW: number,
+  _baseH: number,
+  _baseX: number = 0,
+  _baseY: number = 0,
 ) {
   const { video, tmp, tmpCtx, info } = v
   const [rx, ry, rw, rh] = info.rgbFrame
@@ -377,12 +380,13 @@ function drawVapFrame(
   }
   tmpCtx.putImageData(rgbData, 0, 0)
 
-  // Scale VAP to the base-image width and drop it ~15% down from the top of
-  // the base — matches the old ffmpeg y=50 @ 480p layout.
-  const targetW = baseW
+  // Anchor to the OUT canvas (not the base) so the gift appears in the same
+  // on-screen spot regardless of cover/contain fit. ~10% down from the top,
+  // full output width.
+  const targetW = OUT_W
   const targetH = Math.round((info.h * targetW) / info.w)
-  const targetY = baseY + Math.round(baseH * 0.15)
-  mainCtx.drawImage(tmp, baseX, targetY, targetW, targetH)
+  const targetY = Math.round(OUT_H * 0.10)
+  mainCtx.drawImage(tmp, 0, targetY, targetW, targetH)
 }
 
 export function downloadBlob(blob: Blob, filename: string) {
