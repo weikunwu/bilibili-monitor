@@ -165,7 +165,7 @@ export async function composeClipInBrowser(
     baseDh = Math.round(OUT_W / srcAspect)
     // Shift up ~10% so the VAP (pinned near top) lands on the live picture,
     // not the bottom backdrop gutter.
-    baseDy = Math.max(0, Math.round((OUT_H - baseDh) / 2 - OUT_H * 0.10))
+    baseDy = Math.max(0, Math.round((OUT_H - baseDh) / 2 - OUT_H * 0.15))
   }
 
   // Load the streamer avatar for the backdrop once, if we need one.
@@ -186,14 +186,12 @@ export async function composeClipInBrowser(
   bgCanvas.height = OUT_H
   const bgCtx = bgCanvas.getContext('2d', { alpha: false })!
   if (bgImg) {
-    // Cover-fit the avatar, then blur.
+    // Cover-fit the background image.
     const iAspect = bgImg.naturalWidth / bgImg.naturalHeight
     let iw = OUT_W, ih = OUT_H, ix = 0, iy = 0
     if (iAspect > OUT_ASPECT) { iw = Math.round(OUT_H * iAspect); ix = Math.round((OUT_W - iw) / 2) }
     else { ih = Math.round(OUT_W / iAspect); iy = Math.round((OUT_H - ih) / 2) }
-    bgCtx.filter = 'blur(24px) brightness(0.55)'
     bgCtx.drawImage(bgImg, ix, iy, iw, ih)
-    bgCtx.filter = 'none'
   } else {
     // Solid dark fill — matches the B站 H5 default when an anchor hasn't set
     // an app_background.
@@ -310,7 +308,12 @@ export async function composeClipInBrowser(
         const scale = targetW / cardCanvas.width
         const targetH = Math.round(cardCanvas.height * scale)
         const x = Math.round(OUT_W * 0.03)
-        const y = Math.round((OUT_H - targetH) / 2 + OUT_H * 0.10)
+        // Landscape source: place the card in the backdrop gutter below the
+        // base video (centered vertically in that strip). Portrait source:
+        // keep the existing 10%-below-center placement on top of the video.
+        const y = fitMode === 'contain'
+          ? baseDy + baseDh + 8
+          : Math.round((OUT_H - targetH) / 2 + OUT_H * 0.10)
         const fadeAlpha = cardElapsed < FADE
           ? cardElapsed / FADE
           : cardElapsed > CARD_DUR - FADE
