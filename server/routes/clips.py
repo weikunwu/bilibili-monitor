@@ -205,10 +205,10 @@ async def _do_composite(base_mp4: Path, overlays: list, out_mp4: Path) -> bool:
     if not prepared:
         return False
 
-    # Build the filter graph. Base is downscaled to 720 tall up front (saves
-    # memory in overlay stage + output bitrate). Each VAP is crop→alphamerge,
-    # scaled to full base width, overlaid at y=200 per user spec.
-    parts = ["[0:v]scale=-2:720[base0]"]
+    # Build the filter graph. Base is downscaled to 480 tall up front —
+    # higher resolutions (720) pushed x264 over the 256MB VM limit and got
+    # OOM-killed. 480p keeps peak VM manageable while still looking OK.
+    parts = ["[0:v]scale=-2:480[base0]"]
     last = "base0"
     for i, v in enumerate(prepared):
         idx = i + 1  # ffmpeg input index
@@ -220,9 +220,10 @@ async def _do_composite(base_mp4: Path, overlays: list, out_mp4: Path) -> bool:
         t1 = v["offset"] + dur + 0.1
         parts.append(f"[{idx}:v]crop={rw}:{rh}:{rx}:{ry},{shift}[rgb{i}]")
         parts.append(f"[{idx}:v]crop={aw}:{ah}:{ax}:{ay},scale={v['out_w']}:{v['out_h']},format=gray,{shift}[al{i}]")
-        # Scale VAP to base width (matches 720-tall base's width 405).
-        parts.append(f"[rgb{i}][al{i}]alphamerge,scale=405:-2[vap{i}]")
-        parts.append(f"[{last}][vap{i}]overlay=0:75:enable='between(t\\,{t0:.3f}\\,{t1:.3f})'[v{i}]")
+        # Scale VAP to base width (matches 480-tall base's width 270).
+        parts.append(f"[rgb{i}][al{i}]alphamerge,scale=270:-2[vap{i}]")
+        # Overlay y offset scaled proportionally from the original 720-tall layout (y=75 → y=50).
+        parts.append(f"[{last}][vap{i}]overlay=0:50:enable='between(t\\,{t0:.3f}\\,{t1:.3f})'[v{i}]")
         last = f"v{i}"
     filter_str = ";".join(parts)
 
@@ -236,7 +237,11 @@ async def _do_composite(base_mp4: Path, overlays: list, out_mp4: Path) -> bool:
     args += [
         "-filter_complex", filter_str,
         "-map", f"[{last}]", "-map", "0:a?",
-        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28", "-threads", "1",
+        # Aggressively trim x264 memory: no B-frames, single ref, no lookahead.
+        # These (especially rc-lookahead) are the main reason ffmpeg's VM ballooned
+        # to 700MB on the prior 720p config and got OOM-killed on our 256MB VM.
+        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "30", "-threads", "1",
+        "-x264-params", "ref=1:bframes=0:rc-lookahead=0:sliced-threads=0:sync-lookahead=0",
         "-c:a", "copy",
         "-movflags", "+faststart",
         str(out_mp4),
