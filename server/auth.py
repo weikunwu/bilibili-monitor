@@ -97,25 +97,46 @@ _login_attempts: dict[str, tuple[int, float]] = defaultdict(lambda: (0, 0.0))
 _MAX_LOGIN_ATTEMPTS = 5
 _LOGIN_LOCKOUT_SECONDS = 300
 
+# Per-user password-change limiter (independent from login attempts so a
+# logged-in attacker with a stolen session can't spam UPDATEs).
+_pwchange_attempts: dict[int, tuple[int, float]] = defaultdict(lambda: (0, 0.0))
+_MAX_PWCHANGE_ATTEMPTS = 5
+_PWCHANGE_WINDOW_SECONDS = 3600
+
+
+def _client_ip(request: Request) -> str:
+    """Prefer X-Forwarded-For first hop so Fly's LB doesn't collapse every
+    request to one source IP. Falls back to direct socket peer."""
+    xff = request.headers.get("x-forwarded-for", "")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
 
 async def handle_login(request: Request):
-    ip = request.client.host if request.client else "unknown"
-    fails, first_time = _login_attempts[ip]
-    if fails >= _MAX_LOGIN_ATTEMPTS and time.time() - first_time < _LOGIN_LOCKOUT_SECONDS:
-        return HTMLResponse('{"ok":false,"error":"请求过于频繁，请5分钟后再试"}', status_code=429)
-    if fails >= _MAX_LOGIN_ATTEMPTS:
-        _login_attempts[ip] = (0, 0.0)
+    ip = _client_ip(request)
 
     body = await request.json()
     email = body.get("email", "").strip().lower()
     pw = body.get("password", "")
 
+    # Check both IP- and email-keyed lockouts. Email keyed prevents an
+    # IP-rotating attacker from brute-forcing a specific account; IP keyed
+    # prevents one source from spraying many emails.
+    for key in (ip, f"email:{email}"):
+        fails, first_time = _login_attempts[key]
+        if fails >= _MAX_LOGIN_ATTEMPTS and time.time() - first_time < _LOGIN_LOCKOUT_SECONDS:
+            return HTMLResponse('{"ok":false,"error":"请求过于频繁，请5分钟后再试"}', status_code=429)
+        if fails >= _MAX_LOGIN_ATTEMPTS:
+            _login_attempts[key] = (0, 0.0)
+
     conn = sqlite3.connect(str(DB_PATH))
     row = conn.execute("SELECT id, password_hash, role FROM users WHERE email = ?", (email,)).fetchone()
     if not row or not verify_password(pw, row[1]):
         conn.close()
-        fails, first_time = _login_attempts[ip]
-        _login_attempts[ip] = (fails + 1, first_time or time.time())
+        for key in (ip, f"email:{email}"):
+            fails, first_time = _login_attempts[key]
+            _login_attempts[key] = (fails + 1, first_time or time.time())
         return HTMLResponse('{"ok":false,"error":"邮箱或密码错误"}', status_code=403)
 
     user_id, _, role = row
@@ -126,8 +147,13 @@ async def handle_login(request: Request):
     conn.close()
 
     _login_attempts.pop(ip, None)
+    _login_attempts.pop(f"email:{email}", None)
     resp = HTMLResponse(json.dumps({"ok": True, "role": role}))
-    resp.set_cookie("auth_token", token, httponly=True, max_age=86400 * 3)
+    resp.set_cookie(
+        "auth_token", token,
+        httponly=True, max_age=86400 * 3,
+        samesite="lax", secure=True,
+    )
     return resp
 
 
@@ -135,6 +161,13 @@ async def handle_change_password(request: Request):
     user_id = getattr(request.state, "user_id", None)
     if not user_id:
         return HTMLResponse('{"ok":false,"error":"未登录"}', status_code=401)
+    fails, first_time = _pwchange_attempts[user_id]
+    now = time.time()
+    if fails >= _MAX_PWCHANGE_ATTEMPTS and now - first_time < _PWCHANGE_WINDOW_SECONDS:
+        return HTMLResponse('{"ok":false,"error":"尝试次数过多，请稍后再试"}', status_code=429)
+    if now - first_time >= _PWCHANGE_WINDOW_SECONDS:
+        _pwchange_attempts[user_id] = (0, 0.0)
+
     body = await request.json()
     old_pw = body.get("old_password", "")
     new_pw = body.get("new_password", "")
@@ -144,7 +177,10 @@ async def handle_change_password(request: Request):
     row = conn.execute("SELECT password_hash FROM users WHERE id=?", (user_id,)).fetchone()
     if not row or not verify_password(old_pw, row[0]):
         conn.close()
+        fails, first_time = _pwchange_attempts[user_id]
+        _pwchange_attempts[user_id] = (fails + 1, first_time or now)
         return HTMLResponse('{"ok":false,"error":"原密码错误"}', status_code=403)
+    _pwchange_attempts.pop(user_id, None)
     conn.execute("UPDATE users SET password_hash=? WHERE id=?", (hash_password(new_pw), user_id))
     # Invalidate all other sessions; keep the current one so the user stays in.
     cur_token = request.cookies.get("auth_token")

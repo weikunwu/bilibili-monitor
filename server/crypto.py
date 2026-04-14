@@ -12,8 +12,30 @@ from cryptography.fernet import Fernet
 from .config import DB_PATH, log
 
 
+_SECRET_FILE = DB_PATH.parent / ".cookie_secret"
+
+
 def _get_fernet() -> Fernet:
-    key_src = os.environ.get("COOKIE_SECRET", os.environ.get("ADMIN_PASSWORD", "bilibili-monitor-default"))
+    """Resolve the Fernet key in this order:
+      1. COOKIE_SECRET env var (preferred for deployments — set once, keep stable).
+      2. A local persisted random secret (`.cookie_secret` next to the DB).
+      3. Auto-generate + persist on first run.
+    Previously we fell back to a hardcoded default when no env was set —
+    that meant anyone who got a copy of the SQLite file could decrypt all
+    bot SESSDATA/bili_jct with a public, published string. Refuse that
+    path entirely by generating a random secret and persisting it."""
+    key_src = os.environ.get("COOKIE_SECRET", "")
+    if not key_src:
+        try:
+            key_src = _SECRET_FILE.read_text(encoding="utf-8").strip()
+        except FileNotFoundError:
+            key_src = secrets.token_urlsafe(48)
+            _SECRET_FILE.write_text(key_src, encoding="utf-8")
+            try:
+                os.chmod(_SECRET_FILE, 0o600)
+            except OSError:
+                pass
+            log.warning(f"COOKIE_SECRET 未设置，已自动生成并保存到 {_SECRET_FILE}")
     key = base64.urlsafe_b64encode(hashlib.sha256(key_src.encode()).digest())
     return Fernet(key)
 

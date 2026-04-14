@@ -4,6 +4,7 @@ import json
 import sqlite3
 from datetime import datetime, timezone, timedelta
 from typing import Optional
+from urllib.parse import urlparse
 
 import aiohttp
 from fastapi import APIRouter, Depends, Query
@@ -16,14 +17,38 @@ from ..manager import manager
 router = APIRouter()
 
 
+# Only allow CDN hosts we actually need. Anything else would make the
+# endpoint an SSRF pivot into cloud metadata / internal services.
+_ALLOWED_PROXY_SUFFIXES = (
+    ".hdslb.com",
+    ".bilibili.com",
+    ".bilivideo.com",
+    ".bilivideo.cn",
+    ".biliapi.net",
+)
+
+
+def _is_allowed_proxy_host(url: str) -> bool:
+    try:
+        p = urlparse(url)
+    except Exception:
+        return False
+    if p.scheme not in ("http", "https"):
+        return False
+    host = (p.hostname or "").lower()
+    if not host:
+        return False
+    return any(host == s.lstrip(".") or host.endswith(s) for s in _ALLOWED_PROXY_SUFFIXES)
+
+
 @router.get("/api/proxy-image")
-async def proxy_image(url: str = Query(...)):
-    """代理 B站 CDN 图片，解决前端 CORS 问题"""
-    if not url.startswith("https://") and not url.startswith("http://"):
+async def proxy_image(url: str = Query(...), _=Depends(require_room_access)):
+    """代理 B站 CDN 图片，解决前端 CORS 问题。仅允许 B站 域名，防 SSRF。"""
+    if not _is_allowed_proxy_host(url):
         return Response(status_code=400)
     try:
         async with aiohttp.ClientSession(headers=HEADERS) as session:
-            async with session.get(url) as resp:
+            async with session.get(url, allow_redirects=False) as resp:
                 content_type = resp.headers.get("Content-Type", "image/png")
                 data = await resp.read()
                 return Response(content=data, media_type=content_type, headers={
