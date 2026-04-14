@@ -3,6 +3,9 @@
 // to do this with ffmpeg, but on our 256MB VM the re-encode kept getting
 // OOM-killed. Offloading to the user's browser sidesteps that entirely.
 
+import type { LiveEvent, GiftUser } from '../types'
+import { generateGiftCard } from './giftCard'
+
 interface VapSidecarInfo {
   w: number
   h: number
@@ -59,9 +62,36 @@ export interface ComposeProgress {
   ratio?: number
 }
 
+// Build a minimal GiftUser from a gift/guard event so we can reuse the
+// giftCard.ts renderer for the in-clip overlay card.
+function giftUserFromEvent(ev: LiveEvent): GiftUser | null {
+  const extra = ev.extra || {}
+  const isGuard = ev.event_type === 'guard'
+  const name = isGuard
+    ? (extra.guard_name || '舰长')
+    : (extra.gift_name || ev.content || '礼物')
+  const num = extra.num || 1
+  const coin = isGuard
+    ? ((extra.price || 0) * num)
+    : (extra.total_coin || (extra.price || 0) * num || 0)
+  const action = extra.blind_name ? `${extra.blind_name} 爆出` : (extra.action || '投喂')
+  return {
+    user_name: ev.user_name || '',
+    avatar: extra.avatar || '',
+    gifts: { [name]: num },
+    gift_imgs: extra.gift_img ? { [name]: extra.gift_img } : {},
+    gift_actions: { [name]: action },
+    gift_coins: { [name]: coin },
+    gift_ids: extra.gift_id ? { [name]: extra.gift_id } : {},
+    guard_level: extra.guard_level || 0,
+    total_coin: coin,
+  }
+}
+
 export async function composeClipInBrowser(
   roomId: number,
   name: string,
+  event?: LiveEvent | null,
   onProgress?: (p: ComposeProgress) => void,
 ): Promise<Blob> {
   onProgress?.({ stage: 'downloading' })
@@ -115,6 +145,22 @@ export async function composeClipInBrowser(
       }
     }),
   )
+
+  // Pre-render the gift card strip (if the caller passed an event). We'll
+  // overlay it at the bottom once playback reaches the trigger offset.
+  let cardCanvas: HTMLCanvasElement | null = null
+  let cardStart = 0
+  if (event) {
+    const u = giftUserFromEvent(event)
+    if (u) {
+      try {
+        const c = document.createElement('canvas')
+        await generateGiftCard(c, u)
+        cardCanvas = c
+        cardStart = overlays[0]?.offset_sec ?? 0
+      } catch { /* non-fatal — just skip card overlay */ }
+    }
+  }
 
   // 2. Main canvas + capture stream.
   const canvas = document.createElement('canvas')
@@ -183,6 +229,21 @@ export async function composeClipInBrowser(
           }
           drawVapFrame(ctx, v, W, H)
         }
+      }
+
+      // Gift card strip along the bottom, fades in at trigger and stays.
+      if (cardCanvas && t >= cardStart) {
+        const pad = Math.round(W * 0.03)
+        const targetW = W - pad * 2
+        const scale = targetW / cardCanvas.width
+        const targetH = Math.round(cardCanvas.height * scale)
+        const y = H - targetH - pad
+        // Quick 0.4s fade-in once the trigger hits.
+        const alpha = Math.min(1, (t - cardStart) / 0.4)
+        ctx.save()
+        ctx.globalAlpha = alpha
+        ctx.drawImage(cardCanvas, pad, y, targetW, targetH)
+        ctx.restore()
       }
 
       const dur = baseVideo.duration || meta.duration_sec

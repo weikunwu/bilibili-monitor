@@ -8,13 +8,17 @@ import { EVENT_GIFT, EVENT_GUARD } from '../lib/constants'
 // ≥ 1000 电池 (¥1000) — matches the server-side CLIP_GIFT_THRESHOLD.
 export const CLIP_MIN_COIN = 10000
 
+// Cheap blind boxes allow-listed for clip testing (mirror of server-side
+// CLIP_TEST_BLIND_NAMES in bili_client.py).
+const CLIP_TEST_BLIND_NAMES = new Set(['肥肥鲨盒'])
+
 export function isClippable(ev: LiveEvent): boolean {
+  if (ev.event_type !== EVENT_GIFT && ev.event_type !== EVENT_GUARD) return false
   const extra = ev.extra || {}
   const coin = extra.total_coin ?? (extra.price || 0) * (extra.num || 1)
-  if (ev.event_type === EVENT_GIFT || ev.event_type === EVENT_GUARD) {
-    return coin >= CLIP_MIN_COIN
-  }
-  return false
+  if (coin >= CLIP_MIN_COIN) return true
+  const blindName = (extra as { blind_name?: string }).blind_name || ''
+  return CLIP_TEST_BLIND_NAMES.has(blindName)
 }
 
 // Module-level cache so every row in the panel doesn't refetch.
@@ -62,7 +66,7 @@ export function ClipDownloadButton({ event, size = 'sm' }: Props) {
     try {
       const m = await matchClip(event.room_id, event.user_name, event.timestamp)
       if (!m) { setMissing(true); return }
-      const blob = await composeClipInBrowser(event.room_id, m.name, (p) => {
+      const blob = await composeClipInBrowser(event.room_id, m.name, event, (p) => {
         if (p.stage === 'downloading') setProgress('下载中...')
         else if (p.stage === 'loading') setProgress('加载中...')
         else if (p.stage === 'recording') setProgress(`合成 ${Math.round((p.ratio || 0) * 100)}%`)

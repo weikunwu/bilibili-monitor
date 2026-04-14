@@ -86,6 +86,7 @@ class RecorderSession:
         self.cookies = cookies or {}
         self._segments: deque[_Segment] = deque()
         self._init_path: Optional[str] = None   # on-disk init.mp4
+        self._init_bytes: Optional[bytes] = None  # last-known init content (for rotation detection)
         self._buf_dir = SEG_BUF_ROOT / str(room_id)
         self._m3u8_url: str = ""
         self._seg_host: str = ""  # URL prefix for relative segment URIs
@@ -127,6 +128,7 @@ class RecorderSession:
             try: os.unlink(self._init_path)
             except OSError: pass
             self._init_path = None
+        self._init_bytes = None
         log.info(f"[recorder] room {self.room_id} stop")
 
     # Clip window parameters.
@@ -392,13 +394,34 @@ class RecorderSession:
                 cur_seq += 1
                 cur_dur = None
 
-        if init_uri and self._init_path is None:
+        # Refetch init.mp4 every poll and compare bytes — B站 keeps the URI
+        # stable (e.g. "h1776133486.m4s") even after the source stream
+        # restarts and the embedded SPS/avcC silently changes. URI-based
+        # caching gives us a stale init, which makes every subsequent frame
+        # decode to black. ~1KB per poll is cheap insurance.
+        if init_uri:
             init_url = init_uri if init_uri.startswith("http") else self._seg_host + init_uri
-            async with self._session.get(init_url) as r:
-                body = await r.read()
-            init_path = self._buf_dir / "init.mp4"
-            init_path.write_bytes(body)
-            self._init_path = str(init_path)
+            try:
+                async with self._session.get(init_url) as r:
+                    body = await r.read()
+                if body and body != self._init_bytes:
+                    rotated = self._init_bytes is not None
+                    init_path = self._buf_dir / "init.mp4"
+                    init_path.write_bytes(body)
+                    if rotated:
+                        # Old segments were recorded against old init —
+                        # mixing them with new init produces a broken bitstream.
+                        for s in self._segments:
+                            try: os.unlink(s.path)
+                            except OSError: pass
+                        self._segments.clear()
+                        self._seen_seqs.clear()
+                    self._init_path = str(init_path)
+                    self._init_bytes = body
+                    log.info(f"[recorder] room {self.room_id} init updated "
+                             f"({len(body)} B){' (dropped stale segments)' if rotated else ''}")
+            except Exception as ex:
+                log.warning(f"[recorder] init fetch err: {type(ex).__name__}: {ex}")
 
         for seq, dur, uri in pending:
             if seq in self._seen_seqs:
