@@ -254,7 +254,4 @@ export async function matchClip(
   return res.json()
 }
 
-export function clipComposeUrl(roomId: number, name: string): string {
-  return `/api/rooms/${roomId}/clips/${encodeURIComponent(name)}/compose`
-}
 

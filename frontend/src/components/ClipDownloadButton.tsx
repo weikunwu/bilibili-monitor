@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Button } from 'rsuite'
 import type { LiveEvent } from '../types'
-import { matchClip, clipComposeUrl } from '../api/client'
+import { matchClip } from '../api/client'
+import { composeClipInBrowser, downloadBlob } from '../lib/clipCompose'
 import { EVENT_GIFT, EVENT_GUARD } from '../lib/constants'
 
 // ≥ 1000 电池 (¥1000) — matches the server-side CLIP_GIFT_THRESHOLD.
@@ -49,6 +50,7 @@ export function ClipDownloadButton({ event, size = 'sm' }: Props) {
   const autoClip = useAutoClip(event.room_id)
   const [busy, setBusy] = useState(false)
   const [missing, setMissing] = useState(false)
+  const [progress, setProgress] = useState('')
 
   if (!autoClip) return null
 
@@ -56,18 +58,27 @@ export function ClipDownloadButton({ event, size = 'sm' }: Props) {
     if (!event.room_id || !event.user_name || !event.timestamp) return
     setBusy(true)
     setMissing(false)
+    setProgress('匹配中...')
     try {
       const m = await matchClip(event.room_id, event.user_name, event.timestamp)
       if (!m) { setMissing(true); return }
-      window.open(clipComposeUrl(event.room_id, m.name), '_blank')
+      const blob = await composeClipInBrowser(event.room_id, m.name, (p) => {
+        if (p.stage === 'downloading') setProgress('下载中...')
+        else if (p.stage === 'loading') setProgress('加载中...')
+        else if (p.stage === 'recording') setProgress(`合成 ${Math.round((p.ratio || 0) * 100)}%`)
+        else if (p.stage === 'finalizing') setProgress('收尾...')
+      })
+      const ext = blob.type.includes('mp4') ? 'mp4' : 'webm'
+      downloadBlob(blob, `${m.name}.${ext}`)
     } finally {
       setBusy(false)
+      setProgress('')
     }
   }
 
   return (
     <Button size={size} loading={busy} disabled={missing} onClick={handleClick}>
-      {missing ? '无录屏' : '下载录屏'}
+      {missing ? '无录屏' : (busy && progress ? progress : '下载录屏')}
     </Button>
   )
 }
