@@ -51,8 +51,13 @@ export function ToolsPanel({ roomId }: Props) {
       <div className="cmd-section-title">实验功能</div>
       <div className="cmd-item">
         <div className="cmd-info">
-          <div className="cmd-name">礼物自动剪辑</div>
-          <div className="cmd-desc">直播是收到 ≥¥1000 礼物时自动录制前后片段，可在礼物，大航海和醒目留言列表下载</div>
+          <div className="cmd-name">
+            礼物自动剪辑
+            <span style={{ color: '#ef5350', marginLeft: 8, fontWeight: 'normal' }}>
+              非实际录屏！！仅模拟合成！！
+            </span>
+          </div>
+          <div className="cmd-desc">直播时收到 ≥<span style={{ color: '#ef5350' }}>¥1000</span> 礼物时自动录制前后片段，可在礼物和大航海列表下载</div>
           <div className="cmd-desc">录制片段仅保留 24 小时</div>
         </div>
         <Toggle checked={autoClip} onChange={handleAutoClipToggle} size="sm" />

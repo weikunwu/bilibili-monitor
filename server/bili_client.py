@@ -198,7 +198,7 @@ class BiliLiveClient:
     CLIP_GIFT_THRESHOLD = 10000  # ¥1000 in 电池
 
     # Blind-box burst broadcast tuning.
-    BLIND_IDLE_SEC = 3.0   # flush summary this long after the last blind box
+    BLIND_IDLE_SEC = 2.0   # flush summary this long after the last blind box
     BLIND_MIN_COUNT = 1    # broadcast even single-box opens
 
     # For guard events (GUARD_BUY / USER_TOAST_MSG) there's no gift_id — map
@@ -316,7 +316,7 @@ class BiliLiveClient:
         buf = self._gift_bursts.pop(uid, None)
         if not buf or not buf["gifts"]:
             return
-        parts = [f"{n} x{c}" for n, c in buf["gifts"].items()]
+        parts = [n if c == 1 else f"{n} x{c}" for n, c in buf["gifts"].items()]
         display_name = get_nickname(self.real_room_id, uid) or buf["user_name"] or "有人"
         await self.send_danmu(f"感谢{display_name}的 {', '.join(parts)}")
 
