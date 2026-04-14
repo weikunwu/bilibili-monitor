@@ -50,6 +50,9 @@ class BiliLiveClient:
         # seen for up to GUARD_PAIR_TIMEOUT seconds so they can be merged
         # into a single guard event.
         self._pending_guard: dict[int, dict] = {}  # uid -> {guard_buy?, toast?, ts}
+        # Per-user blind-box burst buffer: flush a summary danmu after the
+        # user stops opening boxes for BLIND_IDLE_SEC seconds.
+        self._blind_bursts: dict[int, dict] = {}  # uid -> {user_name, count, cost, value, task}
 
     def _make_cookie_header(self) -> dict:
         headers = dict(HEADERS)
@@ -191,6 +194,10 @@ class BiliLiveClient:
     # Gift or guard events worth ≥ ¥1000 (10000 电池) trigger a clip.
     CLIP_GIFT_THRESHOLD = 10000  # ¥1000 in 电池
 
+    # Blind-box burst broadcast tuning.
+    BLIND_IDLE_SEC = 3.0   # flush summary this long after the last blind box
+    BLIND_MIN_COUNT = 1    # broadcast even single-box opens
+
     # For guard events (GUARD_BUY / USER_TOAST_MSG) there's no gift_id — map
     # guard_level → a known "xx一号" gift_id so the catalog can look up VAP.
     # level 1=总督, 2=提督, 3=舰长
@@ -217,6 +224,54 @@ class BiliLiveClient:
         if event.get("event_type") == "guard" and not gift_id:
             gift_id = self.GUARD_VAP_GIFT_IDS.get(extra.get("guard_level") or 0, 0)
         asyncio.create_task(session.request_clip(gift_id, effect_id, label))
+
+    def _maybe_broadcast_blind(self, event: dict):
+        """Accumulate a user's blind-box events and emit one summary danmu
+        after they stop opening boxes for BLIND_IDLE_SEC seconds. Only runs
+        when the `broadcast_blind` command is enabled for this room and the
+        bot has cookies (we can't send danmu without)."""
+        if event.get("event_type") != "gift":
+            return
+        extra = event.get("extra") or {}
+        if not extra.get("blind_name"):
+            return
+        if not self.cookies.get("SESSDATA"):
+            return
+        cmd_cfg = get_command(self.real_room_id, "broadcast_blind")
+        if not cmd_cfg or not cmd_cfg["enabled"]:
+            return
+        uid = event.get("user_id") or 0
+        if not uid:
+            return
+        buf = self._blind_bursts.get(uid)
+        if not buf:
+            buf = {"user_name": event.get("user_name", ""), "count": 0, "cost": 0, "value": 0, "task": None}
+            self._blind_bursts[uid] = buf
+        num = extra.get("num") or 1
+        buf["user_name"] = event.get("user_name", "") or buf["user_name"]
+        buf["count"] += num
+        buf["cost"] += (extra.get("blind_price") or 0) * num
+        buf["value"] += (extra.get("price") or 0) * num
+        # Reset the idle timer: cancel the pending flush (if any) and
+        # schedule a new one so bursts keep extending the window.
+        if buf["task"] and not buf["task"].done():
+            buf["task"].cancel()
+        buf["task"] = asyncio.create_task(self._flush_blind_burst(uid))
+
+    async def _flush_blind_burst(self, uid: int):
+        try:
+            await asyncio.sleep(self.BLIND_IDLE_SEC)
+        except asyncio.CancelledError:
+            return
+        buf = self._blind_bursts.pop(uid, None)
+        if not buf or buf["count"] < self.BLIND_MIN_COUNT:
+            return
+        profit = buf["value"] - buf["cost"]
+        yuan = abs(profit) / 10
+        s = f"{yuan:.1f}".rstrip('0').rstrip('.')
+        verdict = "不亏不赚" if profit == 0 else (f"赚{s}元" if profit > 0 else f"亏{s}元")
+        display_name = get_nickname(self.real_room_id, uid) or buf["user_name"] or "有人"
+        await self.send_danmu(f"感谢{display_name}的{buf['count']}个盲盒，{verdict}")
 
     def request_reconnect(self):
         self._reconnect = True
@@ -326,6 +381,7 @@ class BiliLiveClient:
                                         save_event(event)
                                         await self.on_event(event)
                                     self._maybe_clip(event)
+                                    self._maybe_broadcast_blind(event)
                                     # 指令系统
                                     if event.get("event_type") == "danmu":
                                         uid = event.get("user_id")

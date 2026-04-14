@@ -275,8 +275,11 @@ def get_room_commands(room_id: int) -> list[dict]:
     cmds = get_all_commands()
     settings = get_room_settings(room_id)
     cmd_states = settings.get("commands", {})
+    # Fall back to the DEFAULT_COMMANDS `default_enabled` flag when the
+    # room hasn't explicitly opted in/out yet.
+    defaults = {c["id"]: bool(c.get("default_enabled", False)) for c in DEFAULT_COMMANDS}
     for c in cmds:
-        c["enabled"] = cmd_states.get(c["id"], False)
+        c["enabled"] = cmd_states.get(c["id"], defaults.get(c["id"], False))
     return cmds
 
 
