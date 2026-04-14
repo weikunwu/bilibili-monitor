@@ -195,7 +195,9 @@ export async function composeClipInBrowser(
     bgCtx.drawImage(bgImg, ix, iy, iw, ih)
     bgCtx.filter = 'none'
   } else {
-    bgCtx.fillStyle = '#0a0a0a'
+    // Solid dark fill — matches the B站 H5 default when an anchor hasn't set
+    // an app_background.
+    bgCtx.fillStyle = '#17181c'
     bgCtx.fillRect(0, 0, OUT_W, OUT_H)
   }
 

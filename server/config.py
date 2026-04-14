@@ -38,6 +38,7 @@ PROTO_BROTLI = 3
 DANMU_CONF_API = "https://api.live.bilibili.com/room/v1/Danmu/getConf"
 DANMU_INFO_API = "https://api.live.bilibili.com/xlive/web-room/v1/index/getDanmuInfo"
 ROOM_INFO_API = "https://api.live.bilibili.com/room/v1/Room/get_info"
+H5_ROOM_INFO_API = "https://api.live.bilibili.com/xlive/web-room/v1/index/getH5InfoByRoom"
 SEND_GIFT_API = "https://api.live.bilibili.com/gift/v2/Live/send"
 SEND_MSG_API = "https://api.live.bilibili.com/msg/send"
 MASTER_INFO_API = "https://api.live.bilibili.com/live_user/v1/Master/info"

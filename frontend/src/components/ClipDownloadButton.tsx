@@ -46,13 +46,12 @@ function useAutoClip(roomId: number | undefined): boolean | undefined {
   return state
 }
 
-// One-shot lookup at click time — clip download is a rare event, no caching needed.
-async function fetchRoomCover(roomId: number): Promise<string | undefined> {
+// On-demand lookup — clip download is a rare event and the anchor could
+// swap their background mid-stream, so hit the backend fresh each click.
+async function fetchRoomBackground(roomId: number): Promise<string | undefined> {
   try {
-    const list = await fetch('/api/rooms').then((r) => r.json())
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const room = (list as any[]).find((r) => r?.room_id === roomId)
-    return room?.room_cover || room?.streamer_avatar
+    const d = await fetch(`/api/rooms/${roomId}/background`).then((r) => r.json())
+    return d?.url || undefined
   } catch {
     return undefined
   }
@@ -79,7 +78,7 @@ export function ClipDownloadButton({ event, size = 'sm' }: Props) {
     try {
       const [m, cover] = await Promise.all([
         matchClip(event.room_id, event.user_name, event.timestamp),
-        fetchRoomCover(event.room_id),
+        fetchRoomBackground(event.room_id),
       ])
       if (!m) { setMissing(true); return }
       const blob = await composeClipInBrowser(event.room_id, m.name, event, cover, (p) => {

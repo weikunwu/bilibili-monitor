@@ -35,7 +35,6 @@ export interface Room {
   real_room_id: number
   streamer_name: string
   streamer_avatar: string
-  room_cover: string
   room_title: string
   live_status: number
   streamer_uid: number

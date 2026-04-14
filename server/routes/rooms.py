@@ -13,7 +13,7 @@ from ..db import (
     list_nicknames, upsert_nickname, delete_nickname, list_room_users,
 )
 from ..auth import require_room_access
-from ..config import ROOM_INFO_API, MASTER_INFO_API
+from ..config import ROOM_INFO_API, H5_ROOM_INFO_API, MASTER_INFO_API
 from ..manager import manager
 
 router = APIRouter()
@@ -24,7 +24,6 @@ async def _fetch_room_info(room_id: int) -> dict:
     base = {
         "room_id": room_id, "real_room_id": room_id,
         "streamer_name": "", "streamer_avatar": "", "room_title": "",
-        "room_cover": "",
         "live_status": 0, "ruid": 0, "followers": 0,
         "area_name": "", "parent_area_name": "", "announcement": "",
         "bot_uid": 0, "bot_name": "", "active": False,
@@ -43,12 +42,6 @@ async def _fetch_room_info(room_id: int) -> dict:
                     base["live_status"] = info.get("live_status", 0)
                     base["area_name"] = info.get("area_name", "")
                     base["parent_area_name"] = info.get("parent_area_name", "")
-                    base["room_cover"] = (
-                        info.get("background")
-                        or info.get("user_cover")
-                        or info.get("keyframe")
-                        or ""
-                    )
                     ruid = info.get("uid", 0)
                     base["ruid"] = ruid
                     if ruid:
@@ -93,7 +86,6 @@ async def get_rooms(request: Request):
                 "real_room_id": c.real_room_id,
                 "streamer_name": c.streamer_name,
                 "streamer_avatar": c.streamer_avatar,
-                "room_cover": c.room_cover,
                 "room_title": c.room_title,
                 "live_status": c.live_status if c._running else 0,
                 "streamer_uid": c.streamer_uid,
@@ -147,6 +139,25 @@ async def toggle_save_danmu(room_id: int, request: Request, _=Depends(require_ro
     enabled = bool(body.get("enabled", True))
     set_room_save_danmu(room_id, enabled)
     return {"ok": True, "room_id": room_id, "save_danmu": enabled}
+
+
+@router.get("/api/rooms/{room_id}/background")
+async def get_room_background(room_id: int, _=Depends(require_room_access)):
+    """Return the H5-mobile portrait background URL set by the anchor.
+    Empty string when unset — the client compose falls back to a solid
+    dark fill in that case. Fetched on demand (not cached) so the clip
+    download path is always against the current value."""
+    url = ""
+    try:
+        async with aiohttp.ClientSession() as s:
+            async with s.get(H5_ROOM_INFO_API, params={"room_id": room_id}) as r:
+                d = await r.json(content_type=None)
+                if d.get("code") == 0:
+                    ri = (d.get("data") or {}).get("room_info") or {}
+                    url = ri.get("app_background") or ""
+    except Exception:
+        pass
+    return {"url": url}
 
 
 @router.get("/api/rooms/{room_id}/auto-clip")
