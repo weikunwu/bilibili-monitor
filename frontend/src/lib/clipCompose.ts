@@ -427,7 +427,7 @@ function drawVapFrame(
   // full output width.
   const targetW = OUT_W
   const targetH = Math.round((info.h * targetW) / info.w)
-  const targetY = Math.round(OUT_H * 0.15)
+  const targetY = Math.round(OUT_H * 0.10)
   mainCtx.drawImage(tmp, 0, targetY, targetW, targetH)
 }
 
