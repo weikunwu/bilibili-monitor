@@ -122,21 +122,25 @@ async def debug_test_clip(request: Request):
             # up in the 礼物 list with a working 下载录屏 button. user_name
             # must equal `label` so the clips/match endpoint pairs them.
             now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+            blind_name = t.get("blind_name") or ""
+            gift_name = t.get("gift_name") or "调试礼物"
+            price = int(t.get("price", 22330))
             save_event({
                 "timestamp": now_iso,
                 "event_type": "gift",
                 "user_name": label,
                 "user_id": int(t.get("user_id", 0)) or 99999999,
-                "content": f"调试礼物 x{num}",
+                "content": f"{gift_name} x{num}",
                 "room_id": room_id,
                 "extra": {
-                    "gift_name": t.get("gift_name") or "调试礼物",
+                    "gift_name": gift_name,
                     "gift_id": gift_id,
                     "num": num,
-                    "price": int(t.get("price", 22330)),  # 浪漫城堡单价
-                    "total_coin": int(t.get("price", 22330)) * num,
-                    "action": "投喂",
-                    "blind_name": "",
+                    "price": price,
+                    "total_coin": price * num,
+                    "action": f"{blind_name} 爆出" if blind_name else "投喂",
+                    "blind_name": blind_name,
+                    "blind_price": int(t.get("blind_price", 0)),
                     "avatar": "",
                     "gift_img": "",
                     "gift_gif": "",
