@@ -111,6 +111,7 @@ async def debug_test_clip(request: Request):
                 gift_id=int(t.get("gift_id", 0)),
                 effect_id=int(t.get("effect_id", 0)),
                 label=str(t.get("label", "debug")),
+                num=int(t.get("num", 1)),
             )
 
     asyncio.create_task(_fire())
