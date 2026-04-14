@@ -13,7 +13,7 @@ from ..db import (
     list_nicknames, upsert_nickname, delete_nickname, list_room_users,
 )
 from ..auth import require_room_access
-from ..config import ROOM_INFO_API, H5_ROOM_INFO_API, MASTER_INFO_API
+from ..config import ROOM_INFO_API, H5_ROOM_INFO_API, MASTER_INFO_API, HEADERS
 from ..manager import manager
 
 router = APIRouter()
@@ -149,7 +149,7 @@ async def get_room_background(room_id: int, _=Depends(require_room_access)):
     download path is always against the current value."""
     url = ""
     try:
-        async with aiohttp.ClientSession() as s:
+        async with aiohttp.ClientSession(headers=HEADERS) as s:
             async with s.get(H5_ROOM_INFO_API, params={"room_id": room_id}) as r:
                 d = await r.json(content_type=None)
                 if d.get("code") == 0:
