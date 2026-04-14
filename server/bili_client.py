@@ -198,7 +198,7 @@ class BiliLiveClient:
     CLIP_GIFT_THRESHOLD = 10000  # ¥1000 in 电池
 
     # Blind-box burst broadcast tuning.
-    BLIND_IDLE_SEC = 2.0   # flush summary this long after the last blind box
+    BLIND_IDLE_SEC = 5.0   # flush summary this long after the last blind box
     BLIND_MIN_COUNT = 1    # broadcast even single-box opens
 
     # For guard events (GUARD_BUY / USER_TOAST_MSG) there's no gift_id — map
