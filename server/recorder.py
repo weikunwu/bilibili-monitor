@@ -253,9 +253,22 @@ class RecorderSession:
                             if not chunk: break
                             fp.write(chunk)
             try:
+                # Re-encode at record time to 430x932 (matches the client-side
+                # compose output). Saves ~6x storage + network over keeping the
+                # 1080p remux, and makes browser decode faster. Aggressive
+                # x264 params (ref=1, no B-frames, no lookahead) keep the
+                # encoder's memory footprint under ~100MB so it fits on the
+                # 256MB VM.
                 async with FFMPEG_LOCK:
                     proc = await asyncio.create_subprocess_exec(
-                        "ffmpeg", "-y", "-i", raw_path, "-c", "copy",
+                        "ffmpeg", "-y",
+                        "-err_detect", "ignore_err", "-fflags", "+discardcorrupt",
+                        "-i", raw_path,
+                        "-vf", "scale=430:932:force_original_aspect_ratio=decrease,"
+                               "pad=430:932:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1",
+                        "-c:v", "libx264", "-preset", "veryfast", "-crf", "28", "-threads", "1",
+                        "-x264-params", "ref=1:bframes=0:rc-lookahead=0:sliced-threads=0:sync-lookahead=0",
+                        "-c:a", "aac", "-b:a", "96k",
                         "-movflags", "+faststart", str(base_path),
                         stdout=asyncio.subprocess.DEVNULL,
                         stderr=asyncio.subprocess.PIPE,
