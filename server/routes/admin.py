@@ -2,6 +2,7 @@
 
 import asyncio
 import sqlite3
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Request, HTTPException
 
@@ -9,6 +10,7 @@ from ..auth import require_admin
 from ..db import (
     list_users, create_user, delete_user, assign_user_rooms,
     add_room as db_add_room, remove_room as db_remove_room, get_all_rooms,
+    save_event,
 )
 from ..manager import manager
 from .. import recorder
@@ -107,12 +109,40 @@ async def debug_test_clip(request: Request):
             off = float(t.get("offset_sec", 0))
             if off > 0:
                 await asyncio.sleep(off)
+            label = str(t.get("label", "debug"))
+            gift_id = int(t.get("gift_id", 0))
+            num = int(t.get("num", 1))
             await session.request_clip(
-                gift_id=int(t.get("gift_id", 0)),
+                gift_id=gift_id,
                 effect_id=int(t.get("effect_id", 0)),
-                label=str(t.get("label", "debug")),
-                num=int(t.get("num", 1)),
+                label=label,
+                num=num,
             )
+            # Also drop a synthetic gift event into the DB so the row shows
+            # up in the 礼物 list with a working 下载录屏 button. user_name
+            # must equal `label` so the clips/match endpoint pairs them.
+            now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+            save_event({
+                "timestamp": now_iso,
+                "event_type": "gift",
+                "user_name": label,
+                "user_id": int(t.get("user_id", 0)) or 99999999,
+                "content": f"调试礼物 x{num}",
+                "room_id": room_id,
+                "extra": {
+                    "gift_name": t.get("gift_name") or "调试礼物",
+                    "gift_id": gift_id,
+                    "num": num,
+                    "price": int(t.get("price", 22330)),  # 浪漫城堡单价
+                    "total_coin": int(t.get("price", 22330)) * num,
+                    "action": "投喂",
+                    "blind_name": "",
+                    "avatar": "",
+                    "gift_img": "",
+                    "gift_gif": "",
+                    "guard_level": 0,
+                },
+            })
 
     asyncio.create_task(_fire())
     return {"ok": True, "room_id": room_id, "triggers": len(triggers)}
