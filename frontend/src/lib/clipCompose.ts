@@ -137,26 +137,35 @@ export async function composeClipInBrowser(
   const srcW = baseVideo.videoWidth
   const srcH = baseVideo.videoHeight
 
-  // Compute base placement on a fixed OUT_W×OUT_H canvas. If aspect ratios
-  // match closely, cover the whole thing; otherwise fit inside and leave a
-  // blurred-avatar backdrop for the gutters.
+  // Compute base placement on a fixed OUT_W×OUT_H canvas.
+  //   • Portrait source (H > W): always cover-fit — scale to fill and crop
+  //     the sides. Both OUT and the source are portrait, so sacrificing a
+  //     little horizontal content beats a blurred backdrop.
+  //   • Landscape source: letterbox with the blurred backdrop.
   const srcAspect = srcW / srcH
-  const aspectDelta = Math.abs(srcAspect - OUT_ASPECT) / OUT_ASPECT
-  const fitMode: 'cover' | 'contain' = aspectDelta < 0.05 ? 'cover' : 'contain'
+  const isPortraitSrc = srcAspect < 1
+  const fitMode: 'cover' | 'contain' = isPortraitSrc ? 'cover' : 'contain'
   let baseDx = 0, baseDy = 0, baseDw = OUT_W, baseDh = OUT_H
-  if (fitMode === 'contain') {
+  if (fitMode === 'cover') {
+    // Scale to fill both dimensions; whichever dim ends up larger gets cropped.
     if (srcAspect > OUT_ASPECT) {
-      baseDw = OUT_W
-      baseDh = Math.round(OUT_W / srcAspect)
-      // Shift the base up ~10% of the output so the gift overlay (pinned
-      // near the top of OUT) sits inside the live picture, not the bottom
-      // backdrop gutter.
-      baseDy = Math.max(0, Math.round((OUT_H - baseDh) / 2 - OUT_H * 0.10))
-    } else {
+      // Source is wider than target — fit height, overflow width (crop sides).
       baseDh = OUT_H
       baseDw = Math.round(OUT_H * srcAspect)
       baseDx = Math.round((OUT_W - baseDw) / 2)
+    } else {
+      // Source narrower than target — fit width, overflow height (crop top/bottom).
+      baseDw = OUT_W
+      baseDh = Math.round(OUT_W / srcAspect)
+      baseDy = Math.round((OUT_H - baseDh) / 2)
     }
+  } else {
+    // Landscape into portrait — letterbox with backdrop.
+    baseDw = OUT_W
+    baseDh = Math.round(OUT_W / srcAspect)
+    // Shift up ~10% so the VAP (pinned near top) lands on the live picture,
+    // not the bottom backdrop gutter.
+    baseDy = Math.max(0, Math.round((OUT_H - baseDh) / 2 - OUT_H * 0.10))
   }
 
   // Load the streamer avatar for the backdrop once, if we need one.
@@ -286,21 +295,10 @@ export async function composeClipInBrowser(
       ctx.drawImage(baseVideo, baseDx, baseDy, baseDw, baseDh)
       const t = baseVideo.currentTime
 
-      for (let i = 0; i < vaps.length; i++) {
-        const v = vaps[i]
-        if (t >= v.offset && t < v.offset + v.durSec + 0.1) {
-          if (!vapStarted[i]) {
-            v.video.currentTime = Math.max(0, t - v.offset)
-            v.video.play().catch(() => { /* ignore */ })
-            vapStarted[i] = true
-          }
-          drawVapFrame(ctx, v, baseDw, baseDh, baseDx, baseDy)
-        }
-      }
-
-      // Gift card at half width, centered horizontally, offset ~10% below
-      // vertical center. Visible 5s with 0.4s fade in/out and slight
-      // transparency so it doesn't obscure the gift animation behind it.
+      // Gift card at half width, left-aligned, offset ~10% below vertical
+      // center. Visible 5s with 0.4s fade in/out and slight transparency.
+      // Draw the card BEFORE the VAP so particles visibly burst over the
+      // card rather than being hidden behind it.
       const CARD_DUR = 5
       const FADE = 0.4
       const CARD_MAX_ALPHA = 0.85
@@ -320,6 +318,18 @@ export async function composeClipInBrowser(
         ctx.globalAlpha = Math.max(0, Math.min(1, fadeAlpha)) * CARD_MAX_ALPHA
         ctx.drawImage(cardCanvas, x, y, targetW, targetH)
         ctx.restore()
+      }
+
+      for (let i = 0; i < vaps.length; i++) {
+        const v = vaps[i]
+        if (t >= v.offset && t < v.offset + v.durSec + 0.1) {
+          if (!vapStarted[i]) {
+            v.video.currentTime = Math.max(0, t - v.offset)
+            v.video.play().catch(() => { /* ignore */ })
+            vapStarted[i] = true
+          }
+          drawVapFrame(ctx, v, baseDw, baseDh, baseDx, baseDy)
+        }
       }
 
       const dur = baseVideo.duration || meta.duration_sec
