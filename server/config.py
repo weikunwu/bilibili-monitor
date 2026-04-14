@@ -80,6 +80,14 @@ DEFAULT_COMMANDS = [
         "default_enabled": True,
         "config": {},
     },
+    {
+        "id": "broadcast_gift",
+        "name": "礼物感谢",
+        "type": "auto_broadcast",
+        "description": "用户送出付费礼物（盲盒除外）后，机器人自动发弹幕感谢",
+        "default_enabled": True,
+        "config": {},
+    },
 ]
 
 # ── Wbi Signing ──

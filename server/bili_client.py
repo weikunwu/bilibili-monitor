@@ -53,6 +53,9 @@ class BiliLiveClient:
         # Per-user blind-box burst buffer: flush a summary danmu after the
         # user stops opening boxes for BLIND_IDLE_SEC seconds.
         self._blind_bursts: dict[int, dict] = {}  # uid -> {user_name, count, cost, value, task}
+        # Per-user gift thank buffer, same debounce model as blind bursts.
+        # Skips free gifts (price == 0) and blind boxes (handled separately).
+        self._gift_bursts: dict[int, dict] = {}  # uid -> {user_name, gifts{name:count}, task}
 
     def _make_cookie_header(self) -> dict:
         headers = dict(HEADERS)
@@ -273,6 +276,50 @@ class BiliLiveClient:
         display_name = get_nickname(self.real_room_id, uid) or buf["user_name"] or "有人"
         await self.send_danmu(f"感谢{display_name}的{buf['count']}个盲盒，{verdict}")
 
+    def _maybe_broadcast_gift_thanks(self, event: dict):
+        """Thank paid non-blind-box gifts. Blind boxes go through the
+        separate `broadcast_blind` handler, so skip them here. Same 3s
+        debounce per user as blind bursts — bursty senders get one
+        consolidated thank-you listing each gift."""
+        if event.get("event_type") != "gift":
+            return
+        extra = event.get("extra") or {}
+        if extra.get("blind_name"):
+            return
+        if (extra.get("price") or 0) <= 0:  # skip free gifts (小花花 etc.)
+            return
+        if not self.cookies.get("SESSDATA"):
+            return
+        cmd_cfg = get_command(self.real_room_id, "broadcast_gift")
+        if not cmd_cfg or not cmd_cfg["enabled"]:
+            return
+        uid = event.get("user_id") or 0
+        if not uid:
+            return
+        buf = self._gift_bursts.get(uid)
+        if not buf:
+            buf = {"user_name": event.get("user_name", ""), "gifts": {}, "task": None}
+            self._gift_bursts[uid] = buf
+        name = extra.get("gift_name") or event.get("content") or "礼物"
+        num = extra.get("num") or 1
+        buf["user_name"] = event.get("user_name", "") or buf["user_name"]
+        buf["gifts"][name] = buf["gifts"].get(name, 0) + num
+        if buf["task"] and not buf["task"].done():
+            buf["task"].cancel()
+        buf["task"] = asyncio.create_task(self._flush_gift_burst(uid))
+
+    async def _flush_gift_burst(self, uid: int):
+        try:
+            await asyncio.sleep(self.BLIND_IDLE_SEC)
+        except asyncio.CancelledError:
+            return
+        buf = self._gift_bursts.pop(uid, None)
+        if not buf or not buf["gifts"]:
+            return
+        parts = [f"{n} x{c}" for n, c in buf["gifts"].items()]
+        display_name = get_nickname(self.real_room_id, uid) or buf["user_name"] or "有人"
+        await self.send_danmu(f"感谢{display_name}的 {', '.join(parts)}")
+
     def request_reconnect(self):
         self._reconnect = True
         if self._ws and not self._ws.closed:
@@ -382,6 +429,7 @@ class BiliLiveClient:
                                         await self.on_event(event)
                                     self._maybe_clip(event)
                                     self._maybe_broadcast_blind(event)
+                                    self._maybe_broadcast_gift_thanks(event)
                                     # 指令系统
                                     if event.get("event_type") == "danmu":
                                         uid = event.get("user_id")
