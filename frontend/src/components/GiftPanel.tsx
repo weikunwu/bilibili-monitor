@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useEffect } from 'react'
-import { CheckPicker, DateRangePicker, Checkbox, Table, Pagination } from 'rsuite'
+import { CheckPicker, DateRangePicker, Checkbox, Table, Pagination, Input } from 'rsuite'
 import type { DateRange } from 'rsuite/DateRangePicker'
 
 import type { LiveEvent, GiftUser, GiftGifItem } from '../types'
@@ -31,6 +31,7 @@ export function GiftPanel({
   const isMobile = useIsMobile()
   const [selectedUsers, setSelectedUsers] = useState<string[]>([])
   const [selectedGifts, setSelectedGifts] = useState<string[]>([])
+  const [minTotal, setMinTotal] = useState<string>('')
   const [checkedKeys, setCheckedKeys] = useState<Set<string>>(new Set())
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
@@ -58,9 +59,12 @@ export function GiftPanel({
     giftEvents.map((ev, i) => ({ ...ev, _key: `${ev.timestamp}-${i}` })),
     [giftEvents])
 
+  // 输入是元，total_coin 是电池（1 元 = 10 电池）
+  const minTotalBattery = (Number(minTotal) || 0) * 10
   const filtered = indexed.filter((ev) => {
     if (selectedUsers.length > 0 && !selectedUsers.includes(ev.user_name || '')) return false
     if (selectedGifts.length > 0 && !selectedGifts.includes(ev.extra?.gift_name || '')) return false
+    if (minTotalBattery > 0 && (ev.extra?.total_coin || 0) < minTotalBattery) return false
     return true
   })
 
@@ -207,6 +211,14 @@ export function GiftPanel({
             w={200}
           />
         )}
+        <Input
+          type="number"
+          value={minTotal}
+          onChange={setMinTotal}
+          placeholder="最低总价(元)"
+          size="sm"
+          style={{ width: 120 }}
+        />
         {checkedKeys.size > 0 && (
           <>
             <GenerateImageButton size="sm" appearance="primary" onClick={handleGenerateCard}>

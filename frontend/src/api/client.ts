@@ -7,6 +7,12 @@ export type { CurrentUser, UserInfo, BlindBoxUser, BlindBoxGift, BlindBoxType } 
 
 export async function fetchRooms(): Promise<Room[]> {
   const res = await fetch('/api/rooms')
+  // 生产环境未登录时后端返回 LOGIN_HTML 替换页面，dev 下 Vite 接管了
+  // SPA 路由走不到那一步，这里显式跳一下。
+  if (res.status === 401) {
+    window.location.href = '/login'
+    return []
+  }
   return res.json()
 }
 
