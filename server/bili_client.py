@@ -39,13 +39,16 @@ def _pb_decode_varint(buf: bytes, off: int) -> tuple[int, int]:
 def _decode_interact_word_pb(b64: str) -> dict:
     """Minimal pb walker for B站 INTERACT_WORD_V2 payload.
     实测字段编号 (B站 InteractWord pb): 1=uid, 2=uname, 5=msg_type
-    (1=进入, 2=关注, 3=分享), 6=room_id, 7=timestamp。"""
+    (1=进入, 2=关注, 3=分享), 6=room_id, 7=timestamp。
+    fans_medal 藏在某个 length-delimited 嵌套消息里，暂把所有 LD 字段
+    原始字节收集到 _ld_fields 以便调试找出位置。"""
     try:
         raw = base64.b64decode(b64)
     except Exception:
         return {}
     off = 0
     out: dict = {}
+    ld_fields: dict[int, bytes] = {}
     while off < len(raw):
         tag, off = _pb_decode_varint(raw, off)
         if tag == 0 and off >= len(raw):
@@ -61,12 +64,14 @@ def _decode_interact_word_pb(b64: str) -> dict:
             if fnum == 2:
                 try: out["uname"] = chunk.decode("utf-8", errors="replace")
                 except Exception: pass
+            ld_fields[fnum] = chunk
         elif wtype == 1:  # 64-bit
             off += 8
         elif wtype == 5:  # 32-bit
             off += 4
         else:
             break  # 未知 wire type，放弃
+    out["_ld_fields"] = ld_fields
     return out
 
 
@@ -662,13 +667,19 @@ class BiliLiveClient:
                                     self._maybe_welcome(pkt.get("data") or {})
                                     continue
                                 if base_cmd == "INTERACT_WORD_V2":
-                                    # V2 pb 里只有 uid/uname/msg_type，没有 fans_medal；
-                                    # 仅在没看到 V1 时回退使用
-                                    if getattr(self, "_seen_v1_interact", False):
-                                        continue
                                     data = pkt.get("data") or {}
                                     if isinstance(data, dict) and data.get("pb"):
-                                        self._maybe_welcome(_decode_interact_word_pb(data["pb"]))
+                                        decoded = _decode_interact_word_pb(data["pb"])
+                                        # 调试：dump LD 字段长度
+                                        ld = decoded.get("_ld_fields") or {}
+                                        if not getattr(self, "_dbg_v2_ld_logged", False):
+                                            self._dbg_v2_ld_logged = True
+                                            log.info(f"[DBG_V2_LD] fields: {[(k, len(v)) for k, v in ld.items()]}")
+                                            for fnum, chunk in ld.items():
+                                                if fnum == 2: continue
+                                                log.info(f"  f{fnum} hex: {chunk.hex()[:200]}")
+                                        if not getattr(self, "_seen_v1_interact", False):
+                                            self._maybe_welcome(decoded)
                                     continue
                                 # 天选/红包期间暂停欢迎弹幕（避免刷屏），并发一条提示
                                 # B站 有 V1 / V2 两套 cmd (V2 为 pb 编码)，都当触发。
