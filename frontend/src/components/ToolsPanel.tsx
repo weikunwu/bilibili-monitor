@@ -11,7 +11,6 @@ interface Props {
 }
 
 const BLIND_DEFAULT_TEMPLATE = '感谢{name}的{count}个盲盒，{verdict}'
-
 function BlindTemplateEditor({
   roomId, cmdId, initialTemplate, onSaved,
 }: {
@@ -41,7 +40,7 @@ function BlindTemplateEditor({
   return (
     <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
       <div style={{ fontSize: 12, color: '#888' }}>
-        占位符：<code>{'{name}'}</code> 用户昵称，<code>{'{count}'}</code> 盲盒数，<code>{'{verdict}'}</code> 盈亏（如 "赚3元"/"亏5元"/"不亏不赚"）
+        占位符：<code>{'{name}'}</code> 用户昵称，<code>{'{streamer}'}</code> 主播昵称，<code>{'{count}'}</code> 盲盒数，<code>{'{verdict}'}</code> 盈亏（如 "赚3元"/"亏5元"/"不亏不赚"）
       </div>
       <Input size="sm" value={tpl} onChange={setTpl} placeholder={BLIND_DEFAULT_TEMPLATE} />
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
@@ -137,7 +136,7 @@ function ScheduledDanmuEditor({
         <InputGroup.Addon>秒 (60–3600)</InputGroup.Addon>
       </InputGroup>
       <div style={{ fontSize: 12, color: '#888' }}>
-        支持占位符：<code>{'{主播}'}</code> 替换为主播昵称
+        支持占位符：<code>{'{streamer}'}</code> 替换为主播昵称
       </div>
       {messages.map((m, idx) => (
         <div key={idx} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -163,7 +162,7 @@ function ScheduledDanmuEditor({
             style={{ width: 88 }}
             onClick={async () => {
               if (!roomId) return
-              const defMsgs = ['动动手指给{主播}点点关注']
+              const defMsgs = ['动动手指给{streamer}点点关注']
               const defIv = 300
               setMessages(defMsgs)
               setInterval(String(defIv))

@@ -294,6 +294,7 @@ class BiliLiveClient:
             tpl.replace("{name}", display_name).replace("{昵称}", display_name)
                .replace("{count}", str(buf["count"])).replace("{数量}", str(buf["count"]))
                .replace("{verdict}", verdict).replace("{结果}", verdict)
+               .replace("{streamer}", self.streamer_name or "").replace("{主播}", self.streamer_name or "")
         )
         await self.send_danmu(msg)
 

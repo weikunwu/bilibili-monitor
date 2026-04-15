@@ -97,7 +97,7 @@ DEFAULT_COMMANDS = [
         "description": "开播期间，机器人按设定间隔依次发送以下弹幕（轮播）",
         "config": {
             "interval_sec": 300,
-            "messages": ["动动手指给{主播}点点关注"],
+            "messages": ["动动手指给{streamer}点点关注"],
         },
     },
     {
