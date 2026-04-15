@@ -295,24 +295,11 @@ async def cheap_gifts(room_id: int, _=Depends(require_room_access)):
                 data = await resp.json()
     except Exception as e:
         raise HTTPException(502, f"礼物列表获取失败: {e}")
-    # roomGiftConfig 返回结构: data.list (tab 列表) + 各 tab 下 gift_ids/gifts，或 data.tab_list。
-    # 简化处理: 收集所有 gift dict，再去全局 giftConfig 拿详情也行 —— 但 roomGiftConfig 已含 id/name/price。
-    gifts = []
+    # roomGiftConfig 返回结构 (实测): data.list 是该房间分区可送礼物的扁平列表，
+    # 每项直接就是一个 gift 对象 (含 id/name/price/coin_type/img_basic)；
+    # data.global_gift.list 是全平台通用礼物。两个合并去重即可。
     d = data.get("data") or {}
-    for tab in (d.get("list") or d.get("tab_list") or []):
-        for g in (tab.get("gift_list") or tab.get("gifts") or []):
-            gifts.append(g)
-    # 某些返回只有 gift_ids，再单独走 giftConfig 查详情
-    if not gifts and d.get("gift_ids"):
-        async with aiohttp.ClientSession(headers=HEADERS) as session:
-            async with session.get(
-                "https://api.live.bilibili.com/xlive/web-room/v1/giftPanel/giftConfig",
-                params={"platform": "pc", "room_id": real_room},
-                timeout=aiohttp.ClientTimeout(total=10),
-            ) as resp:
-                all_cfg = await resp.json()
-        allowed = set(d.get("gift_ids") or [])
-        gifts = [g for g in ((all_cfg.get("data") or {}).get("list") or []) if g.get("id") in allowed]
+    gifts = list(d.get("list") or []) + list((d.get("global_gift") or {}).get("list") or [])
 
     cheap = []
     seen = set()

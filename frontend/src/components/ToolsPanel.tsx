@@ -44,13 +44,21 @@ function BlindTemplateEditor({
         占位符：<code>{'{name}'}</code> 用户昵称，<code>{'{count}'}</code> 盲盒数，<code>{'{verdict}'}</code> 盈亏（如 "赚3元"/"亏5元"/"不亏不赚"）
       </div>
       <Input size="sm" value={tpl} onChange={setTpl} placeholder={BLIND_DEFAULT_TEMPLATE} />
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
         <button
           className="rs-btn rs-btn-subtle rs-btn-sm"
-          onClick={() => setTpl(BLIND_DEFAULT_TEMPLATE)}
+          style={{ width: 88 }}
+          onClick={async () => {
+            if (!roomId) return
+            setTpl(BLIND_DEFAULT_TEMPLATE)
+            await saveCommandConfig(roomId, cmdId, { template: BLIND_DEFAULT_TEMPLATE })
+            onSaved({ template: BLIND_DEFAULT_TEMPLATE })
+            setSaved(true); setTimeout(() => setSaved(false), 1500)
+          }}
         >恢复默认</button>
         <button
           className="rs-btn rs-btn-primary rs-btn-sm"
+          style={{ width: 88 }}
           onClick={handleSave}
           disabled={saving}
         >
@@ -148,23 +156,31 @@ function ScheduledDanmuEditor({
         </div>
       ))}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <button className="rs-btn rs-btn-subtle rs-btn-sm" onClick={addMsg}>+ 添加一条</button>
         <div style={{ display: 'flex', gap: 6 }}>
-          <button className="rs-btn rs-btn-subtle rs-btn-sm" onClick={addMsg}>+ 添加一条</button>
           <button
             className="rs-btn rs-btn-subtle rs-btn-sm"
-            onClick={() => {
-              setMessages(['动动手指给{主播}点点关注'])
-              setInterval('300')
+            style={{ width: 88 }}
+            onClick={async () => {
+              if (!roomId) return
+              const defMsgs = ['动动手指给{主播}点点关注']
+              const defIv = 300
+              setMessages(defMsgs)
+              setInterval(String(defIv))
+              await saveCommandConfig(roomId, cmdId, { messages: defMsgs, interval_sec: defIv })
+              onSaved({ messages: defMsgs, interval_sec: defIv })
+              setSaved(true); setTimeout(() => setSaved(false), 1500)
             }}
           >恢复默认</button>
+          <button
+            className="rs-btn rs-btn-primary rs-btn-sm"
+            style={{ width: 88 }}
+            onClick={handleSave}
+            disabled={saving}
+          >
+            {saving ? '保存中…' : saved ? '已保存' : '保存'}
+          </button>
         </div>
-        <button
-          className="rs-btn rs-btn-primary rs-btn-sm"
-          onClick={handleSave}
-          disabled={saving}
-        >
-          {saving ? '保存中…' : saved ? '已保存' : '保存'}
-        </button>
       </div>
     </div>
   )
