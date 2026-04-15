@@ -208,7 +208,7 @@ interface WelcomeCfg {
 }
 const WELCOME_DEFAULTS: WelcomeCfg = {
   normal_enabled: false, normal_templates: [WELCOME_DEFAULT_TEMPLATE],
-  medal_enabled: false,  medal_templates: ['欢迎粉丝牌{name}回家~'],
+  medal_enabled: false,  medal_templates: ['欢迎{name}回家~'],
   guard_enabled: false,  guard_templates: ['{guard}{name}驾到！'],
 }
 
