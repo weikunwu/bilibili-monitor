@@ -40,7 +40,7 @@ function LurkerEditor({
   }
 
   const waitNum = Number(wait)
-  const waitInvalid = wait !== '' && Number.isFinite(waitNum) && (waitNum < 300 || waitNum > 900)
+  const waitInvalid = wait !== '' && Number.isFinite(waitNum) && (waitNum < 10 || waitNum > 900)
 
   return (
     <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -58,11 +58,11 @@ function LurkerEditor({
           onBlur={() => {
             const n = Number(wait)
             if (!Number.isFinite(n) || wait === '') setWait('900')
-            else if (n < 300) setWait('300')
+            else if (n < 10) setWait('10')
             else if (n > 900) setWait('900')
           }}
         />
-        <InputGroup.Addon>秒 (300–900)</InputGroup.Addon>
+        <InputGroup.Addon>秒 (10–900)</InputGroup.Addon>
       </InputGroup>
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
         <button
@@ -74,7 +74,7 @@ function LurkerEditor({
         >恢复默认</button>
         <button
           className="rs-btn rs-btn-primary rs-btn-sm" style={{ width: 88 }}
-          onClick={() => persist(tpl.trim() || LURKER_DEFAULT_TEMPLATE, Math.max(300, Math.min(900, Number(wait) || 900)))}
+          onClick={() => persist(tpl.trim() || LURKER_DEFAULT_TEMPLATE, Math.max(10, Math.min(900, Number(wait) || 900)))}
           disabled={saving}
         >
           {saving ? '保存中…' : saved ? '已保存' : '保存'}
@@ -488,12 +488,15 @@ export function ToolsPanel({ roomId }: Props) {
     if (idx < 0) return
     const cfg = commands[idx].config || {}
     const savedId = Number(cfg.gift_id || 0)
+    const savedName = String(cfg.gift_name || '')
     const savedPrice = Number(cfg.gift_price || 0)
     if (!savedId || cheapGifts.some((g) => g.gift_id === savedId)) return
-    const alt = cheapGifts.find((g) => g.price === savedPrice)
+    // 优先按名称匹配；老配置没存名字时回退到按价格匹配。
+    const alt = (savedName && cheapGifts.find((g) => g.name === savedName))
+      || cheapGifts.find((g) => g.price === savedPrice)
     if (!alt) return
     const num = Math.max(1, Math.ceil(1000 / alt.price))
-    const next = { gift_id: alt.gift_id, gift_price: alt.price, gift_num: num }
+    const next = { gift_id: alt.gift_id, gift_name: alt.name, gift_price: alt.price, gift_num: num }
     saveCommandConfig(roomId, 'auto_gift', next).then(() => {
       setCommands((prev) => prev.map((c, i) => (
         i === idx ? { ...c, config: { ...c.config, ...next } } : c
@@ -507,7 +510,7 @@ export function ToolsPanel({ roomId }: Props) {
     const g = cheapGifts.find((x) => x.gift_id === giftId)
     if (!g) return
     const num = Math.max(1, Math.ceil(1000 / g.price))
-    const config = { gift_id: g.gift_id, gift_price: g.price, gift_num: num }
+    const config = { gift_id: g.gift_id, gift_name: g.name, gift_price: g.price, gift_num: num }
     await saveCommandConfig(roomId, commands[cmdIndex].id, config)
     setCommands((prev) => prev.map((c, i) => (
       i === cmdIndex ? { ...c, config: { ...c.config, ...config } } : c

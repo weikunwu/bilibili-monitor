@@ -503,26 +503,32 @@ class BiliLiveClient:
 
     # 挂粉提醒状态上限（LRU 式淘汰，避免大房间内存无限涨）
     LURKER_MAX = 500
-    ROOM_ONLINE_USER_API = "https://api.live.bilibili.com/xlive/web-room/v1/dM/RoomOnlineUser"
+    # 旧 /v1/dM/RoomOnlineUser 已 404，改用高能榜接口（付费贡献在线榜）。
+    ONLINE_GOLD_RANK_API = "https://api.live.bilibili.com/xlive/general-interface/v1/rank/getOnlineGoldRank"
 
     async def _fetch_online_uids(self) -> set[int]:
-        """Top ~30 在线观众 uid 集合 (B站 的公开接口只返回 top N 带粉丝牌 / 高能)。
-        @ 前用这个判断在不在；不在就不 @ 避免打扰已离开用户。"""
-        params = {"roomid": self.real_room_id, "page": 1, "page_size": 30}
+        """当前在线的高能榜 uid 集合 (B站 公开接口只返回有付费贡献的观众，
+        普通挂机观众不在其中)。@ 前用这个判断在不在；不在就不 @。"""
+        if not self.streamer_uid:
+            return set()
+        params = {
+            "ruid": self.streamer_uid,
+            "roomId": self.real_room_id,
+            "page": 1, "pageSize": 50,
+        }
         try:
             async with aiohttp.ClientSession(headers=HEADERS) as session:
-                async with session.get(self.ROOM_ONLINE_USER_API, params=params, timeout=aiohttp.ClientTimeout(total=6)) as resp:
+                async with session.get(self.ONLINE_GOLD_RANK_API, params=params, timeout=aiohttp.ClientTimeout(total=6)) as resp:
                     data = await resp.json(content_type=None)
         except Exception as e:
             log.warning(f"[挂粉提醒] 在线列表获取失败: {e}")
             return set()
         uids: set[int] = set()
         d = (data or {}).get("data") or {}
-        # 尝试多种嵌套结构（B站 返回格式常变）
-        for key in ("online_list", "list"):
-            for u in (d.get(key) or []):
-                uid = u.get("uid") or (u.get("user") or {}).get("uid") or 0
-                if uid: uids.add(int(uid))
+        for u in (d.get("OnlineRankItem") or []):
+            uid = u.get("uid") or 0
+            if uid:
+                uids.add(int(uid))
         return uids
 
     def _track_lurker(self, data: dict):
@@ -554,7 +560,7 @@ class BiliLiveClient:
                 if not cmd.get("enabled") or not self.cookies.get("SESSDATA"):
                     continue
                 cfg = cmd.get("config") or {}
-                wait_sec = max(300, min(900, int(cfg.get("wait_sec") or 900)))
+                wait_sec = max(10, min(900, int(cfg.get("wait_sec") or 900)))
                 tpl = (cfg.get("template") or "").strip() or "@{name} 说点什么呀~"
                 now = time.time()
                 due = [(uid, uname) for uid, (uname, ts) in self._lurkers.items() if now - ts >= wait_sec]
