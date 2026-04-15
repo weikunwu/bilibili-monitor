@@ -39,6 +39,7 @@ async def bot_status(room_id: int = Query(...), _=Depends(require_room_access)):
 
 @router.post("/api/bot/logout")
 async def bot_logout(room_id: int = Query(...), _=Depends(require_room_access)):
+    # 解绑：清 cookie + 停止该房间监控（observe 重启需要主播先重新绑定）
     conn = sqlite3.connect(str(DB_PATH))
     conn.execute("UPDATE rooms SET bot_cookie=NULL WHERE room_id=?", (room_id,))
     conn.commit()
@@ -47,7 +48,8 @@ async def bot_logout(room_id: int = Query(...), _=Depends(require_room_access)):
     if client:
         client.cookies = {}
         client.bot_uid = 0
-        client.request_reconnect()
+    if manager.has(room_id):
+        manager.stop_room(room_id)
     return {"ok": True}
 
 

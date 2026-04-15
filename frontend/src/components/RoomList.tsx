@@ -4,6 +4,7 @@ import { Button, ButtonToolbar, useToaster, Message } from 'rsuite'
 import PlayOutlineIcon from '@rsuite/icons/PlayOutline'
 import CloseOutlineIcon from '@rsuite/icons/CloseOutline'
 import ChangeListIcon from '@rsuite/icons/ChangeList'
+import { botLogout } from '../api/client'
 import type { Room } from '../types'
 
 // Per-tab cache of fresh streamer-info so we re-hit B站 once per room,
@@ -145,6 +146,17 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot }: Pro
                   <Button size="sm" appearance="ghost" startIcon={<ChangeListIcon />} onClick={(e) => { e.stopPropagation(); onBindBot?.(r.room_id) }}>
                     {r.bot_uid ? '更换' : '绑定'}
                   </Button>
+                  {r.bot_uid ? (
+                    <Button
+                      size="sm" color="red" appearance="ghost"
+                      onClick={async (e) => {
+                        e.stopPropagation()
+                        if (!confirm(`解绑 ${r.bot_name || '机器人'}？会清除 cookie 并停止监控。`)) return
+                        await botLogout(r.room_id)
+                        onRoomsChanged?.()
+                      }}
+                    >解绑</Button>
+                  ) : null}
                 </ButtonToolbar>
               </div>
             </div>
