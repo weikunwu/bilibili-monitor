@@ -351,7 +351,7 @@ class BiliLiveClient:
                 cfg = cmd.get("config") or {}
                 messages = [m for m in (cfg.get("messages") or []) if isinstance(m, str) and m.strip()]
                 interval = int(cfg.get("interval_sec") or 300)
-                interval = max(30, min(3600, interval))  # 底线 30s 防刷屏
+                interval = max(60, min(3600, interval))  # 底线 60s 防刷屏 / 风控
                 if (
                     cmd.get("enabled")
                     and messages

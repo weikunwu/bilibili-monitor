@@ -40,7 +40,7 @@ function ScheduledDanmuEditor({
   async function handleSave() {
     if (!roomId) return
     const cleaned = messages.map((s) => s.trim()).filter(Boolean)
-    const iv = Math.max(30, Math.min(3600, Number(interval) || 300))
+    const iv = Math.max(60, Math.min(3600, Number(interval) || 300))
     setSaving(true)
     try {
       await saveCommandConfig(roomId, cmdId, { messages: cleaned, interval_sec: iv })
@@ -54,6 +54,29 @@ function ScheduledDanmuEditor({
 
   return (
     <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <InputGroup size="sm" style={{ width: 240 }}>
+        <InputGroup.Addon>间隔</InputGroup.Addon>
+        <Input
+          type="number"
+          value={interval}
+          onChange={setInterval}
+          style={(() => {
+            const n = Number(interval)
+            const invalid = interval !== '' && Number.isFinite(n) && (n < 60 || n > 3600)
+            return invalid
+              ? { textDecoration: 'line-through', color: '#ef5350' }
+              : undefined
+          })()}
+          onBlur={() => {
+            // 失焦时夹到 [60, 3600]，空值回到 300
+            const n = Number(interval)
+            if (!Number.isFinite(n) || interval === '') setInterval('300')
+            else if (n < 60) setInterval('60')
+            else if (n > 3600) setInterval('3600')
+          }}
+        />
+        <InputGroup.Addon>秒 (60–3600)</InputGroup.Addon>
+      </InputGroup>
       {messages.map((m, idx) => (
         <div key={idx} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
           <Input
@@ -70,15 +93,8 @@ function ScheduledDanmuEditor({
           >×</button>
         </div>
       ))}
-      <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <button className="rs-btn rs-btn-subtle rs-btn-sm" onClick={addMsg}>+ 添加一条</button>
-      </div>
-      <InputGroup size="sm" style={{ width: 240 }}>
-        <InputGroup.Addon>间隔</InputGroup.Addon>
-        <Input type="number" value={interval} onChange={setInterval} />
-        <InputGroup.Addon>秒 (30–3600)</InputGroup.Addon>
-      </InputGroup>
-      <div>
         <button
           className="rs-btn rs-btn-primary rs-btn-sm"
           onClick={handleSave}
@@ -137,7 +153,14 @@ export function ToolsPanel({ roomId }: Props) {
       {commands.map((cmd, i) => (
         <div key={cmd.id} className="cmd-item">
           <div className="cmd-info">
-            <div className="cmd-name">{cmd.name}</div>
+            <div className="cmd-name" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span>{cmd.name}</span>
+              <Toggle
+                checked={cmd.enabled}
+                onChange={() => handleToggle(cmd.id, i)}
+                size="sm"
+              />
+            </div>
             <div className="cmd-desc">{cmd.description}</div>
             {cmd.id === 'scheduled_danmu' && (
               <ScheduledDanmuEditor
@@ -171,26 +194,21 @@ export function ToolsPanel({ roomId }: Props) {
               </div>
             )}
           </div>
-          <Toggle
-            checked={cmd.enabled}
-            onChange={() => handleToggle(cmd.id, i)}
-            size="sm"
-          />
         </div>
       ))}
       <div className="cmd-section-title">实验功能</div>
       <div className="cmd-item">
         <div className="cmd-info">
-          <div className="cmd-name">
-            礼物自动剪辑
-            <span style={{ color: '#ef5350', marginLeft: 8, fontWeight: 'normal' }}>
+          <div className="cmd-name" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span>礼物自动剪辑</span>
+            <Toggle checked={autoClip} onChange={handleAutoClipToggle} size="sm" />
+            <span style={{ color: '#ef5350', fontWeight: 'normal' }}>
               非实际录屏！！仅模拟合成！！
             </span>
           </div>
           <div className="cmd-desc">直播时收到单价 ≥<span style={{ color: '#ef5350' }}>¥1000</span> 礼物时自动录制前后片段，可在礼物和大航海列表下载</div>
           <div className="cmd-desc">录制片段仅保留 24 小时</div>
         </div>
-        <Toggle checked={autoClip} onChange={handleAutoClipToggle} size="sm" />
       </div>
     </div>
     </div>
