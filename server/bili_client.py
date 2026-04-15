@@ -561,6 +561,7 @@ class BiliLiveClient:
                 if not due:
                     continue
                 online = await self._fetch_online_uids()
+                log.info(f"[挂粉提醒] room={self.real_room_id} due={[(u, n) for u, n in due]} online_size={len(online)} hit={[u for u, _ in due if u in online]}")
                 for uid, uname in due:
                     self._lurkers.pop(uid, None)
                     # 保守策略：uid 不在在线列表 (或接口失败返回空集) 一律跳过
