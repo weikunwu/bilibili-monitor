@@ -336,6 +336,9 @@ class BiliLiveClient:
             return
         if not self.cookies.get("SESSDATA"):
             return
+        master = get_command(self.real_room_id, "broadcast_thanks")
+        if not master or not master["enabled"]:
+            return
         cmd_cfg = get_command(self.real_room_id, "broadcast_blind")
         if not cmd_cfg or not cmd_cfg["enabled"]:
             return
@@ -398,6 +401,9 @@ class BiliLiveClient:
         if (extra.get("price") or 0) <= 0:  # skip free gifts (小花花 etc.)
             return
         if not self.cookies.get("SESSDATA"):
+            return
+        master = get_command(self.real_room_id, "broadcast_thanks")
+        if not master or not master["enabled"]:
             return
         cmd_cfg = get_command(self.real_room_id, "broadcast_gift")
         if not cmd_cfg or not cmd_cfg["enabled"]:
@@ -594,6 +600,9 @@ class BiliLiveClient:
         if event.get("event_type") != "guard":
             return
         if not self.cookies.get("SESSDATA"):
+            return
+        master = get_command(self.real_room_id, "broadcast_thanks")
+        if not master or not master["enabled"]:
             return
         cmd_cfg = get_command(self.real_room_id, "broadcast_guard")
         if not cmd_cfg or not cmd_cfg["enabled"]:

@@ -74,6 +74,14 @@ DEFAULT_COMMANDS = [
         },
     },
     {
+        "id": "broadcast_thanks",
+        "name": "感谢弹幕",
+        "type": "auto_broadcast",
+        "description": "感谢弹幕总开关；关闭后礼物感谢/大航海感谢/盲盒播报都不发",
+        "default_enabled": True,
+        "config": {},
+    },
+    {
         "id": "broadcast_gift",
         "name": "礼物感谢",
         "type": "auto_broadcast",

@@ -88,9 +88,10 @@ const WELCOME_DEFAULT_TEMPLATE = '欢迎{name}进入直播间'
 // 感谢弹幕分组：礼物感谢 / 大航海感谢 / 盲盒播报 共用同一个总开关和保存/恢复默认按钮。
 // 总开关：任一子项开启即显示开启；关时一键全关，开时一键全开。
 function ThanksGroup({
-  roomId, gift, guard, blind, onToggleDraft, onUpdateConfig, onCommitEnabled, onRestoreEnabled,
+  roomId, master, gift, guard, blind, onToggleDraft, onUpdateConfig, onCommitEnabled, onRestoreEnabled,
 }: {
   roomId: number | null
+  master: Command
   gift: Command
   guard: Command
   blind: Command
@@ -117,7 +118,7 @@ function ThanksGroup({
     const b = bFinal.length ? bFinal : [BLIND_DEFAULT_TEMPLATE]
     setSaving(true)
     try {
-      await onCommitEnabled(['broadcast_gift', 'broadcast_guard', 'broadcast_blind'])
+      await onCommitEnabled(['broadcast_thanks', 'broadcast_gift', 'broadcast_guard', 'broadcast_blind'])
       await saveCommandConfig(roomId, 'broadcast_guard', { templates: g })
       await saveCommandConfig(roomId, 'broadcast_blind', { templates: b })
       onUpdateConfig('broadcast_guard', { templates: g })
@@ -184,7 +185,8 @@ function ThanksGroup({
     <div className="cmd-item">
       <div className="cmd-info">
         <div className="cmd-name" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span>感谢弹幕</span>
+          <span>{master.name}</span>
+          <Toggle size="sm" checked={master.enabled} onChange={() => onToggleDraft(master.id)} />
         </div>
         <div style={{
           marginTop: 6,
@@ -585,21 +587,23 @@ export function ToolsPanel({ roomId }: Props) {
       <div style={{ padding: '0 24px 16px' }}>
       {commands.map((cmd, i) => {
         if (cmd.id === 'nickname_commands') return null
-        if (cmd.id === 'broadcast_guard' || cmd.id === 'broadcast_blind') return null
-        if (cmd.id === 'broadcast_gift') {
+        if (cmd.id === 'broadcast_gift' || cmd.id === 'broadcast_guard' || cmd.id === 'broadcast_blind') return null
+        if (cmd.id === 'broadcast_thanks') {
+          const gift = commands.find((c) => c.id === 'broadcast_gift')
           const guard = commands.find((c) => c.id === 'broadcast_guard')
           const blind = commands.find((c) => c.id === 'broadcast_blind')
-          if (!guard || !blind) return null
+          if (!gift || !guard || !blind) return null
           return (
             <ThanksGroup
               key="thanks_group"
               roomId={roomId}
-              gift={cmd}
+              master={cmd}
+              gift={gift}
               guard={guard}
               blind={blind}
               onToggleDraft={toggleDraft}
               onCommitEnabled={commitEnabled}
-              onRestoreEnabled={() => setDraftEnabled(['broadcast_gift', 'broadcast_guard', 'broadcast_blind'], true)}
+              onRestoreEnabled={() => setDraftEnabled(['broadcast_thanks', 'broadcast_gift', 'broadcast_guard', 'broadcast_blind'], true)}
               onUpdateConfig={(cid, config) => {
                 setCommands((prev) => prev.map((c) => (
                   c.id === cid ? { ...c, config: { ...c.config, ...config } } : c
