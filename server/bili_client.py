@@ -36,42 +36,62 @@ def _pb_decode_varint(buf: bytes, off: int) -> tuple[int, int]:
     return r, off
 
 
-def _decode_interact_word_pb(b64: str) -> dict:
-    """Minimal pb walker for B站 INTERACT_WORD_V2 payload.
-    实测字段编号 (B站 InteractWord pb): 1=uid, 2=uname, 5=msg_type
-    (1=进入, 2=关注, 3=分享), 6=room_id, 7=timestamp。
-    fans_medal 藏在某个 length-delimited 嵌套消息里，暂把所有 LD 字段
-    原始字节收集到 _ld_fields 以便调试找出位置。"""
-    try:
-        raw = base64.b64decode(b64)
-    except Exception:
-        return {}
+def _pb_walk(raw: bytes):
+    """Yield (fnum, wtype, value) tuples from a raw protobuf message.
+    value is int for varint/fixed, bytes for length-delimited."""
     off = 0
-    out: dict = {}
-    ld_fields: dict[int, bytes] = {}
     while off < len(raw):
         tag, off = _pb_decode_varint(raw, off)
         if tag == 0 and off >= len(raw):
             break
         fnum, wtype = tag >> 3, tag & 7
-        if wtype == 0:  # varint
+        if wtype == 0:
             v, off = _pb_decode_varint(raw, off)
-            if fnum == 1: out["uid"] = v
-            elif fnum == 5: out["msg_type"] = v
-        elif wtype == 2:  # length-delimited
+            yield fnum, wtype, v
+        elif wtype == 2:
             ln, off = _pb_decode_varint(raw, off)
             chunk = raw[off:off + ln]; off += ln
-            if fnum == 2:
-                try: out["uname"] = chunk.decode("utf-8", errors="replace")
-                except Exception: pass
-            ld_fields[fnum] = chunk
-        elif wtype == 1:  # 64-bit
-            off += 8
-        elif wtype == 5:  # 32-bit
-            off += 4
+            yield fnum, wtype, chunk
+        elif wtype == 1:
+            yield fnum, wtype, raw[off:off + 8]; off += 8
+        elif wtype == 5:
+            yield fnum, wtype, raw[off:off + 4]; off += 4
         else:
-            break  # 未知 wire type，放弃
-    out["_ld_fields"] = ld_fields
+            return
+
+
+def _decode_interact_word_pb(b64: str) -> dict:
+    """Parse B站 INTERACT_WORD_V2 pb into a V1-like dict.
+    字段编号实测:
+      f1=uid(varint), f2=uname(string), f5=msg_type(varint),
+      f9=fans_medal(sub-msg){ f1=target_id, f2=medal_level, f3=medal_name,
+                              f9=guard_level }
+    """
+    try:
+        raw = base64.b64decode(b64)
+    except Exception:
+        return {}
+    out: dict = {}
+    for fnum, wtype, v in _pb_walk(raw):
+        if fnum == 1 and wtype == 0:
+            out["uid"] = v
+        elif fnum == 2 and wtype == 2:
+            try: out["uname"] = v.decode("utf-8", errors="replace")
+            except Exception: pass
+        elif fnum == 5 and wtype == 0:
+            out["msg_type"] = v
+        elif fnum == 9 and wtype == 2:
+            # fans_medal 子消息
+            medal: dict = {}
+            for ff, fwt, fv in _pb_walk(v):
+                if ff == 1 and fwt == 0: medal["target_id"] = fv
+                elif ff == 2 and fwt == 0: medal["medal_level"] = fv
+                elif ff == 3 and fwt == 2:
+                    try: medal["medal_name"] = fv.decode("utf-8", errors="replace")
+                    except Exception: pass
+                elif ff == 9 and fwt == 0: medal["guard_level"] = fv
+            if medal:
+                out["fans_medal"] = medal
     return out
 
 
@@ -115,8 +135,8 @@ class BiliLiveClient:
         self._last_welcome_ts: float = 0.0
         # 天选/红包期间暂停欢迎弹幕到该时间点 (epoch)。0 表示未暂停。
         self._welcome_pause_until: float = 0.0
-        # 优先用 V1 (数据更全)；只有 V1 不来时才退到 V2。
-        self._seen_v1_interact: bool = False
+        # V2 带 fans_medal (V1 被 B站 剥光)；优先 V2，V2 不来才回退 V1。
+        self._seen_v2_interact: bool = False
         self._seen_v2_red_pocket: bool = False
         # Per-command round-robin index for multi-template broadcasts.
         self._tpl_idx: dict[str, int] = {}
@@ -440,13 +460,6 @@ class BiliLiveClient:
         cfg = cmd_cfg.get("config") or {}
         medal = data.get("fans_medal") if isinstance(data.get("fans_medal"), dict) else {}
         is_room_medal = bool(medal) and medal.get("target_id") == self.streamer_uid
-        # 临时调试: 每次欢迎都打, 含 medal 全量 + V1 其它相关字段
-        log.info(
-            f"[DBG2] welcome uid={uid} uname={uname} streamer={self.streamer_uid} "
-            f"is_room_medal={is_room_medal} medal_guard={medal.get('guard_level')} "
-            f"medal={medal} "
-            f"privilege={data.get('privilege_type')} identities={data.get('identities')}"
-        )
         guard_level = int(medal.get("guard_level") or 0) if is_room_medal else 0
         if guard_level > 0:
             category = "guard"
@@ -667,25 +680,18 @@ class BiliLiveClient:
                                     self.live_status = 0
                                     asyncio.create_task(recorder.stop_for(self.real_room_id))
                                     continue
-                                if base_cmd == "INTERACT_WORD":
-                                    # V1 数据完整 (含 fans_medal 等)，优先处理
-                                    self._seen_v1_interact = True
-                                    self._maybe_welcome(pkt.get("data") or {})
-                                    continue
                                 if base_cmd == "INTERACT_WORD_V2":
+                                    # V2 pb 是唯一带 fans_medal/guard_level 的来源
+                                    # (B站 已从 V1 INTERACT_WORD 剥掉 medal)
+                                    self._seen_v2_interact = True
                                     data = pkt.get("data") or {}
                                     if isinstance(data, dict) and data.get("pb"):
-                                        decoded = _decode_interact_word_pb(data["pb"])
-                                        # 调试：dump LD 字段长度
-                                        ld = decoded.get("_ld_fields") or {}
-                                        if not getattr(self, "_dbg_v2_ld_logged", False):
-                                            self._dbg_v2_ld_logged = True
-                                            log.info(f"[DBG_V2_LD] fields: {[(k, len(v)) for k, v in ld.items()]}")
-                                            for fnum, chunk in ld.items():
-                                                if fnum == 2: continue
-                                                log.info(f"  f{fnum} hex: {chunk.hex()[:200]}")
-                                        if not getattr(self, "_seen_v1_interact", False):
-                                            self._maybe_welcome(decoded)
+                                        self._maybe_welcome(_decode_interact_word_pb(data["pb"]))
+                                    continue
+                                if base_cmd == "INTERACT_WORD":
+                                    # V1 仅在 V2 不来时回退使用，medal 信息缺失只能走普通
+                                    if not getattr(self, "_seen_v2_interact", False):
+                                        self._maybe_welcome(pkt.get("data") or {})
                                     continue
                                 # 天选/红包期间暂停欢迎弹幕（避免刷屏），并发一条提示
                                 # B站 有 V1 / V2 两套 cmd (V2 为 pb 编码)，都当触发。
