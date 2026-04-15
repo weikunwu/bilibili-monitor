@@ -572,12 +572,33 @@ class BiliLiveClient:
                                     self.live_status = 0
                                     asyncio.create_task(recorder.stop_for(self.real_room_id))
                                     continue
-                                if base_cmd == "INTERACT_WORD":
-                                    # 观众进入房间；只处理 msg_type=1 (进入)，关注/分享不管
-                                    self._maybe_welcome(pkt.get("data") or {})
+                                if base_cmd in ("INTERACT_WORD", "INTERACT_WORD_V2"):
+                                    # 观众进入房间；V2 是 pb 编码不好解，只用 V1
+                                    # TODO: 临时调试日志，摸清实际推什么格式
+                                    if not hasattr(self, "_dbg_seen_cmds"):
+                                        self._dbg_seen_cmds = set()
+                                    if base_cmd not in self._dbg_seen_cmds:
+                                        self._dbg_seen_cmds.add(base_cmd)
+                                        d = pkt.get("data")
+                                        tkeys = list(d.keys())[:15] if isinstance(d, dict) else type(d).__name__
+                                        log.info(f"[DBG] 房间 {self.room_id} 首次 {base_cmd}, data keys/type: {tkeys}")
+                                    if base_cmd == "INTERACT_WORD":
+                                        self._maybe_welcome(pkt.get("data") or {})
                                     continue
                                 # 天选/红包期间暂停欢迎弹幕（避免刷屏），并发一条提示
-                                if base_cmd in ("ANCHOR_LOT_START", "POPULARITY_RED_POCKET_NEW", "POPULARITY_RED_POCKET_START"):
+                                # B站 有 V1 / V2 两套 cmd (V2 为 pb 编码)，都当触发。
+                                # TODO: 摸清实际推哪些红包/天选 cmd
+                                if ("RED_POCKET" in base_cmd or "ANCHOR_LOT" in base_cmd):
+                                    if not hasattr(self, "_dbg_seen_cmds"):
+                                        self._dbg_seen_cmds = set()
+                                    if base_cmd not in self._dbg_seen_cmds:
+                                        self._dbg_seen_cmds.add(base_cmd)
+                                        log.info(f"[DBG] 房间 {self.room_id} 首次 {base_cmd}")
+                                if base_cmd in (
+                                    "ANCHOR_LOT_START",
+                                    "POPULARITY_RED_POCKET_NEW", "POPULARITY_RED_POCKET_START",
+                                    "POPULARITY_RED_POCKET_V2_NEW", "POPULARITY_RED_POCKET_V2_START",
+                                ):
                                     data = pkt.get("data") or {}
                                     end_ts = 0
                                     for k in ("end_time", "end_ts", "lot_end_time"):
@@ -596,7 +617,11 @@ class BiliLiveClient:
                                         notice = "天选时刻开启，快来参与！" if base_cmd == "ANCHOR_LOT_START" else "红包来啦，快冲！"
                                         asyncio.create_task(self.send_danmu(notice))
                                     continue
-                                if base_cmd in ("ANCHOR_LOT_END", "ANCHOR_LOT_AWARD", "POPULARITY_RED_POCKET_WINNER_LIST"):
+                                if base_cmd in (
+                                    "ANCHOR_LOT_END", "ANCHOR_LOT_AWARD",
+                                    "POPULARITY_RED_POCKET_WINNER_LIST",
+                                    "POPULARITY_RED_POCKET_V2_WINNER_LIST",
+                                ):
                                     # 给 30 秒缓冲再恢复，避免和紧随的中奖弹幕抢发
                                     self._welcome_pause_until = time.time() + 30
                                     continue
