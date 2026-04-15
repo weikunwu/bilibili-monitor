@@ -301,6 +301,7 @@ async def cheap_gifts(room_id: int, _=Depends(require_room_access)):
     d = data.get("data") or {}
     gifts = list(d.get("list") or []) + list((d.get("global_gift") or {}).get("list") or [])
 
+    streamer_uid = client.streamer_uid if client and getattr(client, "streamer_uid", 0) else 0
     cheap = []
     seen = set()
     for g in gifts:
@@ -309,6 +310,14 @@ async def cheap_gifts(room_id: int, _=Depends(require_room_access)):
             continue
         price = int(g.get("price") or 0)
         if g.get("coin_type") != "gold" or price <= 0 or price > 1000:
+            continue
+        # 房间/主播绑定礼物：B站 返回 bind_roomid / bind_ruid 非 0 时表示仅限该房间/主播。
+        # 我们的机器人对其他房间送会被拒 (code 200026)，直接过滤掉。
+        bind_room = int(g.get("bind_roomid") or 0)
+        bind_ruid = int(g.get("bind_ruid") or 0)
+        if bind_room and bind_room != real_room:
+            continue
+        if bind_ruid and streamer_uid and bind_ruid != streamer_uid:
             continue
         seen.add(gid)
         cheap.append({
