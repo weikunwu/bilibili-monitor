@@ -149,10 +149,13 @@ async def handle_login(request: Request):
     _login_attempts.pop(ip, None)
     _login_attempts.pop(f"email:{email}", None)
     resp = HTMLResponse(json.dumps({"ok": True, "role": role}))
+    # Secure=True blocks the cookie on http://localhost. Fall back to
+    # non-secure only when the request itself is plain http (dev).
+    is_https = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
     resp.set_cookie(
         "auth_token", token,
         httponly=True, max_age=86400 * 3,
-        samesite="lax", secure=True,
+        samesite="lax", secure=is_https,
     )
     return resp
 
