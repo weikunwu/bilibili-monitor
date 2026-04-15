@@ -303,10 +303,11 @@ async def cheap_gifts(room_id: int, _=Depends(require_room_access)):
 
     streamer_uid = client.streamer_uid if client and getattr(client, "streamer_uid", 0) else 0
     cheap = []
-    seen = set()
+    seen_ids: set[int] = set()
+    seen_keys: set[tuple[str, int]] = set()
     for g in gifts:
         gid = int(g.get("id") or g.get("gift_id") or 0)
-        if not gid or gid in seen:
+        if not gid or gid in seen_ids:
             continue
         price = int(g.get("price") or 0)
         if g.get("coin_type") != "gold" or price <= 0 or price > 1000:
@@ -322,10 +323,16 @@ async def cheap_gifts(room_id: int, _=Depends(require_room_access)):
         # 包裹专属礼物只能从背包送 (code 200010)，bag_gift=1
         if int(g.get("bag_gift") or 0):
             continue
-        seen.add(gid)
+        # 同名同价的礼物 B站 会返回多份 (常规版 + 活动版等)，只留第一个
+        name = g.get("name") or g.get("gift_name") or ""
+        key = (name, price)
+        if key in seen_keys:
+            continue
+        seen_ids.add(gid)
+        seen_keys.add(key)
         cheap.append({
             "gift_id": gid,
-            "name": g.get("name") or g.get("gift_name") or "",
+            "name": name,
             "price": price,
             "img": g.get("img_basic") or g.get("gift_img") or g.get("img_dynamic") or "",
         })
