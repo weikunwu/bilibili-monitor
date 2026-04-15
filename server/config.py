@@ -65,6 +65,7 @@ DEFAULT_COMMANDS = [
         "name": "打个有效",
         "type": "streamer_danmu",
         "description": '主播发送"打个有效"时自动送10电池',
+        "default_enabled": True,
         "config": {
             "trigger": "打个有效",
             "gift_id": 31036,
@@ -105,15 +106,15 @@ DEFAULT_COMMANDS = [
         "name": "欢迎弹幕",
         "type": "auto_broadcast",
         "description": "观众进入直播间时机器人按模版发欢迎（同人 5 分钟内不重复，全局 ≥10 秒）",
-        "default_enabled": False,
+        "default_enabled": True,
         "config": {
             # 三类：普通 / 专属 (戴本房粉丝牌) / 大航海 (本房舰长以上)
             # 各自独立开关 + 模版；命中优先级: 大航海 > 专属 > 普通
-            "normal_enabled": False,
+            "normal_enabled": True,
             "normal_templates": ["欢迎{name}进入直播间"],
-            "medal_enabled": False,
+            "medal_enabled": True,
             "medal_templates": ["欢迎{name}回家~"],
-            "guard_enabled": False,
+            "guard_enabled": True,
             "guard_templates": ["{guard}{name}驾到！"],
         },
     },
@@ -122,6 +123,7 @@ DEFAULT_COMMANDS = [
         "name": "定时弹幕",
         "type": "scheduled",
         "description": "开播期间，机器人按设定间隔依次发送以下弹幕（轮播）",
+        "default_enabled": True,
         "config": {
             "interval_sec": 300,
             "messages": ["动动手指给{streamer}点点关注"],
@@ -132,7 +134,7 @@ DEFAULT_COMMANDS = [
         "name": "挂粉提醒",
         "type": "auto_broadcast",
         "description": "用户进房后 N 秒内没发弹幕，@ 一下提醒互动（仅对本场在线贡献榜上的观众：戴本房粉丝牌并有过互动/送礼）",
-        "default_enabled": False,
+        "default_enabled": True,
         "config": {
             "wait_sec": 900,  # 15 分钟
             "template": "说点什么呀~",

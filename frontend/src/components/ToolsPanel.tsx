@@ -16,13 +16,15 @@ const GUARD_DEFAULT_TEMPLATE = '感谢{name}{content}了{num}个月{guard}'
 const LURKER_DEFAULT_TEMPLATE = '说点什么呀~'
 
 function LurkerEditor({
-  roomId, cmdId, initialTemplate, initialWaitSec, onSaved,
+  roomId, cmdId, initialTemplate, initialWaitSec, onSaved, onCommitEnabled, onRestoreEnabled,
 }: {
   roomId: number | null
   cmdId: string
   initialTemplate: string
   initialWaitSec: number
   onSaved: (config: { template: string; wait_sec: number }) => void
+  onCommitEnabled?: () => Promise<void>
+  onRestoreEnabled?: () => void
 }) {
   const [tpl, setTpl] = useState(initialTemplate || LURKER_DEFAULT_TEMPLATE)
   const [wait, setWait] = useState(String(initialWaitSec || 900))
@@ -33,6 +35,7 @@ function LurkerEditor({
     if (!roomId) return
     setSaving(true)
     try {
+      if (onCommitEnabled) await onCommitEnabled()
       await saveCommandConfig(roomId, cmdId, { template, wait_sec: w })
       onSaved({ template, wait_sec: w })
       setSaved(true); setTimeout(() => setSaved(false), 1500)
@@ -67,7 +70,7 @@ function LurkerEditor({
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
         <button
           className="rs-btn rs-btn-subtle rs-btn-sm" style={{ width: 88 }}
-          onClick={() => { setTpl(LURKER_DEFAULT_TEMPLATE); setWait('900') }}
+          onClick={() => { setTpl(LURKER_DEFAULT_TEMPLATE); setWait('900'); onRestoreEnabled?.() }}
         >恢复默认</button>
         <button
           className="rs-btn rs-btn-primary rs-btn-sm" style={{ width: 88 }}
@@ -85,14 +88,16 @@ const WELCOME_DEFAULT_TEMPLATE = '欢迎{name}进入直播间'
 // 感谢弹幕分组：礼物感谢 / 大航海感谢 / 盲盒播报 共用同一个总开关和保存/恢复默认按钮。
 // 总开关：任一子项开启即显示开启；关时一键全关，开时一键全开。
 function ThanksGroup({
-  roomId, gift, guard, blind, onToggleCmd, onUpdateConfig,
+  roomId, gift, guard, blind, onToggleDraft, onUpdateConfig, onCommitEnabled, onRestoreEnabled,
 }: {
   roomId: number | null
   gift: Command
   guard: Command
   blind: Command
-  onToggleCmd: (cmdId: string) => void | Promise<void>
+  onToggleDraft: (cmdId: string) => void
   onUpdateConfig: (cmdId: string, config: Record<string, unknown>) => void
+  onCommitEnabled: (cmdIds: string[]) => Promise<void>
+  onRestoreEnabled?: () => void
 }) {
   const initGuardTpls = (guard.config?.templates as string[])
     || (guard.config?.template ? [guard.config.template as string] : [GUARD_DEFAULT_TEMPLATE])
@@ -104,15 +109,6 @@ function ThanksGroup({
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
 
-  const anyOn = gift.enabled || guard.enabled || blind.enabled
-
-  async function masterToggle() {
-    const target = !anyOn  // 任一开 → 全关；全关 → 全开
-    for (const c of [gift, guard, blind]) {
-      if (c.enabled !== target) await onToggleCmd(c.id)
-    }
-  }
-
   async function saveAll() {
     if (!roomId) return
     const gFinal = guardTpls.map((s) => s.trim()).filter(Boolean)
@@ -121,6 +117,7 @@ function ThanksGroup({
     const b = bFinal.length ? bFinal : [BLIND_DEFAULT_TEMPLATE]
     setSaving(true)
     try {
+      await onCommitEnabled(['broadcast_gift', 'broadcast_guard', 'broadcast_blind'])
       await saveCommandConfig(roomId, 'broadcast_guard', { templates: g })
       await saveCommandConfig(roomId, 'broadcast_blind', { templates: b })
       onUpdateConfig('broadcast_guard', { templates: g })
@@ -132,6 +129,7 @@ function ThanksGroup({
 
   function restoreDefaults() {
     setGuardTpls([GUARD_DEFAULT_TEMPLATE]); setBlindTpls([BLIND_DEFAULT_TEMPLATE])
+    onRestoreEnabled?.()
   }
 
   const isMobile = useIsMobile()
@@ -146,7 +144,7 @@ function ThanksGroup({
     return (
       <div key={cmd.id} style={{ border: '1px solid #2a2a2a', borderRadius: 6, padding: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 500 }}>
-          <Toggle size="sm" checked={cmd.enabled} onChange={() => onToggleCmd(cmd.id)} />
+          <Toggle size="sm" checked={cmd.enabled} onChange={() => onToggleDraft(cmd.id)} />
           <span>{cmd.name}</span>
         </div>
         <div style={{ fontSize: 12, color: '#888' }}>
@@ -187,7 +185,6 @@ function ThanksGroup({
       <div className="cmd-info">
         <div className="cmd-name" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span>感谢弹幕</span>
-          <Toggle size="sm" checked={anyOn} onChange={masterToggle} />
         </div>
         <div style={{
           marginTop: 6,
@@ -222,13 +219,15 @@ function ThanksGroup({
 
 // 每条一行的文本框 + 间隔输入；失焦/点击保存时提交。
 function ScheduledDanmuEditor({
-  roomId, cmdId, initialMessages, initialInterval, onSaved,
+  roomId, cmdId, initialMessages, initialInterval, onSaved, onCommitEnabled, onRestoreEnabled,
 }: {
   roomId: number | null
   cmdId: string
   initialMessages: string[]
   initialInterval: number
   onSaved: (config: { messages: string[]; interval_sec: number }) => void
+  onCommitEnabled?: () => Promise<void>
+  onRestoreEnabled?: () => void
 }) {
   const [messages, setMessages] = useState<string[]>(
     initialMessages.length > 0 ? initialMessages : [''],
@@ -253,6 +252,7 @@ function ScheduledDanmuEditor({
     const iv = Math.max(60, Math.min(3600, Number(interval) || 300))
     setSaving(true)
     try {
+      if (onCommitEnabled) await onCommitEnabled()
       await saveCommandConfig(roomId, cmdId, { messages: cleaned, interval_sec: iv })
       onSaved({ messages: cleaned, interval_sec: iv })
       setSaved(true)
@@ -315,6 +315,7 @@ function ScheduledDanmuEditor({
             onClick={() => {
               setMessages(['动动手指给{streamer}点点关注'])
               setInterval('300')
+              onRestoreEnabled?.()
             }}
           >恢复默认</button>
           <button
@@ -338,18 +339,20 @@ interface WelcomeCfg {
   guard_enabled: boolean;  guard_templates: string[]
 }
 const WELCOME_DEFAULTS: WelcomeCfg = {
-  normal_enabled: false, normal_templates: [WELCOME_DEFAULT_TEMPLATE],
-  medal_enabled: false,  medal_templates: ['欢迎{name}回家~'],
-  guard_enabled: false,  guard_templates: ['{guard}{name}驾到！'],
+  normal_enabled: true, normal_templates: [WELCOME_DEFAULT_TEMPLATE],
+  medal_enabled: true,  medal_templates: ['欢迎{name}回家~'],
+  guard_enabled: true,  guard_templates: ['{guard}{name}驾到！'],
 }
 
 function WelcomeEditor({
-  roomId, cmdId, initial, onSaved,
+  roomId, cmdId, initial, onSaved, onCommitEnabled, onRestoreEnabled,
 }: {
   roomId: number | null
   cmdId: string
   initial: WelcomeCfg
   onSaved: (config: WelcomeCfg) => void
+  onCommitEnabled?: () => Promise<void>
+  onRestoreEnabled?: () => void
 }) {
   const [cfg, setCfg] = useState<WelcomeCfg>(initial)
   const [saving, setSaving] = useState(false)
@@ -360,6 +363,7 @@ function WelcomeEditor({
     if (!roomId) return
     setSaving(true)
     try {
+      if (onCommitEnabled) await onCommitEnabled()
       await saveCommandConfig(roomId, cmdId, next as unknown as Record<string, unknown>)
       onSaved(next)
       setSaved(true); setTimeout(() => setSaved(false), 1500)
@@ -441,7 +445,7 @@ function WelcomeEditor({
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
         <button
           className="rs-btn rs-btn-subtle rs-btn-sm" style={{ width: 88 }}
-          onClick={() => setCfg(WELCOME_DEFAULTS)}
+          onClick={() => { setCfg(WELCOME_DEFAULTS); onRestoreEnabled?.() }}
         >恢复默认</button>
         <button
           className="rs-btn rs-btn-primary rs-btn-sm" style={{ width: 88 }}
@@ -458,9 +462,14 @@ export function ToolsPanel({ roomId }: Props) {
   const [autoClip, setAutoClip] = useState(false)
   const [cheapGifts, setCheapGifts] = useState<CheapGift[]>([])
 
+  const [committedEnabled, setCommittedEnabled] = useState<Record<string, boolean>>({})
+
   useEffect(() => {
     if (!roomId) return
-    fetchCommands(roomId).then(setCommands).catch(() => {})
+    fetchCommands(roomId).then((cmds) => {
+      setCommands(cmds)
+      setCommittedEnabled(Object.fromEntries(cmds.map((c) => [c.id, c.enabled])))
+    }).catch(() => {})
     fetchAutoClip(roomId).then(setAutoClip).catch(() => {})
     fetchCheapGifts(roomId).then(setCheapGifts).catch(() => {})
   }, [roomId])
@@ -489,25 +498,79 @@ export function ToolsPanel({ roomId }: Props) {
     }).catch(() => {})
   }, [roomId, cheapGifts, commands])
 
-  // 选中礼物后保存 config，数量按"总价 ≥ 1元"凑：1元 = 1000 金瓜子。
-  async function handleAutoGiftChange(cmdIndex: number, giftId: number | null) {
-    if (!roomId || giftId == null) return
+  // 选中礼物仅更新本地 draft；点 "保存" 才下发。
+  function handleAutoGiftChange(cmdIndex: number, giftId: number | null) {
+    if (giftId == null) return
     const g = cheapGifts.find((x) => x.gift_id === giftId)
     if (!g) return
     const num = Math.max(1, Math.ceil(1000 / g.price))
     const config = { gift_id: g.gift_id, gift_name: g.name, gift_price: g.price, gift_num: num }
-    await saveCommandConfig(roomId, commands[cmdIndex].id, config)
     setCommands((prev) => prev.map((c, i) => (
       i === cmdIndex ? { ...c, config: { ...c.config, ...config } } : c
     )))
   }
 
-  async function handleToggle(cmdId: string, index: number) {
+  const AUTO_GIFT_DEFAULT = { gift_id: 31036, gift_name: '辣条', gift_price: 100, gift_num: 10 }
+
+  function restoreAutoGiftDefault(cmdIndex: number) {
+    setCommands((prev) => prev.map((c, i) => (
+      i === cmdIndex ? { ...c, enabled: true, config: { ...c.config, ...AUTO_GIFT_DEFAULT } } : c
+    )))
+  }
+
+  const [autoGiftSaving, setAutoGiftSaving] = useState(false)
+  const [autoGiftSaved, setAutoGiftSaved] = useState(false)
+  async function saveAutoGift(cmdIndex: number) {
     if (!roomId) return
-    await toggleCommand(roomId, cmdId)
-    setCommands((prev) =>
-      prev.map((c, i) => (i === index ? { ...c, enabled: !c.enabled } : c)),
-    )
+    const cmd = commands[cmdIndex]
+    const cfg = cmd.config || {}
+    const payload = {
+      gift_id: Number(cfg.gift_id || AUTO_GIFT_DEFAULT.gift_id),
+      gift_name: String(cfg.gift_name || AUTO_GIFT_DEFAULT.gift_name),
+      gift_price: Number(cfg.gift_price || AUTO_GIFT_DEFAULT.gift_price),
+      gift_num: Number(cfg.gift_num || AUTO_GIFT_DEFAULT.gift_num),
+    }
+    setAutoGiftSaving(true)
+    try {
+      await commitEnabled([cmd.id])
+      await saveCommandConfig(roomId, cmd.id, payload)
+      setAutoGiftSaved(true); setTimeout(() => setAutoGiftSaved(false), 1500)
+    } finally { setAutoGiftSaving(false) }
+  }
+
+  // 草稿开关：本地翻转，等编辑器的 "保存" 按钮时一起提交。
+  function toggleDraft(cmdId: string) {
+    setCommands((prev) => prev.map((c) => (
+      c.id === cmdId ? { ...c, enabled: !c.enabled } : c
+    )))
+  }
+
+  // 重置草稿开关到指定值（"恢复默认" 用）
+  function setDraftEnabled(cmdIds: string[], value: boolean) {
+    setCommands((prev) => prev.map((c) => (
+      cmdIds.includes(c.id) ? { ...c, enabled: value } : c
+    )))
+  }
+
+  // 对给定 cmdIds，若 draft enabled 与 committed 不同，下发 toggle。
+  async function commitEnabled(cmdIds: string[]) {
+    if (!roomId) return
+    const diffs: Array<{ id: string; desired: boolean }> = []
+    for (const id of cmdIds) {
+      const cmd = commands.find((c) => c.id === id)
+      if (!cmd) continue
+      if (cmd.enabled !== committedEnabled[id]) {
+        diffs.push({ id, desired: cmd.enabled })
+      }
+    }
+    for (const d of diffs) await toggleCommand(roomId, d.id)
+    if (diffs.length) {
+      setCommittedEnabled((prev) => {
+        const next = { ...prev }
+        for (const d of diffs) next[d.id] = d.desired
+        return next
+      })
+    }
   }
 
   async function handleAutoClipToggle(enabled: boolean) {
@@ -534,10 +597,9 @@ export function ToolsPanel({ roomId }: Props) {
               gift={cmd}
               guard={guard}
               blind={blind}
-              onToggleCmd={(cid) => {
-                const idx = commands.findIndex((c) => c.id === cid)
-                if (idx >= 0) return handleToggle(cid, idx)
-              }}
+              onToggleDraft={toggleDraft}
+              onCommitEnabled={commitEnabled}
+              onRestoreEnabled={() => setDraftEnabled(['broadcast_gift', 'broadcast_guard', 'broadcast_blind'], true)}
               onUpdateConfig={(cid, config) => {
                 setCommands((prev) => prev.map((c) => (
                   c.id === cid ? { ...c, config: { ...c.config, ...config } } : c
@@ -553,7 +615,7 @@ export function ToolsPanel({ roomId }: Props) {
               <span>{cmd.name}</span>
               <Toggle
                 checked={cmd.enabled}
-                onChange={() => handleToggle(cmd.id, i)}
+                onChange={() => toggleDraft(cmd.id)}
                 size="sm"
               />
             </div>
@@ -564,6 +626,8 @@ export function ToolsPanel({ roomId }: Props) {
                 cmdId={cmd.id}
                 initialTemplate={(cmd.config?.template as string) || ''}
                 initialWaitSec={Number(cmd.config?.wait_sec || 900)}
+                onCommitEnabled={() => commitEnabled([cmd.id])}
+                onRestoreEnabled={() => setDraftEnabled([cmd.id], true)}
                 onSaved={(config) => {
                   setCommands((prev) => prev.map((c) => (
                     c.id === cmd.id ? { ...c, config: { ...c.config, ...config } } : c
@@ -592,6 +656,8 @@ export function ToolsPanel({ roomId }: Props) {
                     (cmd.config?.guard_templates as string[])
                     || WELCOME_DEFAULTS.guard_templates,
                 }}
+                onCommitEnabled={() => commitEnabled([cmd.id])}
+                onRestoreEnabled={() => setDraftEnabled([cmd.id], true)}
                 onSaved={(config) => {
                   setCommands((prev) => prev.map((c) => (
                     c.id === cmd.id ? { ...c, config: { ...c.config, ...config } } : c
@@ -605,6 +671,8 @@ export function ToolsPanel({ roomId }: Props) {
                 cmdId={cmd.id}
                 initialMessages={(cmd.config?.messages as string[]) || []}
                 initialInterval={(cmd.config?.interval_sec as number) || 300}
+                onCommitEnabled={() => commitEnabled([cmd.id])}
+                onRestoreEnabled={() => setDraftEnabled([cmd.id], true)}
                 onSaved={(config: { messages: string[]; interval_sec: number }) => {
                   setCommands((prev) => prev.map((c) => (
                     c.id === cmd.id ? { ...c, config: { ...c.config, ...config } } : c
@@ -613,7 +681,7 @@ export function ToolsPanel({ roomId }: Props) {
               />
             )}
             {cmd.id === 'auto_gift' && cheapGifts.length > 0 && (
-              <div style={{ marginTop: 6 }}>
+              <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <SelectPicker
                   size="sm"
                   searchable
@@ -628,6 +696,16 @@ export function ToolsPanel({ roomId }: Props) {
                   placeholder="选择礼物"
                   style={{ width: 240 }}
                 />
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
+                  <button
+                    className="rs-btn rs-btn-subtle rs-btn-sm" style={{ width: 88 }}
+                    onClick={() => restoreAutoGiftDefault(i)}
+                  >恢复默认</button>
+                  <button
+                    className="rs-btn rs-btn-primary rs-btn-sm" style={{ width: 88 }}
+                    onClick={() => saveAutoGift(i)} disabled={autoGiftSaving}
+                  >{autoGiftSaving ? '保存中…' : autoGiftSaved ? '已保存' : '保存'}</button>
+                </div>
               </div>
             )}
           </div>
