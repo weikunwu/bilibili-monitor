@@ -1,6 +1,7 @@
 """房间和指令 API"""
 
 import asyncio
+import time
 
 import aiohttp
 from fastapi import APIRouter, Depends, Query, Request, HTTPException
@@ -275,10 +276,18 @@ async def set_command_config(cmd_id: str, request: Request, room_id: int = Query
 # 房间级礼物面板（只返回在该房间真正可送的礼物；全局 giftConfig 会包含不能送的）
 _ROOM_GIFT_API = "https://api.live.bilibili.com/xlive/web-room/v1/giftPanel/roomGiftConfig"
 
+# Per-room cache: (expiry_epoch, payload). B站礼物表几乎不变，24h 足够。
+_CHEAP_GIFT_CACHE: dict[int, tuple[float, list[dict]]] = {}
+_CHEAP_GIFT_TTL = 24 * 3600
+
 
 @router.get("/api/rooms/{room_id}/cheap-gifts")
 async def cheap_gifts(room_id: int, _=Depends(require_room_access)):
-    """单价 ≤ ¥1 (≤1000 金瓜子) 的金瓜子礼物列表，按房间实际可送过滤。"""
+    """单价 ≤ ¥1 (≤1000 金瓜子) 的金瓜子礼物列表，按房间实际可送过滤。
+    每房间缓存 24 小时，减少对 B站 的拉取。"""
+    hit = _CHEAP_GIFT_CACHE.get(room_id)
+    if hit and hit[0] > time.time():
+        return hit[1]
     client = manager.get(room_id)
     real_room = client.real_room_id if client and client.real_room_id else room_id
     try:
@@ -337,4 +346,5 @@ async def cheap_gifts(room_id: int, _=Depends(require_room_access)):
             "img": g.get("img_basic") or g.get("gift_img") or g.get("img_dynamic") or "",
         })
     cheap.sort(key=lambda x: x["price"])
+    _CHEAP_GIFT_CACHE[room_id] = (time.time() + _CHEAP_GIFT_TTL, cheap)
     return cheap

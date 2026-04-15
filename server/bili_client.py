@@ -62,6 +62,8 @@ class BiliLiveClient:
         # throttle bursty entries so we don't flood chat in popular rooms.
         self._welcome_sent: dict[int, float] = {}
         self._last_welcome_ts: float = 0.0
+        # Per-command round-robin index for multi-template broadcasts.
+        self._tpl_idx: dict[str, int] = {}
 
     def _make_cookie_header(self) -> dict:
         headers = dict(HEADERS)
@@ -292,8 +294,11 @@ class BiliLiveClient:
         display_name = self._nickname_for(uid) or buf["user_name"] or "有人"
         # Template: {name}/{昵称}、{count}/{数量}、{verdict}/{结果}
         cmd = get_command(self.real_room_id, "broadcast_blind") or {}
-        tpl = ((cmd.get("config") or {}).get("template") or "").strip() \
-            or "感谢{name}的{count}个盲盒，{verdict}"
+        tpl = self._pick_template(
+            "broadcast_blind",
+            cmd.get("config") or {},
+            "感谢{name}的{count}个盲盒，{verdict}",
+        )
         msg = (
             tpl.replace("{name}", display_name).replace("{昵称}", display_name)
                .replace("{count}", str(buf["count"])).replace("{数量}", str(buf["count"]))
@@ -334,6 +339,24 @@ class BiliLiveClient:
             buf["task"].cancel()
         buf["task"] = asyncio.create_task(self._flush_gift_burst(uid))
 
+    def _pick_template(self, cmd_id: str, cfg: dict, default: str) -> str:
+        """Pick the next template from a multi-template config, round-robin.
+        Accepts new key `templates` (list) and legacy `template` (string)."""
+        raw = cfg.get("templates")
+        if isinstance(raw, list):
+            tpls = [t for t in raw if isinstance(t, str) and t.strip()]
+        else:
+            tpls = []
+        if not tpls:
+            legacy = (cfg.get("template") or "").strip()
+            if legacy:
+                tpls = [legacy]
+        if not tpls:
+            return default
+        idx = self._tpl_idx.get(cmd_id, 0)
+        self._tpl_idx[cmd_id] = idx + 1
+        return tpls[idx % len(tpls)]
+
     # 同一用户多久内不重复欢迎 / 全局多久内最多欢迎一次 (秒)
     WELCOME_PER_USER_COOLDOWN = 5 * 60
     WELCOME_GLOBAL_COOLDOWN = 10
@@ -363,7 +386,7 @@ class BiliLiveClient:
         self._last_welcome_ts = now
         display_name = self._nickname_for(uid) or uname
         cfg = cmd_cfg.get("config") or {}
-        tpl = (cfg.get("template") or "").strip() or "欢迎{name}进入直播间"
+        tpl = self._pick_template("broadcast_welcome", cfg, "欢迎{name}进入直播间")
         msg = (
             tpl.replace("{name}", display_name).replace("{昵称}", display_name)
                .replace("{streamer}", self.streamer_name or "").replace("{主播}", self.streamer_name or "")
@@ -386,8 +409,11 @@ class BiliLiveClient:
         guard_name = extra.get("guard_name") or "舰长"
         content = event.get("content") or "开通"  # "开通" or "续费"
         num = extra.get("num") or 1
-        tpl = ((cmd_cfg.get("config") or {}).get("template") or "").strip() \
-            or "感谢{name}{content}了{num}个月{guard}"
+        tpl = self._pick_template(
+            "broadcast_guard",
+            cmd_cfg.get("config") or {},
+            "感谢{name}{content}了{num}个月{guard}",
+        )
         msg = (
             tpl.replace("{name}", display_name).replace("{昵称}", display_name)
                .replace("{streamer}", self.streamer_name or "").replace("{主播}", self.streamer_name or "")

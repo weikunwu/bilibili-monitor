@@ -14,151 +14,69 @@ const BLIND_DEFAULT_TEMPLATE = '感谢{name}的{count}个盲盒，{verdict}'
 const GUARD_DEFAULT_TEMPLATE = '感谢{name}{content}了{num}个月{guard}'
 const WELCOME_DEFAULT_TEMPLATE = '欢迎{name}进入直播间'
 
-function WelcomeTemplateEditor({
-  roomId, cmdId, initialTemplate, onSaved,
+// 多模版编辑器，用于大航海感谢/盲盒播报/欢迎弹幕，按需提供占位符说明与默认。
+function MultiTemplateEditor({
+  roomId, cmdId, initialTemplates, defaultTemplate, placeholdersHint, onSaved,
 }: {
   roomId: number | null
   cmdId: string
-  initialTemplate: string
-  onSaved: (config: { template: string }) => void
+  initialTemplates: string[]
+  defaultTemplate: string
+  placeholdersHint: React.ReactNode
+  onSaved: (config: { templates: string[] }) => void
 }) {
-  const [tpl, setTpl] = useState(initialTemplate || WELCOME_DEFAULT_TEMPLATE)
+  const [items, setItems] = useState<string[]>(initialTemplates.length ? initialTemplates : [defaultTemplate])
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
 
-  async function persist(template: string) {
+  function upd(idx: number, v: string) {
+    setItems((prev) => prev.map((m, i) => (i === idx ? v : m)))
+  }
+  function rem(idx: number) {
+    setItems((prev) => (prev.length <= 1 ? [''] : prev.filter((_, i) => i !== idx)))
+  }
+  function add() {
+    setItems((prev) => [...prev, ''])
+  }
+
+  async function persist(templates: string[]) {
     if (!roomId) return
+    const cleaned = templates.map((s) => s.trim()).filter(Boolean)
+    const final = cleaned.length ? cleaned : [defaultTemplate]
     setSaving(true)
     try {
-      await saveCommandConfig(roomId, cmdId, { template })
-      onSaved({ template })
+      await saveCommandConfig(roomId, cmdId, { templates: final })
+      onSaved({ templates: final })
       setSaved(true); setTimeout(() => setSaved(false), 1500)
     } finally { setSaving(false) }
   }
 
   return (
     <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <div style={{ fontSize: 12, color: '#888' }}>
-        占位符：<code>{'{name}'}</code> 用户昵称，<code>{'{streamer}'}</code> 主播昵称
-      </div>
-      <Input size="sm" value={tpl} onChange={setTpl} placeholder={WELCOME_DEFAULT_TEMPLATE} />
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
-        <button
-          className="rs-btn rs-btn-subtle rs-btn-sm"
-          style={{ width: 88 }}
-          onClick={() => { setTpl(WELCOME_DEFAULT_TEMPLATE); void persist(WELCOME_DEFAULT_TEMPLATE) }}
-        >恢复默认</button>
-        <button
-          className="rs-btn rs-btn-primary rs-btn-sm"
-          style={{ width: 88 }}
-          onClick={() => persist(tpl.trim() || WELCOME_DEFAULT_TEMPLATE)}
-          disabled={saving}
-        >
-          {saving ? '保存中…' : saved ? '已保存' : '保存'}
-        </button>
-      </div>
-    </div>
-  )
-}
-
-function GuardTemplateEditor({
-  roomId, cmdId, initialTemplate, onSaved,
-}: {
-  roomId: number | null
-  cmdId: string
-  initialTemplate: string
-  onSaved: (config: { template: string }) => void
-}) {
-  const [tpl, setTpl] = useState(initialTemplate || GUARD_DEFAULT_TEMPLATE)
-  const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
-
-  async function persist(template: string) {
-    if (!roomId) return
-    setSaving(true)
-    try {
-      await saveCommandConfig(roomId, cmdId, { template })
-      onSaved({ template })
-      setSaved(true); setTimeout(() => setSaved(false), 1500)
-    } finally { setSaving(false) }
-  }
-
-  return (
-    <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <div style={{ fontSize: 12, color: '#888' }}>
-        占位符：<code>{'{name}'}</code> 用户昵称，<code>{'{streamer}'}</code> 主播昵称，<code>{'{content}'}</code> 开通/续费，<code>{'{num}'}</code> 月数，<code>{'{guard}'}</code> 舰长/提督/总督
-      </div>
-      <Input size="sm" value={tpl} onChange={setTpl} placeholder={GUARD_DEFAULT_TEMPLATE} />
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
-        <button
-          className="rs-btn rs-btn-subtle rs-btn-sm"
-          style={{ width: 88 }}
-          onClick={() => { setTpl(GUARD_DEFAULT_TEMPLATE); void persist(GUARD_DEFAULT_TEMPLATE) }}
-        >恢复默认</button>
-        <button
-          className="rs-btn rs-btn-primary rs-btn-sm"
-          style={{ width: 88 }}
-          onClick={() => persist(tpl.trim() || GUARD_DEFAULT_TEMPLATE)}
-          disabled={saving}
-        >
-          {saving ? '保存中…' : saved ? '已保存' : '保存'}
-        </button>
-      </div>
-    </div>
-  )
-}
-function BlindTemplateEditor({
-  roomId, cmdId, initialTemplate, onSaved,
-}: {
-  roomId: number | null
-  cmdId: string
-  initialTemplate: string
-  onSaved: (config: { template: string }) => void
-}) {
-  const [tpl, setTpl] = useState(initialTemplate || BLIND_DEFAULT_TEMPLATE)
-  const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
-
-  async function handleSave() {
-    if (!roomId) return
-    const template = tpl.trim() || BLIND_DEFAULT_TEMPLATE
-    setSaving(true)
-    try {
-      await saveCommandConfig(roomId, cmdId, { template })
-      onSaved({ template })
-      setSaved(true)
-      setTimeout(() => setSaved(false), 1500)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <div style={{ fontSize: 12, color: '#888' }}>
-        占位符：<code>{'{name}'}</code> 用户昵称，<code>{'{streamer}'}</code> 主播昵称，<code>{'{count}'}</code> 盲盒数，<code>{'{verdict}'}</code> 盈亏（如 "赚3元"/"亏5元"/"不亏不赚"）
-      </div>
-      <Input size="sm" value={tpl} onChange={setTpl} placeholder={BLIND_DEFAULT_TEMPLATE} />
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
-        <button
-          className="rs-btn rs-btn-subtle rs-btn-sm"
-          style={{ width: 88 }}
-          onClick={async () => {
-            if (!roomId) return
-            setTpl(BLIND_DEFAULT_TEMPLATE)
-            await saveCommandConfig(roomId, cmdId, { template: BLIND_DEFAULT_TEMPLATE })
-            onSaved({ template: BLIND_DEFAULT_TEMPLATE })
-            setSaved(true); setTimeout(() => setSaved(false), 1500)
-          }}
-        >恢复默认</button>
-        <button
-          className="rs-btn rs-btn-primary rs-btn-sm"
-          style={{ width: 88 }}
-          onClick={handleSave}
-          disabled={saving}
-        >
-          {saving ? '保存中…' : saved ? '已保存' : '保存'}
-        </button>
+      <div style={{ fontSize: 12, color: '#888' }}>{placeholdersHint}</div>
+      {items.map((m, idx) => (
+        <div key={idx} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <Input size="sm" value={m} onChange={(v) => upd(idx, v)} placeholder={defaultTemplate} style={{ flex: 1 }} />
+          <button className="rs-btn rs-btn-subtle rs-btn-sm" onClick={() => rem(idx)} title="删除">×</button>
+        </div>
+      ))}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <button className="rs-btn rs-btn-subtle rs-btn-sm" onClick={add}>+ 添加一条</button>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button
+            className="rs-btn rs-btn-subtle rs-btn-sm"
+            style={{ width: 88 }}
+            onClick={() => { setItems([defaultTemplate]); void persist([defaultTemplate]) }}
+          >恢复默认</button>
+          <button
+            className="rs-btn rs-btn-primary rs-btn-sm"
+            style={{ width: 88 }}
+            onClick={() => persist(items)}
+            disabled={saving}
+          >
+            {saving ? '保存中…' : saved ? '已保存' : '保存'}
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -336,36 +254,27 @@ export function ToolsPanel({ roomId }: Props) {
               />
             </div>
             <div className="cmd-desc">{cmd.description}</div>
-            {cmd.id === 'broadcast_welcome' && (
-              <WelcomeTemplateEditor
+            {(cmd.id === 'broadcast_welcome' || cmd.id === 'broadcast_guard' || cmd.id === 'broadcast_blind') && (
+              <MultiTemplateEditor
                 roomId={roomId}
                 cmdId={cmd.id}
-                initialTemplate={(cmd.config?.template as string) || ''}
-                onSaved={(config: { template: string }) => {
-                  setCommands((prev) => prev.map((c) => (
-                    c.id === cmd.id ? { ...c, config: { ...c.config, ...config } } : c
-                  )))
-                }}
-              />
-            )}
-            {cmd.id === 'broadcast_guard' && (
-              <GuardTemplateEditor
-                roomId={roomId}
-                cmdId={cmd.id}
-                initialTemplate={(cmd.config?.template as string) || ''}
-                onSaved={(config: { template: string }) => {
-                  setCommands((prev) => prev.map((c) => (
-                    c.id === cmd.id ? { ...c, config: { ...c.config, ...config } } : c
-                  )))
-                }}
-              />
-            )}
-            {cmd.id === 'broadcast_blind' && (
-              <BlindTemplateEditor
-                roomId={roomId}
-                cmdId={cmd.id}
-                initialTemplate={(cmd.config?.template as string) || ''}
-                onSaved={(config: { template: string }) => {
+                initialTemplates={
+                  (cmd.config?.templates as string[])
+                  || (cmd.config?.template ? [cmd.config.template as string] : [])
+                }
+                defaultTemplate={
+                  cmd.id === 'broadcast_welcome' ? WELCOME_DEFAULT_TEMPLATE
+                    : cmd.id === 'broadcast_guard' ? GUARD_DEFAULT_TEMPLATE
+                    : BLIND_DEFAULT_TEMPLATE
+                }
+                placeholdersHint={
+                  cmd.id === 'broadcast_welcome'
+                    ? (<>占位符：<code>{'{name}'}</code> 用户昵称，<code>{'{streamer}'}</code> 主播昵称</>)
+                    : cmd.id === 'broadcast_guard'
+                    ? (<>占位符：<code>{'{name}'}</code> 用户昵称，<code>{'{streamer}'}</code> 主播昵称，<code>{'{content}'}</code> 开通/续费，<code>{'{num}'}</code> 月数，<code>{'{guard}'}</code> 舰长/提督/总督</>)
+                    : (<>占位符：<code>{'{name}'}</code> 用户昵称，<code>{'{streamer}'}</code> 主播昵称，<code>{'{count}'}</code> 盲盒数，<code>{'{verdict}'}</code> 盈亏</>)
+                }
+                onSaved={(config: { templates: string[] }) => {
                   setCommands((prev) => prev.map((c) => (
                     c.id === cmd.id ? { ...c, config: { ...c.config, ...config } } : c
                   )))

@@ -87,7 +87,7 @@ DEFAULT_COMMANDS = [
         "description": "用户开通/续费舰长/提督/总督后，机器人按模版自动发弹幕感谢",
         "default_enabled": True,
         "config": {
-            "template": "感谢{name}{content}了{num}个月{guard}",
+            "templates": ["感谢{name}{content}了{num}个月{guard}"],
         },
     },
     {
@@ -97,7 +97,7 @@ DEFAULT_COMMANDS = [
         "description": "用户开盲盒后，机器人按模版自动发弹幕播报盈亏",
         "default_enabled": True,
         "config": {
-            "template": "感谢{name}的{count}个盲盒，{verdict}",
+            "templates": ["感谢{name}的{count}个盲盒，{verdict}"],
         },
     },
     {
@@ -107,7 +107,7 @@ DEFAULT_COMMANDS = [
         "description": "观众进入直播间时机器人按模版发欢迎（同人 5 分钟内不重复，全局 ≥10 秒）",
         "default_enabled": False,
         "config": {
-            "template": "欢迎{name}进入直播间",
+            "templates": ["欢迎{name}进入直播间"],
         },
     },
     {
