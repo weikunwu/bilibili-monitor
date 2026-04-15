@@ -58,6 +58,10 @@ class BiliLiveClient:
         # Per-user gift thank buffer, same debounce model as blind bursts.
         # Skips free gifts (price == 0) and blind boxes (handled separately).
         self._gift_bursts: dict[int, dict] = {}  # uid -> {user_name, gifts{name:count}, task}
+        # Welcome dedup: uid -> last_sent_epoch; plus global last-sent to
+        # throttle bursty entries so we don't flood chat in popular rooms.
+        self._welcome_sent: dict[int, float] = {}
+        self._last_welcome_ts: float = 0.0
 
     def _make_cookie_header(self) -> dict:
         headers = dict(HEADERS)
@@ -330,6 +334,42 @@ class BiliLiveClient:
             buf["task"].cancel()
         buf["task"] = asyncio.create_task(self._flush_gift_burst(uid))
 
+    # 同一用户多久内不重复欢迎 / 全局多久内最多欢迎一次 (秒)
+    WELCOME_PER_USER_COOLDOWN = 5 * 60
+    WELCOME_GLOBAL_COOLDOWN = 10
+
+    def _maybe_welcome(self, data: dict):
+        """Welcome a user on INTERACT_WORD msg_type=1 (enter). Deduped per
+        uid (30min) and globally throttled (10s) to avoid flooding."""
+        if data.get("msg_type") != 1:  # 1=进入, 2=关注, 3=分享 etc.
+            return
+        if not self.cookies.get("SESSDATA") or self.live_status != 1:
+            return
+        cmd_cfg = get_command(self.real_room_id, "broadcast_welcome")
+        if not cmd_cfg or not cmd_cfg["enabled"]:
+            return
+        uid = data.get("uid") or 0
+        if not uid or uid == self.bot_uid or uid == self.streamer_uid:
+            return
+        uname = data.get("uname") or ""
+        if not uname:
+            return
+        now = time.time()
+        if now - self._welcome_sent.get(uid, 0) < self.WELCOME_PER_USER_COOLDOWN:
+            return
+        if now - self._last_welcome_ts < self.WELCOME_GLOBAL_COOLDOWN:
+            return
+        self._welcome_sent[uid] = now
+        self._last_welcome_ts = now
+        display_name = self._nickname_for(uid) or uname
+        cfg = cmd_cfg.get("config") or {}
+        tpl = (cfg.get("template") or "").strip() or "欢迎{name}进入直播间"
+        msg = (
+            tpl.replace("{name}", display_name).replace("{昵称}", display_name)
+               .replace("{streamer}", self.streamer_name or "").replace("{主播}", self.streamer_name or "")
+        )
+        asyncio.create_task(self.send_danmu(msg))
+
     def _maybe_broadcast_guard_thanks(self, event: dict):
         """Thank guard (上舰/续费) events. One event per merged guard
         purchase, so no debouncing needed — emit directly."""
@@ -501,6 +541,10 @@ class BiliLiveClient:
                                 if base_cmd == "PREPARING":
                                     self.live_status = 0
                                     asyncio.create_task(recorder.stop_for(self.real_room_id))
+                                    continue
+                                if base_cmd == "INTERACT_WORD":
+                                    # 观众进入房间；只处理 msg_type=1 (进入)，关注/分享不管
+                                    self._maybe_welcome(pkt.get("data") or {})
                                     continue
                                 event = handle_message(pkt)
                                 # Guard events arrive split across GUARD_BUY +

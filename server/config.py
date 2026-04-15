@@ -92,12 +92,22 @@ DEFAULT_COMMANDS = [
     },
     {
         "id": "broadcast_blind",
-        "name": "盲盒战绩播报",
+        "name": "盲盒播报",
         "type": "auto_broadcast",
         "description": "用户开盲盒后，机器人按模版自动发弹幕播报盈亏",
         "default_enabled": True,
         "config": {
             "template": "感谢{name}的{count}个盲盒，{verdict}",
+        },
+    },
+    {
+        "id": "broadcast_welcome",
+        "name": "欢迎弹幕",
+        "type": "auto_broadcast",
+        "description": "观众进入直播间时机器人按模版发欢迎（同人 5 分钟内不重复，全局 ≥10 秒）",
+        "default_enabled": False,
+        "config": {
+            "template": "欢迎{name}进入直播间",
         },
     },
     {
