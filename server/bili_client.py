@@ -549,8 +549,14 @@ class BiliLiveClient:
         effect without a restart. Safe no-op when disabled / no messages /
         bot not bound / offline."""
         idx = 0
-        # Short first-sleep so we don't spam right after a reconnect loop.
-        await asyncio.sleep(15)
+        # 先等一个完整 interval 再发，避免每次部署/重连立即发一条。
+        # 初始化时读一次 interval，作为首轮等待时长。
+        cmd0 = get_command(self.real_room_id, "scheduled_danmu") or {}
+        first_wait = max(60, min(3600, int((cmd0.get("config") or {}).get("interval_sec") or 300)))
+        try:
+            await asyncio.sleep(first_wait)
+        except asyncio.CancelledError:
+            raise
         while self._running:
             try:
                 cmd = get_command(self.real_room_id, "scheduled_danmu") or {}
