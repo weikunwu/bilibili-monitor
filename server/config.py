@@ -109,7 +109,7 @@ DEFAULT_COMMANDS = [
         "config": {
             # 三类：普通 / 专属 (戴本房粉丝牌) / 大航海 (本房舰长以上)
             # 各自独立开关 + 模版；命中优先级: 大航海 > 专属 > 普通
-            "normal_enabled": True,
+            "normal_enabled": False,
             "normal_templates": ["欢迎{name}进入直播间"],
             "medal_enabled": False,
             "medal_templates": ["欢迎{name}回家~"],

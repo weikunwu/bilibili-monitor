@@ -207,7 +207,7 @@ interface WelcomeCfg {
   guard_enabled: boolean;  guard_templates: string[]
 }
 const WELCOME_DEFAULTS: WelcomeCfg = {
-  normal_enabled: true,  normal_templates: [WELCOME_DEFAULT_TEMPLATE],
+  normal_enabled: false, normal_templates: [WELCOME_DEFAULT_TEMPLATE],
   medal_enabled: false,  medal_templates: ['欢迎粉丝牌{name}回家~'],
   guard_enabled: false,  guard_templates: ['{guard}{name}驾到！'],
 }
@@ -236,7 +236,7 @@ function WelcomeEditor({
   }
 
   type Kind = 'normal' | 'medal' | 'guard'
-  const labels: Record<Kind, string> = { normal: '普通欢迎', medal: '专属欢迎（戴本房粉丝牌）', guard: '大航海欢迎' }
+  const labels: Record<Kind, string> = { normal: '普通欢迎', medal: '粉丝牌欢迎', guard: '大航海欢迎' }
   const enKey = (k: Kind) => `${k}_enabled` as keyof WelcomeCfg
   const tplKey = (k: Kind) => `${k}_templates` as keyof WelcomeCfg
 
@@ -295,7 +295,7 @@ function WelcomeEditor({
   return (
     <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={{ fontSize: 12, color: '#888' }}>
-        占位符：<code>{'{name}'}</code> 用户昵称，<code>{'{streamer}'}</code> 主播昵称，<code>{'{guard}'}</code> 舰长/提督/总督（仅大航海欢迎）。优先级：大航海 &gt; 专属 &gt; 普通
+        占位符：<code>{'{name}'}</code> 用户昵称，<code>{'{streamer}'}</code> 主播昵称，<code>{'{guard}'}</code> 舰长/提督/总督（仅大航海欢迎）。优先级：大航海 &gt; 粉丝牌 &gt; 普通
       </div>
       <div style={{
         display: 'grid',
