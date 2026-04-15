@@ -664,8 +664,10 @@ class BiliLiveClient:
                         log.info(f"[自动送礼] 房间 {self.room_id} 送出礼物 gift_id={gift_id} x{gift_num}")
                     else:
                         log.warning(f"[自动送礼] 失败: {data}")
+                        asyncio.create_task(self.send_danmu("[打个有效] 送礼失败"))
         except Exception as e:
             log.warning(f"[自动送礼] 异常: {e}")
+            asyncio.create_task(self.send_danmu("[打个有效] 送礼失败"))
 
     async def send_danmu(self, msg: str):
         if not self.cookies.get("SESSDATA"):
