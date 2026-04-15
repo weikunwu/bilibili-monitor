@@ -284,6 +284,10 @@ def save_room_settings(room_id: int, settings: dict):
 
 def get_room_commands(room_id: int) -> list[dict]:
     cmds = get_all_commands()
+    # 保持与 DEFAULT_COMMANDS 中声明顺序一致；DB 原始顺序按插入时间，新增指令
+    # 会排到末尾，重排序 DEFAULT_COMMANDS 不会自动生效。
+    order = {c["id"]: i for i, c in enumerate(DEFAULT_COMMANDS)}
+    cmds.sort(key=lambda c: order.get(c["id"], 10_000))
     settings = get_room_settings(room_id)
     cmd_states = settings.get("commands", {})
     cmd_configs = settings.get("commands_config", {})

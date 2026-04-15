@@ -330,6 +330,33 @@ class BiliLiveClient:
             buf["task"].cancel()
         buf["task"] = asyncio.create_task(self._flush_gift_burst(uid))
 
+    def _maybe_broadcast_guard_thanks(self, event: dict):
+        """Thank guard (上舰/续费) events. One event per merged guard
+        purchase, so no debouncing needed — emit directly."""
+        if event.get("event_type") != "guard":
+            return
+        if not self.cookies.get("SESSDATA"):
+            return
+        cmd_cfg = get_command(self.real_room_id, "broadcast_guard")
+        if not cmd_cfg or not cmd_cfg["enabled"]:
+            return
+        extra = event.get("extra") or {}
+        uid = event.get("user_id") or 0
+        display_name = self._nickname_for(uid) or event.get("user_name", "") or "有人"
+        guard_name = extra.get("guard_name") or "舰长"
+        content = event.get("content") or "开通"  # "开通" or "续费"
+        num = extra.get("num") or 1
+        tpl = ((cmd_cfg.get("config") or {}).get("template") or "").strip() \
+            or "感谢{name}{content}了{num}个月{guard}"
+        msg = (
+            tpl.replace("{name}", display_name).replace("{昵称}", display_name)
+               .replace("{streamer}", self.streamer_name or "").replace("{主播}", self.streamer_name or "")
+               .replace("{guard}", guard_name).replace("{舰长}", guard_name)
+               .replace("{content}", content).replace("{动作}", content)
+               .replace("{num}", str(num)).replace("{月数}", str(num))
+        )
+        asyncio.create_task(self.send_danmu(msg))
+
     async def _flush_gift_burst(self, uid: int):
         try:
             await asyncio.sleep(self.BLIND_IDLE_SEC)
@@ -496,6 +523,7 @@ class BiliLiveClient:
                                     self._maybe_clip(event)
                                     self._maybe_broadcast_blind(event)
                                     self._maybe_broadcast_gift_thanks(event)
+                                    self._maybe_broadcast_guard_thanks(event)
                                     # 指令系统
                                     if event.get("event_type") == "danmu":
                                         uid = event.get("user_id")

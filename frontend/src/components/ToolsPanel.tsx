@@ -11,6 +11,54 @@ interface Props {
 }
 
 const BLIND_DEFAULT_TEMPLATE = '感谢{name}的{count}个盲盒，{verdict}'
+const GUARD_DEFAULT_TEMPLATE = '感谢{name}{content}了{num}个月{guard}'
+
+function GuardTemplateEditor({
+  roomId, cmdId, initialTemplate, onSaved,
+}: {
+  roomId: number | null
+  cmdId: string
+  initialTemplate: string
+  onSaved: (config: { template: string }) => void
+}) {
+  const [tpl, setTpl] = useState(initialTemplate || GUARD_DEFAULT_TEMPLATE)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+
+  async function persist(template: string) {
+    if (!roomId) return
+    setSaving(true)
+    try {
+      await saveCommandConfig(roomId, cmdId, { template })
+      onSaved({ template })
+      setSaved(true); setTimeout(() => setSaved(false), 1500)
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ fontSize: 12, color: '#888' }}>
+        占位符：<code>{'{name}'}</code> 用户昵称，<code>{'{streamer}'}</code> 主播昵称，<code>{'{content}'}</code> 开通/续费，<code>{'{num}'}</code> 月数，<code>{'{guard}'}</code> 舰长/提督/总督
+      </div>
+      <Input size="sm" value={tpl} onChange={setTpl} placeholder={GUARD_DEFAULT_TEMPLATE} />
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
+        <button
+          className="rs-btn rs-btn-subtle rs-btn-sm"
+          style={{ width: 88 }}
+          onClick={() => { setTpl(GUARD_DEFAULT_TEMPLATE); void persist(GUARD_DEFAULT_TEMPLATE) }}
+        >恢复默认</button>
+        <button
+          className="rs-btn rs-btn-primary rs-btn-sm"
+          style={{ width: 88 }}
+          onClick={() => persist(tpl.trim() || GUARD_DEFAULT_TEMPLATE)}
+          disabled={saving}
+        >
+          {saving ? '保存中…' : saved ? '已保存' : '保存'}
+        </button>
+      </div>
+    </div>
+  )
+}
 function BlindTemplateEditor({
   roomId, cmdId, initialTemplate, onSaved,
 }: {
@@ -240,6 +288,18 @@ export function ToolsPanel({ roomId }: Props) {
               />
             </div>
             <div className="cmd-desc">{cmd.description}</div>
+            {cmd.id === 'broadcast_guard' && (
+              <GuardTemplateEditor
+                roomId={roomId}
+                cmdId={cmd.id}
+                initialTemplate={(cmd.config?.template as string) || ''}
+                onSaved={(config: { template: string }) => {
+                  setCommands((prev) => prev.map((c) => (
+                    c.id === cmd.id ? { ...c, config: { ...c.config, ...config } } : c
+                  )))
+                }}
+              />
+            )}
             {cmd.id === 'broadcast_blind' && (
               <BlindTemplateEditor
                 roomId={roomId}

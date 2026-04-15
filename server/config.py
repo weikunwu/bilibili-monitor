@@ -73,6 +73,24 @@ DEFAULT_COMMANDS = [
         },
     },
     {
+        "id": "broadcast_gift",
+        "name": "礼物感谢",
+        "type": "auto_broadcast",
+        "description": "用户送出付费礼物（盲盒除外）后，机器人自动发弹幕感谢",
+        "default_enabled": True,
+        "config": {},
+    },
+    {
+        "id": "broadcast_guard",
+        "name": "大航海感谢",
+        "type": "auto_broadcast",
+        "description": "用户开通/续费舰长/提督/总督后，机器人按模版自动发弹幕感谢",
+        "default_enabled": True,
+        "config": {
+            "template": "感谢{name}{content}了{num}个月{guard}",
+        },
+    },
+    {
         "id": "broadcast_blind",
         "name": "盲盒战绩播报",
         "type": "auto_broadcast",
@@ -81,14 +99,6 @@ DEFAULT_COMMANDS = [
         "config": {
             "template": "感谢{name}的{count}个盲盒，{verdict}",
         },
-    },
-    {
-        "id": "nickname_commands",
-        "name": "昵称功能",
-        "type": "user_danmu",
-        "description": '观众发"叫我 xxx"设置昵称、"清除昵称"清除，机器人回弹幕确认；关闭后数据库保留昵称但所有播报/查询不再使用',
-        "default_enabled": True,
-        "config": {},
     },
     {
         "id": "scheduled_danmu",
@@ -101,10 +111,10 @@ DEFAULT_COMMANDS = [
         },
     },
     {
-        "id": "broadcast_gift",
-        "name": "礼物感谢",
-        "type": "auto_broadcast",
-        "description": "用户送出付费礼物（盲盒除外）后，机器人自动发弹幕感谢",
+        "id": "nickname_commands",
+        "name": "昵称功能",
+        "type": "user_danmu",
+        "description": '观众发"叫我 xxx"设置昵称、"清除昵称"清除，机器人回弹幕确认；关闭后数据库保留昵称但所有播报/查询不再使用',
         "default_enabled": True,
         "config": {},
     },
