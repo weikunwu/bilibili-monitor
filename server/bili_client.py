@@ -110,6 +110,9 @@ class BiliLiveClient:
         self._last_welcome_ts: float = 0.0
         # 天选/红包期间暂停欢迎弹幕到该时间点 (epoch)。0 表示未暂停。
         self._welcome_pause_until: float = 0.0
+        # B站 同时下发 V1 和 V2 的房间存在；优先 V2，没见过 V2 时回退 V1。
+        self._seen_v2_interact: bool = False
+        self._seen_v2_red_pocket: bool = False
         # Per-command round-robin index for multi-template broadcasts.
         self._tpl_idx: dict[str, int] = {}
 
@@ -618,17 +621,26 @@ class BiliLiveClient:
                                     self.live_status = 0
                                     asyncio.create_task(recorder.stop_for(self.real_room_id))
                                     continue
-                                if base_cmd in ("INTERACT_WORD", "INTERACT_WORD_V2"):
-                                    # V1 data 已是 dict；V2 的 data.pb 是 base64 protobuf，
-                                    # 按 B站 InteractWord schema 取 field1=uid / field2=uname
-                                    # / field3=msg_type。
+                                if base_cmd == "INTERACT_WORD_V2":
+                                    # data.pb 是 base64 protobuf，按 B站 InteractWord
+                                    # schema 取 field1=uid / field2=uname / field3=msg_type
+                                    self._seen_v2_interact = True
                                     data = pkt.get("data") or {}
-                                    if base_cmd == "INTERACT_WORD_V2" and isinstance(data, dict) and data.get("pb"):
-                                        data = _decode_interact_word_pb(data["pb"])
-                                    self._maybe_welcome(data)
+                                    if isinstance(data, dict) and data.get("pb"):
+                                        self._maybe_welcome(_decode_interact_word_pb(data["pb"]))
+                                    continue
+                                if base_cmd == "INTERACT_WORD":
+                                    # 仅在没收到过 V2 时回退到 V1 (避免 V1+V2 同时触发)
+                                    if not self._seen_v2_interact:
+                                        self._maybe_welcome(pkt.get("data") or {})
                                     continue
                                 # 天选/红包期间暂停欢迎弹幕（避免刷屏），并发一条提示
                                 # B站 有 V1 / V2 两套 cmd (V2 为 pb 编码)，都当触发。
+                                # V1 红包 cmd 仅在没看到 V2 时生效
+                                if base_cmd in ("POPULARITY_RED_POCKET_V2_NEW", "POPULARITY_RED_POCKET_V2_START"):
+                                    self._seen_v2_red_pocket = True
+                                if base_cmd in ("POPULARITY_RED_POCKET_NEW", "POPULARITY_RED_POCKET_START") and self._seen_v2_red_pocket:
+                                    continue
                                 if base_cmd in (
                                     "ANCHOR_LOT_START",
                                     "POPULARITY_RED_POCKET_NEW", "POPULARITY_RED_POCKET_START",
@@ -651,6 +663,8 @@ class BiliLiveClient:
                                     if not was_paused and self.cookies.get("SESSDATA"):
                                         notice = "天选时刻开启，快来参与！" if base_cmd == "ANCHOR_LOT_START" else "红包来啦，快冲！"
                                         asyncio.create_task(self.send_danmu(notice))
+                                    continue
+                                if base_cmd == "POPULARITY_RED_POCKET_WINNER_LIST" and self._seen_v2_red_pocket:
                                     continue
                                 if base_cmd in (
                                     "ANCHOR_LOT_END", "ANCHOR_LOT_AWARD",
