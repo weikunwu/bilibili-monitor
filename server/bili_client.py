@@ -561,8 +561,8 @@ class BiliLiveClient:
                 if not cmd.get("enabled") or not self.cookies.get("SESSDATA"):
                     continue
                 cfg = cmd.get("config") or {}
-                wait_sec = max(10, min(900, int(cfg.get("wait_sec") or 900)))
-                tpl = (cfg.get("template") or "").strip() or "@{name} 说点什么呀~"
+                wait_sec = max(300, min(900, int(cfg.get("wait_sec") or 900)))
+                tpl = (cfg.get("template") or "").strip() or "说点什么呀~"
                 now = time.time()
                 due = [(uid, uname) for uid, (uname, ts) in self._lurkers.items() if now - ts >= wait_sec]
                 if not due:

@@ -135,7 +135,7 @@ DEFAULT_COMMANDS = [
         "default_enabled": False,
         "config": {
             "wait_sec": 900,  # 15 分钟
-            "template": "@{name} 说点什么呀~",
+            "template": "说点什么呀~",
         },
     },
     {

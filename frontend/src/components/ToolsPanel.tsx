@@ -13,7 +13,7 @@ interface Props {
 
 const BLIND_DEFAULT_TEMPLATE = '感谢{name}的{count}个盲盒，{verdict}'
 const GUARD_DEFAULT_TEMPLATE = '感谢{name}{content}了{num}个月{guard}'
-const LURKER_DEFAULT_TEMPLATE = '@{name} 说点什么呀~'
+const LURKER_DEFAULT_TEMPLATE = '说点什么呀~'
 
 function LurkerEditor({
   roomId, cmdId, initialTemplate, initialWaitSec, onSaved,
@@ -40,7 +40,7 @@ function LurkerEditor({
   }
 
   const waitNum = Number(wait)
-  const waitInvalid = wait !== '' && Number.isFinite(waitNum) && (waitNum < 10 || waitNum > 900)
+  const waitInvalid = wait !== '' && Number.isFinite(waitNum) && (waitNum < 300 || waitNum > 900)
 
   return (
     <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -58,11 +58,11 @@ function LurkerEditor({
           onBlur={() => {
             const n = Number(wait)
             if (!Number.isFinite(n) || wait === '') setWait('900')
-            else if (n < 10) setWait('10')
+            else if (n < 300) setWait('300')
             else if (n > 900) setWait('900')
           }}
         />
-        <InputGroup.Addon>秒 (10–900)</InputGroup.Addon>
+        <InputGroup.Addon>秒 (300–900)</InputGroup.Addon>
       </InputGroup>
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
         <button
@@ -74,7 +74,7 @@ function LurkerEditor({
         >恢复默认</button>
         <button
           className="rs-btn rs-btn-primary rs-btn-sm" style={{ width: 88 }}
-          onClick={() => persist(tpl.trim() || LURKER_DEFAULT_TEMPLATE, Math.max(10, Math.min(900, Number(wait) || 900)))}
+          onClick={() => persist(tpl.trim() || LURKER_DEFAULT_TEMPLATE, Math.max(300, Math.min(900, Number(wait) || 900)))}
           disabled={saving}
         >
           {saving ? '保存中…' : saved ? '已保存' : '保存'}
