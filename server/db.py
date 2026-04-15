@@ -281,11 +281,17 @@ def get_room_commands(room_id: int) -> list[dict]:
     cmds = get_all_commands()
     settings = get_room_settings(room_id)
     cmd_states = settings.get("commands", {})
+    cmd_configs = settings.get("commands_config", {})
     # Fall back to the DEFAULT_COMMANDS `default_enabled` flag when the
     # room hasn't explicitly opted in/out yet.
     defaults = {c["id"]: bool(c.get("default_enabled", False)) for c in DEFAULT_COMMANDS}
     for c in cmds:
         c["enabled"] = cmd_states.get(c["id"], defaults.get(c["id"], False))
+        # Per-room config overrides merge on top of the base config so a
+        # room can pick its own gift for "打个有效" without mutating defaults.
+        override = cmd_configs.get(c["id"])
+        if isinstance(override, dict):
+            c["config"] = {**c["config"], **override}
     return cmds
 
 
@@ -293,6 +299,13 @@ def save_command_state(room_id: int, cmd_id: str, enabled: bool):
     settings = get_room_settings(room_id)
     commands = settings.setdefault("commands", {})
     commands[cmd_id] = enabled
+    save_room_settings(room_id, settings)
+
+
+def save_command_config(room_id: int, cmd_id: str, config: dict):
+    settings = get_room_settings(room_id)
+    cfgs = settings.setdefault("commands_config", {})
+    cfgs[cmd_id] = config
     save_room_settings(room_id, settings)
 
 

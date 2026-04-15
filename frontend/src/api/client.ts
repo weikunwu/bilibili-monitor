@@ -190,6 +190,21 @@ export async function toggleCommand(roomId: number, cmdId: string): Promise<void
   await fetch(`/api/commands/${cmdId}/toggle?room_id=${roomId}`, { method: 'POST' })
 }
 
+export async function saveCommandConfig(roomId: number, cmdId: string, config: Record<string, unknown>): Promise<void> {
+  await fetch(`/api/commands/${cmdId}/config?room_id=${roomId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ config }),
+  })
+}
+
+export interface CheapGift { gift_id: number; name: string; price: number; img: string }
+export async function fetchCheapGifts(roomId: number): Promise<CheapGift[]> {
+  const res = await fetch(`/api/rooms/${roomId}/cheap-gifts`)
+  if (!res.ok) return []
+  return res.json()
+}
+
 export async function fetchGiftSummary(
   roomId: number,
   userName: string,

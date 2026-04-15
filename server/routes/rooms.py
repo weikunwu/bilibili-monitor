@@ -8,7 +8,7 @@ from fastapi.responses import HTMLResponse
 
 from .. import recorder
 from ..db import (
-    get_room_commands, save_command_state, get_command, get_all_rooms,
+    get_room_commands, save_command_state, save_command_config, get_command, get_all_rooms,
     get_room_save_danmu, set_room_save_danmu, get_room_auto_clip, set_room_auto_clip,
     list_nicknames, upsert_nickname, delete_nickname, list_room_users,
 )
@@ -256,3 +256,47 @@ async def toggle_command(cmd_id: str, room_id: int = Query(...), _=Depends(requi
     cmd["enabled"] = not cmd["enabled"]
     save_command_state(room_id, cmd_id, cmd["enabled"])
     return {"id": cmd_id, "room_id": room_id, "enabled": cmd["enabled"]}
+
+
+@router.post("/api/commands/{cmd_id}/config")
+async def set_command_config(cmd_id: str, request: Request, room_id: int = Query(...), _=Depends(require_room_access)):
+    """Per-room override for a command's config dict (merged on top of base)."""
+    cmd = get_command(room_id, cmd_id)
+    if not cmd:
+        raise HTTPException(404, "指令不存在")
+    body = await request.json()
+    cfg = body.get("config") or {}
+    if not isinstance(cfg, dict):
+        raise HTTPException(400, "config 必须是对象")
+    save_command_config(room_id, cmd_id, cfg)
+    return {"id": cmd_id, "room_id": room_id, "config": cfg}
+
+
+# B站 直播间礼物面板，本地 ¥1 以内的礼物用于"打个有效"等指令选择
+_GIFT_PANEL_API = "https://api.live.bilibili.com/xlive/web-room/v1/giftPanel/giftConfig"
+
+
+@router.get("/api/rooms/{room_id}/cheap-gifts")
+async def cheap_gifts(room_id: int, _=Depends(require_room_access)):
+    """单价 ≤ ¥1 (≤1000 金瓜子) 的金瓜子礼物列表。"""
+    try:
+        async with aiohttp.ClientSession(headers=HEADERS) as session:
+            async with session.get(_GIFT_PANEL_API, params={"platform": "pc", "room_id": room_id}, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                data = await resp.json()
+    except Exception as e:
+        raise HTTPException(502, f"礼物列表获取失败: {e}")
+    items = (data.get("data") or {}).get("list") or []
+    cheap = []
+    for g in items:
+        # 只要金瓜子礼物且单价 ≤ 1000 (¥1)，跳过免费礼物 (price <= 0)
+        price = int(g.get("price") or 0)
+        if g.get("coin_type") != "gold" or price <= 0 or price > 1000:
+            continue
+        cheap.append({
+            "gift_id": int(g.get("id") or 0),
+            "name": g.get("name") or "",
+            "price": price,                   # 金瓜子
+            "img": g.get("img_basic") or g.get("img_dynamic") or "",
+        })
+    cheap.sort(key=lambda x: x["price"])
+    return cheap

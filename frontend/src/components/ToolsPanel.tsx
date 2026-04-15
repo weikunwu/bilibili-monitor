@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react'
-import { Toggle } from 'rsuite'
+import { Toggle, SelectPicker } from 'rsuite'
 import type { Command } from '../types'
-import { fetchCommands, toggleCommand, fetchAutoClip, toggleAutoClip } from '../api/client'
+import {
+  fetchCommands, toggleCommand, fetchAutoClip, toggleAutoClip,
+  fetchCheapGifts, saveCommandConfig, type CheapGift,
+} from '../api/client'
 
 interface Props {
   roomId: number | null
@@ -10,12 +13,27 @@ interface Props {
 export function ToolsPanel({ roomId }: Props) {
   const [commands, setCommands] = useState<Command[]>([])
   const [autoClip, setAutoClip] = useState(false)
+  const [cheapGifts, setCheapGifts] = useState<CheapGift[]>([])
 
   useEffect(() => {
     if (!roomId) return
     fetchCommands(roomId).then(setCommands).catch(() => {})
     fetchAutoClip(roomId).then(setAutoClip).catch(() => {})
+    fetchCheapGifts(roomId).then(setCheapGifts).catch(() => {})
   }, [roomId])
+
+  // 选中礼物后保存 config，数量按"总价 ≥ 1元"凑：1元 = 1000 金瓜子。
+  async function handleAutoGiftChange(cmdIndex: number, giftId: number | null) {
+    if (!roomId || giftId == null) return
+    const g = cheapGifts.find((x) => x.gift_id === giftId)
+    if (!g) return
+    const num = Math.max(1, Math.ceil(1000 / g.price))
+    const config = { gift_id: g.gift_id, gift_price: g.price, gift_num: num }
+    await saveCommandConfig(roomId, commands[cmdIndex].id, config)
+    setCommands((prev) => prev.map((c, i) => (
+      i === cmdIndex ? { ...c, config: { ...c.config, ...config } } : c
+    )))
+  }
 
   async function handleToggle(cmdId: string, index: number) {
     if (!roomId) return
@@ -40,6 +58,24 @@ export function ToolsPanel({ roomId }: Props) {
           <div className="cmd-info">
             <div className="cmd-name">{cmd.name}</div>
             <div className="cmd-desc">{cmd.description}</div>
+            {cmd.id === 'auto_gift' && cheapGifts.length > 0 && (
+              <div style={{ marginTop: 6 }}>
+                <SelectPicker
+                  size="sm"
+                  searchable
+                  cleanable={false}
+                  data={cheapGifts.map((g) => {
+                    const num = Math.max(1, Math.ceil(1000 / g.price))
+                    const total = ((g.price * num) / 1000).toFixed(1).replace(/\.0$/, '')
+                    return { label: `${g.name} ×${num} (¥${total})`, value: g.gift_id }
+                  })}
+                  value={cmd.config?.gift_id ?? null}
+                  onChange={(v) => handleAutoGiftChange(i, v as number | null)}
+                  placeholder="选择礼物"
+                  style={{ width: 240 }}
+                />
+              </div>
+            )}
           </div>
           <Toggle
             checked={cmd.enabled}
