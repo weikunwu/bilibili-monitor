@@ -62,6 +62,8 @@ class BiliLiveClient:
         # throttle bursty entries so we don't flood chat in popular rooms.
         self._welcome_sent: dict[int, float] = {}
         self._last_welcome_ts: float = 0.0
+        # 天选/红包期间暂停欢迎弹幕到该时间点 (epoch)。0 表示未暂停。
+        self._welcome_pause_until: float = 0.0
         # Per-command round-robin index for multi-template broadcasts.
         self._tpl_idx: dict[str, int] = {}
 
@@ -368,6 +370,8 @@ class BiliLiveClient:
             return
         if not self.cookies.get("SESSDATA") or self.live_status != 1:
             return
+        if time.time() < self._welcome_pause_until:
+            return  # 天选/红包期间不刷欢迎
         cmd_cfg = get_command(self.real_room_id, "broadcast_welcome")
         if not cmd_cfg or not cmd_cfg["enabled"]:
             return
@@ -571,6 +575,30 @@ class BiliLiveClient:
                                 if base_cmd == "INTERACT_WORD":
                                     # 观众进入房间；只处理 msg_type=1 (进入)，关注/分享不管
                                     self._maybe_welcome(pkt.get("data") or {})
+                                    continue
+                                # 天选/红包期间暂停欢迎弹幕（避免刷屏），并发一条提示
+                                if base_cmd in ("ANCHOR_LOT_START", "POPULARITY_RED_POCKET_NEW", "POPULARITY_RED_POCKET_START"):
+                                    data = pkt.get("data") or {}
+                                    end_ts = 0
+                                    for k in ("end_time", "end_ts", "lot_end_time"):
+                                        v = data.get(k) or 0
+                                        if isinstance(v, (int, float)) and v > 1e9:
+                                            end_ts = float(v)
+                                            break
+                                    was_paused = self._welcome_pause_until > time.time()
+                                    self._welcome_pause_until = max(
+                                        self._welcome_pause_until,
+                                        end_ts + 30 if end_ts else time.time() + 15 * 60,
+                                    )
+                                    # 同一活动 B站 可能下发多次 START/NEW，用 pause 判断
+                                    # 是否首次收到，避免重复通知
+                                    if not was_paused and self.cookies.get("SESSDATA"):
+                                        notice = "天选时刻开启，快来参与！" if base_cmd == "ANCHOR_LOT_START" else "红包来啦，快冲！"
+                                        asyncio.create_task(self.send_danmu(notice))
+                                    continue
+                                if base_cmd in ("ANCHOR_LOT_END", "ANCHOR_LOT_AWARD", "POPULARITY_RED_POCKET_WINNER_LIST"):
+                                    # 给 30 秒缓冲再恢复，避免和紧随的中奖弹幕抢发
+                                    self._welcome_pause_until = time.time() + 30
                                     continue
                                 event = handle_message(pkt)
                                 # Guard events arrive split across GUARD_BUY +
