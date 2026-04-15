@@ -272,31 +272,63 @@ async def set_command_config(cmd_id: str, request: Request, room_id: int = Query
     return {"id": cmd_id, "room_id": room_id, "config": cfg}
 
 
-# B站 直播间礼物面板，本地 ¥1 以内的礼物用于"打个有效"等指令选择
-_GIFT_PANEL_API = "https://api.live.bilibili.com/xlive/web-room/v1/giftPanel/giftConfig"
+# 房间级礼物面板（只返回在该房间真正可送的礼物；全局 giftConfig 会包含不能送的）
+_ROOM_GIFT_API = "https://api.live.bilibili.com/xlive/web-room/v1/giftPanel/roomGiftConfig"
 
 
 @router.get("/api/rooms/{room_id}/cheap-gifts")
 async def cheap_gifts(room_id: int, _=Depends(require_room_access)):
-    """单价 ≤ ¥1 (≤1000 金瓜子) 的金瓜子礼物列表。"""
+    """单价 ≤ ¥1 (≤1000 金瓜子) 的金瓜子礼物列表，按房间实际可送过滤。"""
+    client = manager.get(room_id)
+    real_room = client.real_room_id if client and client.real_room_id else room_id
     try:
         async with aiohttp.ClientSession(headers=HEADERS) as session:
-            async with session.get(_GIFT_PANEL_API, params={"platform": "pc", "room_id": room_id}, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+            # 先取房间所在分区，roomGiftConfig 需要 area_parent_id / area_id 过滤分区专属礼物
+            async with session.get(ROOM_INFO_API, params={"room_id": real_room}, timeout=aiohttp.ClientTimeout(total=10)) as r:
+                ri = (await r.json()).get("data") or {}
+            params = {
+                "platform": "pc", "room_id": real_room,
+                "area_parent_id": ri.get("parent_area_id", 0),
+                "area_id": ri.get("area_id", 0),
+            }
+            async with session.get(_ROOM_GIFT_API, params=params, timeout=aiohttp.ClientTimeout(total=10)) as resp:
                 data = await resp.json()
     except Exception as e:
         raise HTTPException(502, f"礼物列表获取失败: {e}")
-    items = (data.get("data") or {}).get("list") or []
+    # roomGiftConfig 返回结构: data.list (tab 列表) + 各 tab 下 gift_ids/gifts，或 data.tab_list。
+    # 简化处理: 收集所有 gift dict，再去全局 giftConfig 拿详情也行 —— 但 roomGiftConfig 已含 id/name/price。
+    gifts = []
+    d = data.get("data") or {}
+    for tab in (d.get("list") or d.get("tab_list") or []):
+        for g in (tab.get("gift_list") or tab.get("gifts") or []):
+            gifts.append(g)
+    # 某些返回只有 gift_ids，再单独走 giftConfig 查详情
+    if not gifts and d.get("gift_ids"):
+        async with aiohttp.ClientSession(headers=HEADERS) as session:
+            async with session.get(
+                "https://api.live.bilibili.com/xlive/web-room/v1/giftPanel/giftConfig",
+                params={"platform": "pc", "room_id": real_room},
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                all_cfg = await resp.json()
+        allowed = set(d.get("gift_ids") or [])
+        gifts = [g for g in ((all_cfg.get("data") or {}).get("list") or []) if g.get("id") in allowed]
+
     cheap = []
-    for g in items:
-        # 只要金瓜子礼物且单价 ≤ 1000 (¥1)，跳过免费礼物 (price <= 0)
+    seen = set()
+    for g in gifts:
+        gid = int(g.get("id") or g.get("gift_id") or 0)
+        if not gid or gid in seen:
+            continue
         price = int(g.get("price") or 0)
         if g.get("coin_type") != "gold" or price <= 0 or price > 1000:
             continue
+        seen.add(gid)
         cheap.append({
-            "gift_id": int(g.get("id") or 0),
-            "name": g.get("name") or "",
-            "price": price,                   # 金瓜子
-            "img": g.get("img_basic") or g.get("img_dynamic") or "",
+            "gift_id": gid,
+            "name": g.get("name") or g.get("gift_name") or "",
+            "price": price,
+            "img": g.get("img_basic") or g.get("gift_img") or g.get("img_dynamic") or "",
         })
     cheap.sort(key=lambda x: x["price"])
     return cheap

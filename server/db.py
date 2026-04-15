@@ -52,9 +52,14 @@ def init_db():
         )
     """)
     # Idempotent seed so new DEFAULT_COMMANDS show up on already-populated DBs.
+    # Upsert name/description/config (not id) so editing DEFAULT_COMMANDS
+    # actually updates the UI on existing installs; per-room enabled/config
+    # overrides live in rooms.settings_json and aren't touched here.
     for cmd in DEFAULT_COMMANDS:
         conn.execute(
-            "INSERT OR IGNORE INTO commands (id, name, type, description, config_json) VALUES (?,?,?,?,?)",
+            "INSERT INTO commands (id, name, type, description, config_json) VALUES (?,?,?,?,?) "
+            "ON CONFLICT(id) DO UPDATE SET name=excluded.name, type=excluded.type, "
+            "description=excluded.description, config_json=excluded.config_json",
             (cmd["id"], cmd["name"], cmd["type"], cmd["description"], json.dumps(cmd["config"], ensure_ascii=False)),
         )
     # Drop stale commands that have been removed from DEFAULT_COMMANDS, and

@@ -64,7 +64,7 @@ DEFAULT_COMMANDS = [
         "id": "auto_gift",
         "name": "打个有效",
         "type": "streamer_danmu",
-        "description": '主播发送"打个有效"时自动送小花花 x10 (10电池)',
+        "description": '主播发送"打个有效"时自动送10电池',
         "config": {
             "trigger": "打个有效",
             "gift_id": 31036,
