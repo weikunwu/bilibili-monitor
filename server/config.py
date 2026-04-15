@@ -107,7 +107,14 @@ DEFAULT_COMMANDS = [
         "description": "观众进入直播间时机器人按模版发欢迎（同人 5 分钟内不重复，全局 ≥10 秒）",
         "default_enabled": False,
         "config": {
-            "templates": ["欢迎{name}进入直播间"],
+            # 三类：普通 / 专属 (戴本房粉丝牌) / 大航海 (本房舰长以上)
+            # 各自独立开关 + 模版；命中优先级: 大航海 > 专属 > 普通
+            "normal_enabled": True,
+            "normal_templates": ["欢迎{name}进入直播间"],
+            "medal_enabled": False,
+            "medal_templates": ["欢迎{name}回家~"],
+            "guard_enabled": False,
+            "guard_templates": ["{guard}{name}驾到！"],
         },
     },
     {

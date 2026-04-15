@@ -199,6 +199,118 @@ function ScheduledDanmuEditor({
   )
 }
 
+// 欢迎弹幕：MultiTemplateEditor + 粉丝牌门槛
+interface WelcomeCfg {
+  normal_enabled: boolean; normal_templates: string[]
+  medal_enabled: boolean;  medal_templates: string[]
+  guard_enabled: boolean;  guard_templates: string[]
+}
+const WELCOME_DEFAULTS: WelcomeCfg = {
+  normal_enabled: true,  normal_templates: [WELCOME_DEFAULT_TEMPLATE],
+  medal_enabled: false,  medal_templates: ['欢迎粉丝牌{name}回家~'],
+  guard_enabled: false,  guard_templates: ['{guard}{name}驾到！'],
+}
+
+function WelcomeEditor({
+  roomId, cmdId, initial, onSaved,
+}: {
+  roomId: number | null
+  cmdId: string
+  initial: WelcomeCfg
+  onSaved: (config: WelcomeCfg) => void
+}) {
+  const [cfg, setCfg] = useState<WelcomeCfg>(initial)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+
+  async function persist(next: WelcomeCfg) {
+    if (!roomId) return
+    setSaving(true)
+    try {
+      await saveCommandConfig(roomId, cmdId, next as unknown as Record<string, unknown>)
+      onSaved(next)
+      setSaved(true); setTimeout(() => setSaved(false), 1500)
+    } finally { setSaving(false) }
+  }
+
+  type Kind = 'normal' | 'medal' | 'guard'
+  const labels: Record<Kind, string> = { normal: '普通欢迎', medal: '专属欢迎（戴本房粉丝牌）', guard: '大航海欢迎' }
+  const enKey = (k: Kind) => `${k}_enabled` as keyof WelcomeCfg
+  const tplKey = (k: Kind) => `${k}_templates` as keyof WelcomeCfg
+
+  function section(k: Kind) {
+    const enabled = cfg[enKey(k)] as boolean
+    const items = (cfg[tplKey(k)] as string[]) || []
+    const placeholder = WELCOME_DEFAULTS[tplKey(k)] as string[]
+    return (
+      <div key={k} style={{ border: '1px solid #2a2a2a', borderRadius: 6, padding: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 500 }}>
+          <input
+            type="checkbox"
+            checked={enabled}
+            onChange={(e) => setCfg({ ...cfg, [enKey(k)]: e.target.checked })}
+          />
+          {labels[k]}
+        </label>
+        {(items.length ? items : ['']).map((m, idx) => (
+          <div key={idx} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <Input
+              size="sm" value={m}
+              onChange={(v) => {
+                const next = [...items]; next[idx] = v
+                setCfg({ ...cfg, [tplKey(k)]: next })
+              }}
+              placeholder={placeholder[0]} style={{ flex: 1 }}
+            />
+            <button
+              className="rs-btn rs-btn-subtle rs-btn-sm"
+              onClick={() => {
+                const next = items.filter((_, j) => j !== idx)
+                setCfg({ ...cfg, [tplKey(k)]: next.length ? next : [''] })
+              }}
+              title="删除"
+            >×</button>
+          </div>
+        ))}
+        <button
+          className="rs-btn rs-btn-subtle rs-btn-sm" style={{ alignSelf: 'flex-start' }}
+          onClick={() => setCfg({ ...cfg, [tplKey(k)]: [...items, ''] })}
+        >+ 添加一条</button>
+      </div>
+    )
+  }
+
+  function cleanCfg(c: WelcomeCfg): WelcomeCfg {
+    const clean = (arr: string[]) => arr.map((s) => s.trim()).filter(Boolean)
+    return {
+      ...c,
+      normal_templates: clean(c.normal_templates).length ? clean(c.normal_templates) : WELCOME_DEFAULTS.normal_templates,
+      medal_templates: clean(c.medal_templates).length ? clean(c.medal_templates) : WELCOME_DEFAULTS.medal_templates,
+      guard_templates: clean(c.guard_templates).length ? clean(c.guard_templates) : WELCOME_DEFAULTS.guard_templates,
+    }
+  }
+
+  return (
+    <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ fontSize: 12, color: '#888' }}>
+        占位符：<code>{'{name}'}</code> 用户昵称，<code>{'{streamer}'}</code> 主播昵称，<code>{'{guard}'}</code> 舰长/提督/总督（仅大航海欢迎）。优先级：大航海 &gt; 专属 &gt; 普通
+      </div>
+      {(['guard', 'medal', 'normal'] as Kind[]).map(section)}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
+        <button
+          className="rs-btn rs-btn-subtle rs-btn-sm" style={{ width: 88 }}
+          onClick={() => { setCfg(WELCOME_DEFAULTS); void persist(WELCOME_DEFAULTS) }}
+        >恢复默认</button>
+        <button
+          className="rs-btn rs-btn-primary rs-btn-sm" style={{ width: 88 }}
+          onClick={() => persist(cleanCfg(cfg))}
+          disabled={saving}
+        >{saving ? '保存中…' : saved ? '已保存' : '保存'}</button>
+      </div>
+    </div>
+  )
+}
+
 export function ToolsPanel({ roomId }: Props) {
   const [commands, setCommands] = useState<Command[]>([])
   const [autoClip, setAutoClip] = useState(false)
@@ -254,7 +366,35 @@ export function ToolsPanel({ roomId }: Props) {
               />
             </div>
             <div className="cmd-desc">{cmd.description}</div>
-            {(cmd.id === 'broadcast_welcome' || cmd.id === 'broadcast_guard' || cmd.id === 'broadcast_blind') && (
+            {cmd.id === 'broadcast_welcome' && (
+              <WelcomeEditor
+                roomId={roomId}
+                cmdId={cmd.id}
+                initial={{
+                  normal_enabled: cmd.config?.normal_enabled !== undefined
+                    ? Boolean(cmd.config?.normal_enabled)
+                    : WELCOME_DEFAULTS.normal_enabled,
+                  normal_templates:
+                    (cmd.config?.normal_templates as string[])
+                    || (cmd.config?.templates as string[])  // 旧 config 迁移
+                    || WELCOME_DEFAULTS.normal_templates,
+                  medal_enabled: Boolean(cmd.config?.medal_enabled),
+                  medal_templates:
+                    (cmd.config?.medal_templates as string[])
+                    || WELCOME_DEFAULTS.medal_templates,
+                  guard_enabled: Boolean(cmd.config?.guard_enabled),
+                  guard_templates:
+                    (cmd.config?.guard_templates as string[])
+                    || WELCOME_DEFAULTS.guard_templates,
+                }}
+                onSaved={(config) => {
+                  setCommands((prev) => prev.map((c) => (
+                    c.id === cmd.id ? { ...c, config: { ...c.config, ...config } } : c
+                  )))
+                }}
+              />
+            )}
+            {(cmd.id === 'broadcast_guard' || cmd.id === 'broadcast_blind') && (
               <MultiTemplateEditor
                 roomId={roomId}
                 cmdId={cmd.id}
@@ -262,15 +402,9 @@ export function ToolsPanel({ roomId }: Props) {
                   (cmd.config?.templates as string[])
                   || (cmd.config?.template ? [cmd.config.template as string] : [])
                 }
-                defaultTemplate={
-                  cmd.id === 'broadcast_welcome' ? WELCOME_DEFAULT_TEMPLATE
-                    : cmd.id === 'broadcast_guard' ? GUARD_DEFAULT_TEMPLATE
-                    : BLIND_DEFAULT_TEMPLATE
-                }
+                defaultTemplate={cmd.id === 'broadcast_guard' ? GUARD_DEFAULT_TEMPLATE : BLIND_DEFAULT_TEMPLATE}
                 placeholdersHint={
-                  cmd.id === 'broadcast_welcome'
-                    ? (<>占位符：<code>{'{name}'}</code> 用户昵称，<code>{'{streamer}'}</code> 主播昵称</>)
-                    : cmd.id === 'broadcast_guard'
+                  cmd.id === 'broadcast_guard'
                     ? (<>占位符：<code>{'{name}'}</code> 用户昵称，<code>{'{streamer}'}</code> 主播昵称，<code>{'{content}'}</code> 开通/续费，<code>{'{num}'}</code> 月数，<code>{'{guard}'}</code> 舰长/提督/总督</>)
                     : (<>占位符：<code>{'{name}'}</code> 用户昵称，<code>{'{streamer}'}</code> 主播昵称，<code>{'{count}'}</code> 盲盒数，<code>{'{verdict}'}</code> 盈亏</>)
                 }

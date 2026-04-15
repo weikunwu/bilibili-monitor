@@ -110,8 +110,8 @@ class BiliLiveClient:
         self._last_welcome_ts: float = 0.0
         # 天选/红包期间暂停欢迎弹幕到该时间点 (epoch)。0 表示未暂停。
         self._welcome_pause_until: float = 0.0
-        # B站 同时下发 V1 和 V2 的房间存在；优先 V2，没见过 V2 时回退 V1。
-        self._seen_v2_interact: bool = False
+        # 优先用 V1 (数据更全)；只有 V1 不来时才退到 V2。
+        self._seen_v1_interact: bool = False
         self._seen_v2_red_pocket: bool = False
         # Per-command round-robin index for multi-template broadcasts.
         self._tpl_idx: dict[str, int] = {}
@@ -430,6 +430,26 @@ class BiliLiveClient:
         uname = data.get("uname") or ""
         if not uname:
             return
+        # 按观众身份分类到三个子开关/模版 (V1 带 fans_medal，V2 回退时都归为 normal):
+        #   大航海 (本房舰长以上) > 专属 (戴本房粉丝牌) > 普通
+        cfg = cmd_cfg.get("config") or {}
+        medal = data.get("fans_medal") if isinstance(data.get("fans_medal"), dict) else {}
+        is_room_medal = bool(medal) and medal.get("target_id") == self.streamer_uid
+        guard_level = int(medal.get("guard_level") or 0) if is_room_medal else 0
+        if guard_level > 0:
+            category = "guard"
+        elif is_room_medal:
+            category = "medal"
+        else:
+            category = "normal"
+        enabled_key = {"guard": "guard_enabled", "medal": "medal_enabled", "normal": "normal_enabled"}[category]
+        templates_key = {"guard": "guard_templates", "medal": "medal_templates", "normal": "normal_templates"}[category]
+        # 兼容旧 config: 只有 templates 的话当作普通
+        if "normal_templates" not in cfg and cfg.get("templates"):
+            if category == "normal":
+                cfg = {**cfg, "normal_enabled": True, "normal_templates": cfg["templates"]}
+        if not cfg.get(enabled_key):
+            return
         now = time.time()
         if now - self._welcome_sent.get(uid, 0) < self.WELCOME_PER_USER_COOLDOWN:
             return
@@ -438,11 +458,19 @@ class BiliLiveClient:
         self._welcome_sent[uid] = now
         self._last_welcome_ts = now
         display_name = self._nickname_for(uid) or uname
-        cfg = cmd_cfg.get("config") or {}
-        tpl = self._pick_template("broadcast_welcome", cfg, "欢迎{name}进入直播间")
+        # 按类别轮播模版 (索引 key 区分，避免三类共用一个 idx)
+        tpls = [t for t in (cfg.get(templates_key) or []) if isinstance(t, str) and t.strip()]
+        if not tpls:
+            return
+        idx = self._tpl_idx.get(f"broadcast_welcome:{category}", 0)
+        self._tpl_idx[f"broadcast_welcome:{category}"] = idx + 1
+        tpl = tpls[idx % len(tpls)]
+        # 大航海类别额外支持 {guard}/{舰长}: 1=总督 2=提督 3=舰长
+        guard_name = {1: "总督", 2: "提督", 3: "舰长"}.get(guard_level, "")
         msg = (
             tpl.replace("{name}", display_name).replace("{昵称}", display_name)
                .replace("{streamer}", self.streamer_name or "").replace("{主播}", self.streamer_name or "")
+               .replace("{guard}", guard_name).replace("{舰长}", guard_name)
         )
         asyncio.create_task(self.send_danmu(msg))
 
@@ -621,18 +649,19 @@ class BiliLiveClient:
                                     self.live_status = 0
                                     asyncio.create_task(recorder.stop_for(self.real_room_id))
                                     continue
+                                if base_cmd == "INTERACT_WORD":
+                                    # V1 数据完整 (含 fans_medal 等)，优先处理
+                                    self._seen_v1_interact = True
+                                    self._maybe_welcome(pkt.get("data") or {})
+                                    continue
                                 if base_cmd == "INTERACT_WORD_V2":
-                                    # data.pb 是 base64 protobuf，按 B站 InteractWord
-                                    # schema 取 field1=uid / field2=uname / field3=msg_type
-                                    self._seen_v2_interact = True
+                                    # V2 pb 里只有 uid/uname/msg_type，没有 fans_medal；
+                                    # 仅在没看到 V1 时回退使用
+                                    if getattr(self, "_seen_v1_interact", False):
+                                        continue
                                     data = pkt.get("data") or {}
                                     if isinstance(data, dict) and data.get("pb"):
                                         self._maybe_welcome(_decode_interact_word_pb(data["pb"]))
-                                    continue
-                                if base_cmd == "INTERACT_WORD":
-                                    # 仅在没收到过 V2 时回退到 V1 (避免 V1+V2 同时触发)
-                                    if not self._seen_v2_interact:
-                                        self._maybe_welcome(pkt.get("data") or {})
                                     continue
                                 # 天选/红包期间暂停欢迎弹幕（避免刷屏），并发一条提示
                                 # B站 有 V1 / V2 两套 cmd (V2 为 pb 编码)，都当触发。
