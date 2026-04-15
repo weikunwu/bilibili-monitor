@@ -1,6 +1,7 @@
 """B站直播间 WebSocket 客户端"""
 
 import asyncio
+import base64
 import json
 import re
 import sqlite3
@@ -22,6 +23,51 @@ from .db import (
     get_nickname, upsert_nickname, delete_nickname,
 )
 from .time_utils import beijing_time_range
+
+
+def _pb_decode_varint(buf: bytes, off: int) -> tuple[int, int]:
+    r, shift = 0, 0
+    while off < len(buf):
+        b = buf[off]; off += 1
+        r |= (b & 0x7F) << shift
+        if not (b & 0x80):
+            return r, off
+        shift += 7
+    return r, off
+
+
+def _decode_interact_word_pb(b64: str) -> dict:
+    """Minimal pb walker for B站 INTERACT_WORD_V2 payload.
+    Extracts uid (field 1, varint), uname (field 2, string), msg_type
+    (field 3, varint). Unknown fields are skipped silently."""
+    try:
+        raw = base64.b64decode(b64)
+    except Exception:
+        return {}
+    off = 0
+    out: dict = {}
+    while off < len(raw):
+        tag, off = _pb_decode_varint(raw, off)
+        if tag == 0 and off >= len(raw):
+            break
+        fnum, wtype = tag >> 3, tag & 7
+        if wtype == 0:  # varint
+            v, off = _pb_decode_varint(raw, off)
+            if fnum == 1: out["uid"] = v
+            elif fnum == 3: out["msg_type"] = v
+        elif wtype == 2:  # length-delimited
+            ln, off = _pb_decode_varint(raw, off)
+            chunk = raw[off:off + ln]; off += ln
+            if fnum == 2:
+                try: out["uname"] = chunk.decode("utf-8", errors="replace")
+                except Exception: pass
+        elif wtype == 1:  # 64-bit
+            off += 8
+        elif wtype == 5:  # 32-bit
+            off += 4
+        else:
+            break  # 未知 wire type，放弃
+    return out
 
 
 class BiliLiveClient:
@@ -573,27 +619,16 @@ class BiliLiveClient:
                                     asyncio.create_task(recorder.stop_for(self.real_room_id))
                                     continue
                                 if base_cmd in ("INTERACT_WORD", "INTERACT_WORD_V2"):
-                                    # 观众进入房间；V2 是 pb 编码不好解，只用 V1
-                                    # TODO: 临时调试日志，摸清实际推什么格式
-                                    if not hasattr(self, "_dbg_seen_cmds"):
-                                        self._dbg_seen_cmds = set()
-                                    if base_cmd not in self._dbg_seen_cmds:
-                                        self._dbg_seen_cmds.add(base_cmd)
-                                        d = pkt.get("data")
-                                        tkeys = list(d.keys())[:15] if isinstance(d, dict) else type(d).__name__
-                                        log.info(f"[DBG] 房间 {self.room_id} 首次 {base_cmd}, data keys/type: {tkeys}")
-                                    if base_cmd == "INTERACT_WORD":
-                                        self._maybe_welcome(pkt.get("data") or {})
+                                    # V1 data 已是 dict；V2 的 data.pb 是 base64 protobuf，
+                                    # 按 B站 InteractWord schema 取 field1=uid / field2=uname
+                                    # / field3=msg_type。
+                                    data = pkt.get("data") or {}
+                                    if base_cmd == "INTERACT_WORD_V2" and isinstance(data, dict) and data.get("pb"):
+                                        data = _decode_interact_word_pb(data["pb"])
+                                    self._maybe_welcome(data)
                                     continue
                                 # 天选/红包期间暂停欢迎弹幕（避免刷屏），并发一条提示
                                 # B站 有 V1 / V2 两套 cmd (V2 为 pb 编码)，都当触发。
-                                # TODO: 摸清实际推哪些红包/天选 cmd
-                                if ("RED_POCKET" in base_cmd or "ANCHOR_LOT" in base_cmd):
-                                    if not hasattr(self, "_dbg_seen_cmds"):
-                                        self._dbg_seen_cmds = set()
-                                    if base_cmd not in self._dbg_seen_cmds:
-                                        self._dbg_seen_cmds.add(base_cmd)
-                                        log.info(f"[DBG] 房间 {self.room_id} 首次 {base_cmd}")
                                 if base_cmd in (
                                     "ANCHOR_LOT_START",
                                     "POPULARITY_RED_POCKET_NEW", "POPULARITY_RED_POCKET_START",
