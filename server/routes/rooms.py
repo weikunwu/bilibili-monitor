@@ -319,6 +319,9 @@ async def cheap_gifts(room_id: int, _=Depends(require_room_access)):
             continue
         if bind_ruid and streamer_uid and bind_ruid != streamer_uid:
             continue
+        # 包裹专属礼物只能从背包送 (code 200010)，bag_gift=1
+        if int(g.get("bag_gift") or 0):
+            continue
         seen.add(gid)
         cheap.append({
             "gift_id": gid,
