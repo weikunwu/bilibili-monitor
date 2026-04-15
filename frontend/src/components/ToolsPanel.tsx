@@ -10,6 +10,57 @@ interface Props {
   roomId: number | null
 }
 
+const BLIND_DEFAULT_TEMPLATE = '感谢{name}的{count}个盲盒，{verdict}'
+
+function BlindTemplateEditor({
+  roomId, cmdId, initialTemplate, onSaved,
+}: {
+  roomId: number | null
+  cmdId: string
+  initialTemplate: string
+  onSaved: (config: { template: string }) => void
+}) {
+  const [tpl, setTpl] = useState(initialTemplate || BLIND_DEFAULT_TEMPLATE)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+
+  async function handleSave() {
+    if (!roomId) return
+    const template = tpl.trim() || BLIND_DEFAULT_TEMPLATE
+    setSaving(true)
+    try {
+      await saveCommandConfig(roomId, cmdId, { template })
+      onSaved({ template })
+      setSaved(true)
+      setTimeout(() => setSaved(false), 1500)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ fontSize: 12, color: '#888' }}>
+        占位符：<code>{'{name}'}</code> 用户昵称，<code>{'{count}'}</code> 盲盒数，<code>{'{verdict}'}</code> 盈亏（如 "赚3元"/"亏5元"/"不亏不赚"）
+      </div>
+      <Input size="sm" value={tpl} onChange={setTpl} placeholder={BLIND_DEFAULT_TEMPLATE} />
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <button
+          className="rs-btn rs-btn-subtle rs-btn-sm"
+          onClick={() => setTpl(BLIND_DEFAULT_TEMPLATE)}
+        >恢复默认</button>
+        <button
+          className="rs-btn rs-btn-primary rs-btn-sm"
+          onClick={handleSave}
+          disabled={saving}
+        >
+          {saving ? '保存中…' : saved ? '已保存' : '保存'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // 每条一行的文本框 + 间隔输入；失焦/点击保存时提交。
 function ScheduledDanmuEditor({
   roomId, cmdId, initialMessages, initialInterval, onSaved,
@@ -97,7 +148,16 @@ function ScheduledDanmuEditor({
         </div>
       ))}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <button className="rs-btn rs-btn-subtle rs-btn-sm" onClick={addMsg}>+ 添加一条</button>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button className="rs-btn rs-btn-subtle rs-btn-sm" onClick={addMsg}>+ 添加一条</button>
+          <button
+            className="rs-btn rs-btn-subtle rs-btn-sm"
+            onClick={() => {
+              setMessages(['动动手指给{主播}点点关注'])
+              setInterval('300')
+            }}
+          >恢复默认</button>
+        </div>
         <button
           className="rs-btn rs-btn-primary rs-btn-sm"
           onClick={handleSave}
@@ -165,6 +225,18 @@ export function ToolsPanel({ roomId }: Props) {
               />
             </div>
             <div className="cmd-desc">{cmd.description}</div>
+            {cmd.id === 'broadcast_blind' && (
+              <BlindTemplateEditor
+                roomId={roomId}
+                cmdId={cmd.id}
+                initialTemplate={(cmd.config?.template as string) || ''}
+                onSaved={(config: { template: string }) => {
+                  setCommands((prev) => prev.map((c) => (
+                    c.id === cmd.id ? { ...c, config: { ...c.config, ...config } } : c
+                  )))
+                }}
+              />
+            )}
             {cmd.id === 'scheduled_danmu' && (
               <ScheduledDanmuEditor
                 roomId={roomId}

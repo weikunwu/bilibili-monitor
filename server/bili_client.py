@@ -286,7 +286,16 @@ class BiliLiveClient:
         s = f"{yuan:.1f}".rstrip('0').rstrip('.')
         verdict = "不亏不赚" if profit == 0 else (f"赚{s}元" if profit > 0 else f"亏{s}元")
         display_name = self._nickname_for(uid) or buf["user_name"] or "有人"
-        await self.send_danmu(f"感谢{display_name}的{buf['count']}个盲盒，{verdict}")
+        # Template: {name}/{昵称}、{count}/{数量}、{verdict}/{结果}
+        cmd = get_command(self.real_room_id, "broadcast_blind") or {}
+        tpl = ((cmd.get("config") or {}).get("template") or "").strip() \
+            or "感谢{name}的{count}个盲盒，{verdict}"
+        msg = (
+            tpl.replace("{name}", display_name).replace("{昵称}", display_name)
+               .replace("{count}", str(buf["count"])).replace("{数量}", str(buf["count"]))
+               .replace("{verdict}", verdict).replace("{结果}", verdict)
+        )
+        await self.send_danmu(msg)
 
     def _maybe_broadcast_gift_thanks(self, event: dict):
         """Thank paid non-blind-box gifts. Blind boxes go through the

@@ -76,9 +76,11 @@ DEFAULT_COMMANDS = [
         "id": "broadcast_blind",
         "name": "盲盒战绩播报",
         "type": "auto_broadcast",
-        "description": "用户开盲盒后，机器人自动发弹幕播报盈亏",
+        "description": "用户开盲盒后，机器人按模版自动发弹幕播报盈亏",
         "default_enabled": True,
-        "config": {},
+        "config": {
+            "template": "感谢{name}的{count}个盲盒，{verdict}",
+        },
     },
     {
         "id": "nickname_commands",
