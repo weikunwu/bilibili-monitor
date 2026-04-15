@@ -5,6 +5,7 @@ import {
   fetchCommands, toggleCommand, fetchAutoClip, toggleAutoClip,
   fetchCheapGifts, saveCommandConfig, type CheapGift,
 } from '../api/client'
+import { useIsMobile } from '../hooks/useIsMobile'
 
 interface Props {
   roomId: number | null
@@ -222,6 +223,7 @@ function WelcomeEditor({
   const [cfg, setCfg] = useState<WelcomeCfg>(initial)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const isMobile = useIsMobile()
 
   async function persist(next: WelcomeCfg) {
     if (!roomId) return
@@ -244,14 +246,14 @@ function WelcomeEditor({
     const placeholder = WELCOME_DEFAULTS[tplKey(k)] as string[]
     return (
       <div key={k} style={{ border: '1px solid #2a2a2a', borderRadius: 6, padding: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 500 }}>
-          <input
-            type="checkbox"
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 500 }}>
+          <Toggle
+            size="sm"
             checked={enabled}
-            onChange={(e) => setCfg({ ...cfg, [enKey(k)]: e.target.checked })}
+            onChange={(v) => setCfg({ ...cfg, [enKey(k)]: v })}
           />
-          {labels[k]}
-        </label>
+          <span>{labels[k]}</span>
+        </div>
         {(items.length ? items : ['']).map((m, idx) => (
           <div key={idx} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
             <Input
@@ -295,7 +297,13 @@ function WelcomeEditor({
       <div style={{ fontSize: 12, color: '#888' }}>
         占位符：<code>{'{name}'}</code> 用户昵称，<code>{'{streamer}'}</code> 主播昵称，<code>{'{guard}'}</code> 舰长/提督/总督（仅大航海欢迎）。优先级：大航海 &gt; 专属 &gt; 普通
       </div>
-      {(['guard', 'medal', 'normal'] as Kind[]).map(section)}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)',
+        gap: 8,
+      }}>
+        {(['normal', 'medal', 'guard'] as Kind[]).map(section)}
+      </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
         <button
           className="rs-btn rs-btn-subtle rs-btn-sm" style={{ width: 88 }}
