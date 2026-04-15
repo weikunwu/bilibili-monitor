@@ -207,8 +207,6 @@ async def get_auto_clip(room_id: int, _=Depends(require_room_access)):
 
 @router.post("/api/rooms/{room_id}/auto-clip")
 async def toggle_auto_clip(room_id: int, request: Request, _=Depends(require_room_access)):
-    if getattr(request.state, "user_role", "") != "admin":
-        raise HTTPException(403, "仅管理员可开启自动剪辑")
     body = await request.json()
     enabled = bool(body.get("enabled", False))
     set_room_auto_clip(room_id, enabled)

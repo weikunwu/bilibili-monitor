@@ -67,10 +67,7 @@ function LurkerEditor({
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
         <button
           className="rs-btn rs-btn-subtle rs-btn-sm" style={{ width: 88 }}
-          onClick={() => {
-            setTpl(LURKER_DEFAULT_TEMPLATE); setWait('900')
-            void persist(LURKER_DEFAULT_TEMPLATE, 900)
-          }}
+          onClick={() => { setTpl(LURKER_DEFAULT_TEMPLATE); setWait('900') }}
         >恢复默认</button>
         <button
           className="rs-btn rs-btn-primary rs-btn-sm" style={{ width: 88 }}
@@ -133,14 +130,8 @@ function ThanksGroup({
     } finally { setSaving(false) }
   }
 
-  async function restoreDefaults() {
-    if (!roomId) return
-    const g = [GUARD_DEFAULT_TEMPLATE], b = [BLIND_DEFAULT_TEMPLATE]
-    setGuardTpls(g); setBlindTpls(b)
-    await saveCommandConfig(roomId, 'broadcast_guard', { templates: g })
-    await saveCommandConfig(roomId, 'broadcast_blind', { templates: b })
-    onUpdateConfig('broadcast_guard', { templates: g })
-    onUpdateConfig('broadcast_blind', { templates: b })
+  function restoreDefaults() {
+    setGuardTpls([GUARD_DEFAULT_TEMPLATE]); setBlindTpls([BLIND_DEFAULT_TEMPLATE])
   }
 
   const isMobile = useIsMobile()
@@ -321,15 +312,9 @@ function ScheduledDanmuEditor({
           <button
             className="rs-btn rs-btn-subtle rs-btn-sm"
             style={{ width: 88 }}
-            onClick={async () => {
-              if (!roomId) return
-              const defMsgs = ['动动手指给{streamer}点点关注']
-              const defIv = 300
-              setMessages(defMsgs)
-              setInterval(String(defIv))
-              await saveCommandConfig(roomId, cmdId, { messages: defMsgs, interval_sec: defIv })
-              onSaved({ messages: defMsgs, interval_sec: defIv })
-              setSaved(true); setTimeout(() => setSaved(false), 1500)
+            onClick={() => {
+              setMessages(['动动手指给{streamer}点点关注'])
+              setInterval('300')
             }}
           >恢复默认</button>
           <button
@@ -456,7 +441,7 @@ function WelcomeEditor({
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
         <button
           className="rs-btn rs-btn-subtle rs-btn-sm" style={{ width: 88 }}
-          onClick={() => { setCfg(WELCOME_DEFAULTS); void persist(WELCOME_DEFAULTS) }}
+          onClick={() => setCfg(WELCOME_DEFAULTS)}
         >恢复默认</button>
         <button
           className="rs-btn rs-btn-primary rs-btn-sm" style={{ width: 88 }}
