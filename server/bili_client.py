@@ -415,6 +415,10 @@ class BiliLiveClient:
     def _maybe_welcome(self, data: dict):
         """Welcome a user on INTERACT_WORD msg_type=1 (enter). Deduped per
         uid (30min) and globally throttled (10s) to avoid flooding."""
+        # 临时调试：第一次进入打印一次
+        if not getattr(self, "_dbg_welcome_logged", False):
+            self._dbg_welcome_logged = True
+            log.info(f"[DBG] _maybe_welcome 首次入参 room={self.room_id} data={data} live={self.live_status} sess={bool(self.cookies.get('SESSDATA'))} pause_until={self._welcome_pause_until}")
         if data.get("msg_type") != 1:  # 1=进入, 2=关注, 3=分享 etc.
             return
         if not self.cookies.get("SESSDATA") or self.live_status != 1:
