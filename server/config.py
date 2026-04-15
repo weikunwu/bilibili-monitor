@@ -81,6 +81,16 @@ DEFAULT_COMMANDS = [
         "config": {},
     },
     {
+        "id": "scheduled_danmu",
+        "name": "定时弹幕",
+        "type": "scheduled",
+        "description": "开播期间，机器人按设定间隔依次发送以下弹幕（轮播）",
+        "config": {
+            "interval_sec": 300,
+            "messages": [],
+        },
+    },
+    {
         "id": "broadcast_gift",
         "name": "礼物感谢",
         "type": "auto_broadcast",

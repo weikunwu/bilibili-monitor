@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Toggle, SelectPicker } from 'rsuite'
+import { Toggle, SelectPicker, Input, InputGroup } from 'rsuite'
 import type { Command } from '../types'
 import {
   fetchCommands, toggleCommand, fetchAutoClip, toggleAutoClip,
@@ -8,6 +8,87 @@ import {
 
 interface Props {
   roomId: number | null
+}
+
+// 每条一行的文本框 + 间隔输入；失焦/点击保存时提交。
+function ScheduledDanmuEditor({
+  roomId, cmdId, initialMessages, initialInterval, onSaved,
+}: {
+  roomId: number | null
+  cmdId: string
+  initialMessages: string[]
+  initialInterval: number
+  onSaved: (config: { messages: string[]; interval_sec: number }) => void
+}) {
+  const [messages, setMessages] = useState<string[]>(
+    initialMessages.length > 0 ? initialMessages : [''],
+  )
+  const [interval, setInterval] = useState(String(initialInterval))
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+
+  function updateMsg(idx: number, val: string) {
+    setMessages((prev) => prev.map((m, i) => (i === idx ? val : m)))
+  }
+  function removeMsg(idx: number) {
+    setMessages((prev) => (prev.length <= 1 ? [''] : prev.filter((_, i) => i !== idx)))
+  }
+  function addMsg() {
+    setMessages((prev) => [...prev, ''])
+  }
+
+  async function handleSave() {
+    if (!roomId) return
+    const cleaned = messages.map((s) => s.trim()).filter(Boolean)
+    const iv = Math.max(30, Math.min(3600, Number(interval) || 300))
+    setSaving(true)
+    try {
+      await saveCommandConfig(roomId, cmdId, { messages: cleaned, interval_sec: iv })
+      onSaved({ messages: cleaned, interval_sec: iv })
+      setSaved(true)
+      setTimeout(() => setSaved(false), 1500)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {messages.map((m, idx) => (
+        <div key={idx} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <Input
+            size="sm"
+            value={m}
+            onChange={(v) => updateMsg(idx, v)}
+            placeholder={`弹幕 ${idx + 1}`}
+            style={{ flex: 1 }}
+          />
+          <button
+            className="rs-btn rs-btn-subtle rs-btn-sm"
+            onClick={() => removeMsg(idx)}
+            title="删除"
+          >×</button>
+        </div>
+      ))}
+      <div>
+        <button className="rs-btn rs-btn-subtle rs-btn-sm" onClick={addMsg}>+ 添加一条</button>
+      </div>
+      <InputGroup size="sm" style={{ width: 240 }}>
+        <InputGroup.Addon>间隔</InputGroup.Addon>
+        <Input type="number" value={interval} onChange={setInterval} />
+        <InputGroup.Addon>秒 (30–3600)</InputGroup.Addon>
+      </InputGroup>
+      <div>
+        <button
+          className="rs-btn rs-btn-primary rs-btn-sm"
+          onClick={handleSave}
+          disabled={saving}
+        >
+          {saving ? '保存中…' : saved ? '已保存' : '保存'}
+        </button>
+      </div>
+    </div>
+  )
 }
 
 export function ToolsPanel({ roomId }: Props) {
@@ -58,6 +139,19 @@ export function ToolsPanel({ roomId }: Props) {
           <div className="cmd-info">
             <div className="cmd-name">{cmd.name}</div>
             <div className="cmd-desc">{cmd.description}</div>
+            {cmd.id === 'scheduled_danmu' && (
+              <ScheduledDanmuEditor
+                roomId={roomId}
+                cmdId={cmd.id}
+                initialMessages={(cmd.config?.messages as string[]) || []}
+                initialInterval={(cmd.config?.interval_sec as number) || 300}
+                onSaved={(config: { messages: string[]; interval_sec: number }) => {
+                  setCommands((prev) => prev.map((c) => (
+                    c.id === cmd.id ? { ...c, config: { ...c.config, ...config } } : c
+                  )))
+                }}
+              />
+            )}
             {cmd.id === 'auto_gift' && cheapGifts.length > 0 && (
               <div style={{ marginTop: 6 }}>
                 <SelectPicker

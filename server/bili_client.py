@@ -330,10 +330,49 @@ class BiliLiveClient:
     async def run(self):
         self._running = True
         flush_task = asyncio.create_task(self._flush_pending_guards())
+        sched_task = asyncio.create_task(self._run_scheduled_danmu())
         try:
             await self._run_loop()
         finally:
             flush_task.cancel()
+            sched_task.cancel()
+
+    async def _run_scheduled_danmu(self):
+        """Cycle through user-configured danmu on a fixed interval while the
+        stream is live. Reads the command config every loop so edits take
+        effect without a restart. Safe no-op when disabled / no messages /
+        bot not bound / offline."""
+        idx = 0
+        # Short first-sleep so we don't spam right after a reconnect loop.
+        await asyncio.sleep(15)
+        while self._running:
+            try:
+                cmd = get_command(self.real_room_id, "scheduled_danmu") or {}
+                cfg = cmd.get("config") or {}
+                messages = [m for m in (cfg.get("messages") or []) if isinstance(m, str) and m.strip()]
+                interval = int(cfg.get("interval_sec") or 300)
+                interval = max(30, min(3600, interval))  # 底线 30s 防刷屏
+                if (
+                    cmd.get("enabled")
+                    and messages
+                    and self.cookies.get("SESSDATA")
+                    and self.live_status == 1
+                ):
+                    msg = messages[idx % len(messages)]
+                    idx += 1
+                    try:
+                        await self.send_danmu(msg)
+                    except Exception as e:
+                        log.warning(f"[定时弹幕] 发送失败: {e}")
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                log.warning(f"[定时弹幕] loop error: {e}")
+                interval = 60
+            try:
+                await asyncio.sleep(interval)
+            except asyncio.CancelledError:
+                raise
 
     async def _run_loop(self):
         while self._running:
