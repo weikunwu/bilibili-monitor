@@ -24,9 +24,15 @@ def init_db():
             extra_json TEXT
         )
     """)
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_events_ts ON events(timestamp DESC)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_events_room ON events(room_id)")
+    # Index strategy: every hot query scopes by room_id. Two composite
+    # indexes cover the two query shapes (with/without event_type filter);
+    # a bare timestamp index exists only for the global retention DELETE.
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_events_room_ts ON events(room_id, timestamp)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_events_room_type_ts ON events(room_id, event_type, timestamp)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_events_ts ON events(timestamp)")
+    # Drop superseded single-column indexes from earlier schemas.
+    conn.execute("DROP INDEX IF EXISTS idx_events_type")
+    conn.execute("DROP INDEX IF EXISTS idx_events_room")
 
     conn.execute("""
         CREATE TABLE IF NOT EXISTS rooms (
@@ -211,7 +217,7 @@ def assign_user_rooms(user_id: int, room_ids: list[int]):
 
 def cleanup_old_events():
     conn = sqlite3.connect(str(DB_PATH))
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=90)).strftime("%Y-%m-%d %H:%M:%S")
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=548)).strftime("%Y-%m-%d %H:%M:%S")
     deleted = conn.execute("DELETE FROM events WHERE timestamp < ?", (cutoff,)).rowcount
     conn.commit()
     conn.close()
