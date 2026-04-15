@@ -503,29 +503,30 @@ class BiliLiveClient:
 
     # 挂粉提醒状态上限（LRU 式淘汰，避免大房间内存无限涨）
     LURKER_MAX = 500
-    # 旧 /v1/dM/RoomOnlineUser 已 404，改用高能榜接口（付费贡献在线榜）。
-    ONLINE_GOLD_RANK_API = "https://api.live.bilibili.com/xlive/general-interface/v1/rank/getOnlineGoldRank"
+    # 本场在线贡献榜（比 getOnlineGoldRank 宽松，含所有戴牌互动过的用户）。
+    ONLINE_RANK_API = "https://api.live.bilibili.com/xlive/general-interface/v1/rank/queryContributionRank"
 
     async def _fetch_online_uids(self) -> set[int]:
-        """当前在线的高能榜 uid 集合 (B站 公开接口只返回有付费贡献的观众，
-        普通挂机观众不在其中)。@ 前用这个判断在不在；不在就不 @。"""
+        """当前在线贡献榜 uid 集合（戴本房粉丝牌并有过互动/送礼的观众）。
+        纯路人仍不在内——B站 公开接口没有完整在线名册。"""
         if not self.streamer_uid:
             return set()
         params = {
             "ruid": self.streamer_uid,
-            "roomId": self.real_room_id,
-            "page": 1, "pageSize": 50,
+            "room_id": self.real_room_id,
+            "page": 1, "page_size": 100,
+            "type": "online_rank", "switch": "contribution_rank", "platform": "web",
         }
         try:
             async with aiohttp.ClientSession(headers=HEADERS) as session:
-                async with session.get(self.ONLINE_GOLD_RANK_API, params=params, timeout=aiohttp.ClientTimeout(total=6)) as resp:
+                async with session.get(self.ONLINE_RANK_API, params=params, timeout=aiohttp.ClientTimeout(total=6)) as resp:
                     data = await resp.json(content_type=None)
         except Exception as e:
             log.warning(f"[挂粉提醒] 在线列表获取失败: {e}")
             return set()
         uids: set[int] = set()
         d = (data or {}).get("data") or {}
-        for u in (d.get("OnlineRankItem") or []):
+        for u in (d.get("item") or []):
             uid = u.get("uid") or 0
             if uid:
                 uids.add(int(uid))
