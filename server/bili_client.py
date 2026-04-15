@@ -417,7 +417,7 @@ class BiliLiveClient:
         uid (30min) and globally throttled (10s) to avoid flooding."""
         if data.get("msg_type") != 1:  # 1=进入, 2=关注, 3=分享 etc.
             return
-        if not self.cookies.get("SESSDATA") or self.live_status != 1:
+        if not self.cookies.get("SESSDATA"):
             return
         if time.time() < self._welcome_pause_until:
             return  # 天选/红包期间不刷欢迎
