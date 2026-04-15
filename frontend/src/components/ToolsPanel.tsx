@@ -85,68 +85,144 @@ function LurkerEditor({
 }
 const WELCOME_DEFAULT_TEMPLATE = '欢迎{name}进入直播间'
 
-// 多模版编辑器，用于大航海感谢/盲盒播报/欢迎弹幕，按需提供占位符说明与默认。
-function MultiTemplateEditor({
-  roomId, cmdId, initialTemplates, defaultTemplate, placeholdersHint, onSaved,
+// 感谢弹幕分组：礼物感谢 / 大航海感谢 / 盲盒播报 共用同一个总开关和保存/恢复默认按钮。
+// 总开关：任一子项开启即显示开启；关时一键全关，开时一键全开。
+function ThanksGroup({
+  roomId, gift, guard, blind, onToggleCmd, onUpdateConfig,
 }: {
   roomId: number | null
-  cmdId: string
-  initialTemplates: string[]
-  defaultTemplate: string
-  placeholdersHint: React.ReactNode
-  onSaved: (config: { templates: string[] }) => void
+  gift: Command
+  guard: Command
+  blind: Command
+  onToggleCmd: (cmdId: string) => void | Promise<void>
+  onUpdateConfig: (cmdId: string, config: Record<string, unknown>) => void
 }) {
-  const [items, setItems] = useState<string[]>(initialTemplates.length ? initialTemplates : [defaultTemplate])
+  const initGuardTpls = (guard.config?.templates as string[])
+    || (guard.config?.template ? [guard.config.template as string] : [GUARD_DEFAULT_TEMPLATE])
+  const initBlindTpls = (blind.config?.templates as string[])
+    || (blind.config?.template ? [blind.config.template as string] : [BLIND_DEFAULT_TEMPLATE])
+
+  const [guardTpls, setGuardTpls] = useState<string[]>(initGuardTpls.length ? initGuardTpls : [GUARD_DEFAULT_TEMPLATE])
+  const [blindTpls, setBlindTpls] = useState<string[]>(initBlindTpls.length ? initBlindTpls : [BLIND_DEFAULT_TEMPLATE])
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
 
-  function upd(idx: number, v: string) {
-    setItems((prev) => prev.map((m, i) => (i === idx ? v : m)))
-  }
-  function rem(idx: number) {
-    setItems((prev) => (prev.length <= 1 ? [''] : prev.filter((_, i) => i !== idx)))
-  }
-  function add() {
-    setItems((prev) => [...prev, ''])
+  const anyOn = gift.enabled || guard.enabled || blind.enabled
+
+  async function masterToggle() {
+    const target = !anyOn  // 任一开 → 全关；全关 → 全开
+    for (const c of [gift, guard, blind]) {
+      if (c.enabled !== target) await onToggleCmd(c.id)
+    }
   }
 
-  async function persist(templates: string[]) {
+  async function saveAll() {
     if (!roomId) return
-    const cleaned = templates.map((s) => s.trim()).filter(Boolean)
-    const final = cleaned.length ? cleaned : [defaultTemplate]
+    const gFinal = guardTpls.map((s) => s.trim()).filter(Boolean)
+    const bFinal = blindTpls.map((s) => s.trim()).filter(Boolean)
+    const g = gFinal.length ? gFinal : [GUARD_DEFAULT_TEMPLATE]
+    const b = bFinal.length ? bFinal : [BLIND_DEFAULT_TEMPLATE]
     setSaving(true)
     try {
-      await saveCommandConfig(roomId, cmdId, { templates: final })
-      onSaved({ templates: final })
+      await saveCommandConfig(roomId, 'broadcast_guard', { templates: g })
+      await saveCommandConfig(roomId, 'broadcast_blind', { templates: b })
+      onUpdateConfig('broadcast_guard', { templates: g })
+      onUpdateConfig('broadcast_blind', { templates: b })
+      setGuardTpls(g); setBlindTpls(b)
       setSaved(true); setTimeout(() => setSaved(false), 1500)
     } finally { setSaving(false) }
   }
 
-  return (
-    <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <div style={{ fontSize: 12, color: '#888' }}>{placeholdersHint}</div>
-      {items.map((m, idx) => (
-        <div key={idx} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          <Input size="sm" value={m} onChange={(v) => upd(idx, v)} placeholder={defaultTemplate} style={{ flex: 1 }} />
-          <button className="rs-btn rs-btn-subtle rs-btn-sm" onClick={() => rem(idx)} title="删除">×</button>
+  async function restoreDefaults() {
+    if (!roomId) return
+    const g = [GUARD_DEFAULT_TEMPLATE], b = [BLIND_DEFAULT_TEMPLATE]
+    setGuardTpls(g); setBlindTpls(b)
+    await saveCommandConfig(roomId, 'broadcast_guard', { templates: g })
+    await saveCommandConfig(roomId, 'broadcast_blind', { templates: b })
+    onUpdateConfig('broadcast_guard', { templates: g })
+    onUpdateConfig('broadcast_blind', { templates: b })
+  }
+
+  const isMobile = useIsMobile()
+
+  function section(
+    cmd: Command,
+    items: string[] | null,
+    setItems: ((v: string[]) => void) | null,
+    placeholder: string,
+    placeholdersHint: React.ReactNode = null,
+  ) {
+    return (
+      <div key={cmd.id} style={{ border: '1px solid #2a2a2a', borderRadius: 6, padding: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 500 }}>
+          <Toggle size="sm" checked={cmd.enabled} onChange={() => onToggleCmd(cmd.id)} />
+          <span>{cmd.name}</span>
         </div>
-      ))}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <button className="rs-btn rs-btn-subtle rs-btn-sm" onClick={add}>+ 添加一条</button>
-        <div style={{ display: 'flex', gap: 6 }}>
+        <div style={{ fontSize: 12, color: '#888' }}>
+          {cmd.description}
+          {placeholdersHint ? <div style={{ marginTop: 4 }}>{placeholdersHint}</div> : null}
+        </div>
+        {items && setItems ? (
+          <>
+            {items.map((m, idx) => (
+              <div key={idx} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <Input
+                  size="sm" value={m}
+                  onChange={(v) => setItems(items.map((s, i) => (i === idx ? v : s)))}
+                  placeholder={placeholder} style={{ flex: 1 }}
+                />
+                <button
+                  className="rs-btn rs-btn-subtle rs-btn-sm"
+                  onClick={() => {
+                    const next = items.filter((_, j) => j !== idx)
+                    setItems(next.length ? next : [''])
+                  }}
+                  title="删除"
+                >×</button>
+              </div>
+            ))}
+            <button
+              className="rs-btn rs-btn-subtle rs-btn-sm" style={{ alignSelf: 'flex-start' }}
+              onClick={() => setItems([...items, ''])}
+            >+ 添加一条</button>
+          </>
+        ) : null}
+      </div>
+    )
+  }
+
+  return (
+    <div className="cmd-item">
+      <div className="cmd-info">
+        <div className="cmd-name" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span>感谢弹幕</span>
+          <Toggle size="sm" checked={anyOn} onChange={masterToggle} />
+        </div>
+        <div style={{
+          marginTop: 6,
+          display: 'grid',
+          gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)',
+          gap: 8,
+        }}>
+          {section(gift, null, null, '')}
+          {section(
+            guard, guardTpls, setGuardTpls, GUARD_DEFAULT_TEMPLATE,
+            <>占位符：<code>{'{name}'}</code> 用户昵称，<code>{'{streamer}'}</code> 主播昵称，<code>{'{content}'}</code> 开通/续费，<code>{'{num}'}</code> 月数，<code>{'{guard}'}</code> 舰长/提督/总督</>,
+          )}
+          {section(
+            blind, blindTpls, setBlindTpls, BLIND_DEFAULT_TEMPLATE,
+            <>占位符：<code>{'{name}'}</code> 用户昵称，<code>{'{streamer}'}</code> 主播昵称，<code>{'{count}'}</code> 盲盒数，<code>{'{verdict}'}</code> 盈亏（如 "赚3元"/"亏5元"/"不亏不赚"）</>,
+          )}
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: 8 }}>
           <button
-            className="rs-btn rs-btn-subtle rs-btn-sm"
-            style={{ width: 88 }}
-            onClick={() => { setItems([defaultTemplate]); void persist([defaultTemplate]) }}
+            className="rs-btn rs-btn-subtle rs-btn-sm" style={{ width: 88 }}
+            onClick={restoreDefaults}
           >恢复默认</button>
           <button
-            className="rs-btn rs-btn-primary rs-btn-sm"
-            style={{ width: 88 }}
-            onClick={() => persist(items)}
-            disabled={saving}
-          >
-            {saving ? '保存中…' : saved ? '已保存' : '保存'}
-          </button>
+            className="rs-btn rs-btn-primary rs-btn-sm" style={{ width: 88 }}
+            onClick={saveAll} disabled={saving}
+          >{saving ? '保存中…' : saved ? '已保存' : '保存'}</button>
         </div>
       </div>
     </div>
@@ -324,6 +400,9 @@ function WelcomeEditor({
           />
           <span>{labels[k]}</span>
         </div>
+        <div style={{ fontSize: 12, color: '#888' }}>
+          占位符：<code>{'{name}'}</code> 用户昵称，<code>{'{streamer}'}</code> 主播昵称{k === 'guard' ? (<>，<code>{'{guard}'}</code> 舰长/提督/总督</>) : null}
+        </div>
         {(items.length ? items : ['']).map((m, idx) => (
           <div key={idx} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
             <Input
@@ -365,7 +444,7 @@ function WelcomeEditor({
   return (
     <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={{ fontSize: 12, color: '#888' }}>
-        占位符：<code>{'{name}'}</code> 用户昵称，<code>{'{streamer}'}</code> 主播昵称，<code>{'{guard}'}</code> 舰长/提督/总督（仅大航海欢迎）。优先级：大航海 &gt; 粉丝牌 &gt; 普通
+        命中优先级：大航海 &gt; 粉丝牌 &gt; 普通
       </div>
       <div style={{
         display: 'grid',
@@ -432,7 +511,33 @@ export function ToolsPanel({ roomId }: Props) {
     <div>
       <div className="panel-title">主播工具</div>
       <div style={{ padding: '0 24px 16px' }}>
-      {commands.map((cmd, i) => cmd.id === 'nickname_commands' ? null : (
+      {commands.map((cmd, i) => {
+        if (cmd.id === 'nickname_commands') return null
+        if (cmd.id === 'broadcast_guard' || cmd.id === 'broadcast_blind') return null
+        if (cmd.id === 'broadcast_gift') {
+          const guard = commands.find((c) => c.id === 'broadcast_guard')
+          const blind = commands.find((c) => c.id === 'broadcast_blind')
+          if (!guard || !blind) return null
+          return (
+            <ThanksGroup
+              key="thanks_group"
+              roomId={roomId}
+              gift={cmd}
+              guard={guard}
+              blind={blind}
+              onToggleCmd={(cid) => {
+                const idx = commands.findIndex((c) => c.id === cid)
+                if (idx >= 0) return handleToggle(cid, idx)
+              }}
+              onUpdateConfig={(cid, config) => {
+                setCommands((prev) => prev.map((c) => (
+                  c.id === cid ? { ...c, config: { ...c.config, ...config } } : c
+                )))
+              }}
+            />
+          )
+        }
+        return (
         <div key={cmd.id} className="cmd-item">
           <div className="cmd-info">
             <div className="cmd-name" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -485,27 +590,6 @@ export function ToolsPanel({ roomId }: Props) {
                 }}
               />
             )}
-            {(cmd.id === 'broadcast_guard' || cmd.id === 'broadcast_blind') && (
-              <MultiTemplateEditor
-                roomId={roomId}
-                cmdId={cmd.id}
-                initialTemplates={
-                  (cmd.config?.templates as string[])
-                  || (cmd.config?.template ? [cmd.config.template as string] : [])
-                }
-                defaultTemplate={cmd.id === 'broadcast_guard' ? GUARD_DEFAULT_TEMPLATE : BLIND_DEFAULT_TEMPLATE}
-                placeholdersHint={
-                  cmd.id === 'broadcast_guard'
-                    ? (<>占位符：<code>{'{name}'}</code> 用户昵称，<code>{'{streamer}'}</code> 主播昵称，<code>{'{content}'}</code> 开通/续费，<code>{'{num}'}</code> 月数，<code>{'{guard}'}</code> 舰长/提督/总督</>)
-                    : (<>占位符：<code>{'{name}'}</code> 用户昵称，<code>{'{streamer}'}</code> 主播昵称，<code>{'{count}'}</code> 盲盒数，<code>{'{verdict}'}</code> 盈亏</>)
-                }
-                onSaved={(config: { templates: string[] }) => {
-                  setCommands((prev) => prev.map((c) => (
-                    c.id === cmd.id ? { ...c, config: { ...c.config, ...config } } : c
-                  )))
-                }}
-              />
-            )}
             {cmd.id === 'scheduled_danmu' && (
               <ScheduledDanmuEditor
                 roomId={roomId}
@@ -539,7 +623,8 @@ export function ToolsPanel({ roomId }: Props) {
             )}
           </div>
         </div>
-      ))}
+        )
+      })}
       <div className="cmd-section-title">实验功能</div>
       <div className="cmd-item">
         <div className="cmd-info">
