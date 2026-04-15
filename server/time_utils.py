@@ -12,6 +12,12 @@ def beijing_time_range(period: str) -> tuple[str, str, str]:
         start = day.replace(hour=0, minute=0, second=0, microsecond=0)
         end = start + timedelta(days=1)
         label = start.strftime("%Y-%m-%d")
+    elif period == "this_week":
+        # Week starts Monday (ISO). Monday.weekday() == 0.
+        monday = now_bj - timedelta(days=now_bj.weekday())
+        start = monday.replace(hour=0, minute=0, second=0, microsecond=0)
+        end = now_bj.replace(hour=23, minute=59, second=59, microsecond=0) + timedelta(seconds=1)
+        label = start.strftime("%Y-%m")
     elif period == "this_month":
         start = now_bj.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         end = now_bj.replace(hour=23, minute=59, second=59, microsecond=0) + timedelta(seconds=1)
