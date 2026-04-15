@@ -211,14 +211,16 @@ export function GiftPanel({
             w={200}
           />
         )}
-        <Input
-          type="number"
-          value={minTotal}
-          onChange={setMinTotal}
-          placeholder="最低总价(元)"
-          size="sm"
-          style={{ width: 120 }}
-        />
+        {giftEvents.some((ev) => (ev.extra?.total_coin || 0) > 0) && (
+          <Input
+            type="number"
+            value={minTotal}
+            onChange={setMinTotal}
+            placeholder="最低总价(元)"
+            size="sm"
+            style={{ width: 120 }}
+          />
+        )}
         {checkedKeys.size > 0 && (
           <>
             <GenerateImageButton size="sm" appearance="primary" onClick={handleGenerateCard}>

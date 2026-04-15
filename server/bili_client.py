@@ -5,6 +5,7 @@ import json
 import re
 import sqlite3
 import time
+from typing import Optional
 
 import aiohttp
 
@@ -207,6 +208,15 @@ class BiliLiveClient:
     # level 1=总督, 2=提督, 3=舰长
     GUARD_VAP_GIFT_IDS = {1: 34639, 2: 34638, 3: 34637}
 
+    def _nickname_for(self, uid: int) -> Optional[str]:
+        """Resolve a user's stored nickname only if the nickname feature
+        is on for this room. Disabling the toggle makes existing nicknames
+        invisible everywhere (broadcasts, replies) without deleting them."""
+        cmd = get_command(self.real_room_id, "nickname_commands")
+        if not cmd or not cmd.get("enabled"):
+            return None
+        return get_nickname(self.real_room_id, uid)
+
     def _maybe_clip(self, event: dict):
         if not get_room_auto_clip(self.room_id):
             return
@@ -275,7 +285,7 @@ class BiliLiveClient:
         yuan = abs(profit) / 10
         s = f"{yuan:.1f}".rstrip('0').rstrip('.')
         verdict = "不亏不赚" if profit == 0 else (f"赚{s}元" if profit > 0 else f"亏{s}元")
-        display_name = get_nickname(self.real_room_id, uid) or buf["user_name"] or "有人"
+        display_name = self._nickname_for(uid) or buf["user_name"] or "有人"
         await self.send_danmu(f"感谢{display_name}的{buf['count']}个盲盒，{verdict}")
 
     def _maybe_broadcast_gift_thanks(self, event: dict):
@@ -319,7 +329,7 @@ class BiliLiveClient:
         if not buf or not buf["gifts"]:
             return
         parts = [n if c == 1 else f"{n} x{c}" for n, c in buf["gifts"].items()]
-        display_name = get_nickname(self.real_room_id, uid) or buf["user_name"] or "有人"
+        display_name = self._nickname_for(uid) or buf["user_name"] or "有人"
         await self.send_danmu(f"感谢{display_name}的 {', '.join(parts)}")
 
     def request_reconnect(self):
@@ -481,12 +491,14 @@ class BiliLiveClient:
                                             cmd_cfg = get_command(self.real_room_id, "auto_gift")
                                             if cmd_cfg and cmd_cfg["enabled"] and content == cmd_cfg["config"]["trigger"]:
                                                 asyncio.create_task(self.send_gift(cmd_cfg["config"]))
-                                        # 设置/清除昵称
+                                        # 设置/清除昵称 (nickname_commands 指令可关)
                                         if self.bot_uid and uid:
-                                            if content == "清除昵称":
-                                                asyncio.create_task(self.handle_clear_nickname(uid, uname))
-                                            elif content.startswith("叫我"):
-                                                asyncio.create_task(self.handle_set_nickname(uid, uname, content[2:].strip()))
+                                            nick_cmd = get_command(self.real_room_id, "nickname_commands")
+                                            if nick_cmd and nick_cmd["enabled"]:
+                                                if content == "清除昵称":
+                                                    asyncio.create_task(self.handle_clear_nickname(uid, uname))
+                                                elif content.startswith("叫我"):
+                                                    asyncio.create_task(self.handle_set_nickname(uid, uname, content[2:].strip()))
                                         # 盲盒查询指令 (skip when no bot bound — we can't reply anyway)
                                         period = None
                                         force_self = False  # "我的…" scopes to sender even for streamer
@@ -600,7 +612,7 @@ class BiliLiveClient:
         # "month:N" uses the YYYY-MM label from beijing_time_range; named
         # periods (today/yesterday/this_month/last_month) use Chinese labels.
         period_label = PERIOD_LABELS.get(period) or range_label
-        display_name = (get_nickname(self.real_room_id, user_id) or user_name) if user_name else ""
+        display_name = (self._nickname_for(user_id) or user_name) if user_name else ""
         prefix = f"{display_name}，" if display_name else ""
         if not rows:
             await self.send_danmu(f"{prefix}{period_label}暂无盲盒记录")

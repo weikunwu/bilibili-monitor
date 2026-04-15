@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Button, Input, InputPicker, Modal, Table, IconButton } from 'rsuite'
+import { Button, Input, InputPicker, Modal, Table, IconButton, Toggle } from 'rsuite'
 import TrashIcon from '@rsuite/icons/Trash'
 import EditIcon from '@rsuite/icons/Edit'
 import PlusIcon from '@rsuite/icons/Plus'
 import {
   fetchNicknames, saveNickname, deleteNickname, fetchRoomUsers,
+  fetchCommands, toggleCommand,
   type Nickname,
 } from '../api/client'
 
@@ -19,6 +20,7 @@ export function NicknamesPanel({ roomId }: Props) {
   const [loading, setLoading] = useState(false)
   const [editing, setEditing] = useState<Nickname | null>(null)
   const [showAdd, setShowAdd] = useState(false)
+  const [featureEnabled, setFeatureEnabled] = useState<boolean | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -26,6 +28,17 @@ export function NicknamesPanel({ roomId }: Props) {
   }, [roomId])
 
   useEffect(() => { load() }, [load])
+
+  useEffect(() => {
+    fetchCommands(roomId)
+      .then((cs) => setFeatureEnabled(cs.find((c) => c.id === 'nickname_commands')?.enabled ?? true))
+      .catch(() => {})
+  }, [roomId])
+
+  async function handleToggleFeature(next: boolean) {
+    setFeatureEnabled(next)
+    try { await toggleCommand(roomId, 'nickname_commands') } catch { setFeatureEnabled(!next) }
+  }
 
   async function handleDelete(n: Nickname) {
     if (!confirm(`删除 ${n.user_name} 的昵称「${n.nickname}」？`)) return
@@ -35,12 +48,25 @@ export function NicknamesPanel({ roomId }: Props) {
 
   return (
     <div className="nicknames-panel">
-      <div className="panel-title">昵称管理</div>
+      <div className="panel-title" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <span>昵称管理</span>
+        {featureEnabled !== null && (
+          <Toggle
+            size="sm"
+            checked={featureEnabled}
+            onChange={handleToggleFeature}
+          />
+        )}
+      </div>
       <div className="nicknames-controls">
         <Button size="sm" appearance="primary" startIcon={<PlusIcon />} onClick={() => setShowAdd(true)}>
           新增昵称
         </Button>
-        <span className="nicknames-hint">机器人在弹幕中将用这里设置的昵称称呼用户</span>
+        <span className="nicknames-hint">
+          {featureEnabled === false
+            ? '已关闭：观众无法用"叫我 xxx"设置昵称，机器人忽略相关弹幕'
+            : '观众发"叫我 xxx"自助设置昵称，机器人在弹幕中用此昵称称呼'}
+        </span>
       </div>
 
       <Table data={rows} autoHeight loading={loading} rowKey="user_id">

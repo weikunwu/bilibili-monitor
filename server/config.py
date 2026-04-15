@@ -81,6 +81,14 @@ DEFAULT_COMMANDS = [
         "config": {},
     },
     {
+        "id": "nickname_commands",
+        "name": "昵称功能",
+        "type": "user_danmu",
+        "description": '观众发"叫我 xxx"设置昵称、"清除昵称"清除，机器人回弹幕确认',
+        "default_enabled": True,
+        "config": {},
+    },
+    {
         "id": "scheduled_danmu",
         "name": "定时弹幕",
         "type": "scheduled",
