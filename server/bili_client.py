@@ -39,13 +39,15 @@ def _pb_decode_varint(buf: bytes, off: int) -> tuple[int, int]:
 def _decode_interact_word_pb(b64: str) -> dict:
     """Minimal pb walker for B站 INTERACT_WORD_V2 payload.
     Extracts uid (field 1, varint), uname (field 2, string), msg_type
-    (field 3, varint). Unknown fields are skipped silently."""
+    (field 3, varint). Also collects raw varint fields under _raw for
+    debugging if msg_type field number changed."""
     try:
         raw = base64.b64decode(b64)
     except Exception:
         return {}
     off = 0
     out: dict = {}
+    raw_varints: dict = {}
     while off < len(raw):
         tag, off = _pb_decode_varint(raw, off)
         if tag == 0 and off >= len(raw):
@@ -53,6 +55,7 @@ def _decode_interact_word_pb(b64: str) -> dict:
         fnum, wtype = tag >> 3, tag & 7
         if wtype == 0:  # varint
             v, off = _pb_decode_varint(raw, off)
+            raw_varints[fnum] = v
             if fnum == 1: out["uid"] = v
             elif fnum == 3: out["msg_type"] = v
         elif wtype == 2:  # length-delimited
@@ -67,6 +70,7 @@ def _decode_interact_word_pb(b64: str) -> dict:
             off += 4
         else:
             break  # 未知 wire type，放弃
+    out["_raw_varints"] = raw_varints
     return out
 
 
@@ -419,7 +423,9 @@ class BiliLiveClient:
         if not getattr(self, "_dbg_welcome_logged", False):
             self._dbg_welcome_logged = True
             log.info(f"[DBG] _maybe_welcome 首次入参 room={self.room_id} data={data} live={self.live_status} sess={bool(self.cookies.get('SESSDATA'))} pause_until={self._welcome_pause_until}")
-        if data.get("msg_type") != 1:  # 1=进入, 2=关注, 3=分享 etc.
+        # V2 pb 里没看到 msg_type 字段，B站 似乎把进入/关注拆到不同 cmd
+        # (INTERACT_WORD_V2 = 进入)；只在 V1 显式带 msg_type 时校验。
+        if "msg_type" in data and data.get("msg_type") != 1:
             return
         if not self.cookies.get("SESSDATA") or self.live_status != 1:
             return
