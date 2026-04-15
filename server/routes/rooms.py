@@ -2,6 +2,7 @@
 
 import asyncio
 import time
+from collections import OrderedDict
 
 import aiohttp
 from fastapi import APIRouter, Depends, Query, Request, HTTPException
@@ -276,18 +277,23 @@ async def set_command_config(cmd_id: str, request: Request, room_id: int = Query
 # 房间级礼物面板（只返回在该房间真正可送的礼物；全局 giftConfig 会包含不能送的）
 _ROOM_GIFT_API = "https://api.live.bilibili.com/xlive/web-room/v1/giftPanel/roomGiftConfig"
 
-# Per-room cache: (expiry_epoch, payload). B站礼物表几乎不变，24h 足够。
-_CHEAP_GIFT_CACHE: dict[int, tuple[float, list[dict]]] = {}
+# Per-room cache: room_id -> (expiry_epoch, payload). B站礼物表几乎不变，
+# 24h 足够；LRU 淘汰避免房间多了内存无界增长（~20KB/房 × 200 房 ≈ 4MB）。
+_CHEAP_GIFT_CACHE: "OrderedDict[int, tuple[float, list[dict]]]" = OrderedDict()
 _CHEAP_GIFT_TTL = 24 * 3600
+_CHEAP_GIFT_MAX_ROOMS = 200
 
 
 @router.get("/api/rooms/{room_id}/cheap-gifts")
 async def cheap_gifts(room_id: int, _=Depends(require_room_access)):
     """单价 ≤ ¥1 (≤1000 金瓜子) 的金瓜子礼物列表，按房间实际可送过滤。
-    每房间缓存 24 小时，减少对 B站 的拉取。"""
+    每房间缓存 24 小时，LRU 淘汰上限 200 房，减少对 B站 的拉取。"""
     hit = _CHEAP_GIFT_CACHE.get(room_id)
     if hit and hit[0] > time.time():
+        _CHEAP_GIFT_CACHE.move_to_end(room_id)  # 标记最近使用
         return hit[1]
+    if hit:  # 过期，清掉
+        _CHEAP_GIFT_CACHE.pop(room_id, None)
     client = manager.get(room_id)
     real_room = client.real_room_id if client and client.real_room_id else room_id
     try:
@@ -347,4 +353,7 @@ async def cheap_gifts(room_id: int, _=Depends(require_room_access)):
         })
     cheap.sort(key=lambda x: x["price"])
     _CHEAP_GIFT_CACHE[room_id] = (time.time() + _CHEAP_GIFT_TTL, cheap)
+    _CHEAP_GIFT_CACHE.move_to_end(room_id)
+    while len(_CHEAP_GIFT_CACHE) > _CHEAP_GIFT_MAX_ROOMS:
+        _CHEAP_GIFT_CACHE.popitem(last=False)  # 淘汰最久未用
     return cheap
