@@ -435,10 +435,13 @@ class BiliLiveClient:
         cfg = cmd_cfg.get("config") or {}
         medal = data.get("fans_medal") if isinstance(data.get("fans_medal"), dict) else {}
         is_room_medal = bool(medal) and medal.get("target_id") == self.streamer_uid
-        # 临时调试
-        if not getattr(self, "_dbg_welcome2", False):
-            self._dbg_welcome2 = True
-            log.info(f"[DBG2] welcome uid={uid} uname={uname} streamer={self.streamer_uid} medal={medal}")
+        # 临时调试: 每次欢迎都打, 含 medal 全量 + V1 其它相关字段
+        log.info(
+            f"[DBG2] welcome uid={uid} uname={uname} streamer={self.streamer_uid} "
+            f"is_room_medal={is_room_medal} medal_guard={medal.get('guard_level')} "
+            f"medal={medal} "
+            f"privilege={data.get('privilege_type')} identities={data.get('identities')}"
+        )
         guard_level = int(medal.get("guard_level") or 0) if is_room_medal else 0
         if guard_level > 0:
             category = "guard"
