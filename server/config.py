@@ -131,7 +131,7 @@ DEFAULT_COMMANDS = [
         "id": "lurker_mention",
         "name": "挂粉提醒",
         "type": "auto_broadcast",
-        "description": "用户进房后 N 秒内没发弹幕，@ 一下提醒互动（只针对在线 top 用户）",
+        "description": "用户进房后 N 秒内没发弹幕，@ 一下提醒互动（仅对该主播高能榜在线用户：送过礼物/上过舰）",
         "default_enabled": False,
         "config": {
             "wait_sec": 900,  # 15 分钟
