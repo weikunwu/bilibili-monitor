@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import re
 import sqlite3
 import time
 
@@ -448,11 +449,21 @@ class BiliLiveClient:
                                             elif content.startswith("叫我"):
                                                 asyncio.create_task(self.handle_set_nickname(uid, uname, content[2:].strip()))
                                         # 盲盒查询指令 (skip when no bot bound — we can't reply anyway)
-                                        if content in DANMU_PERIOD_MAP and self.bot_uid:
-                                            is_streamer = uid == self.streamer_uid
+                                        period = None
+                                        force_self = False  # "我的…" scopes to sender even for streamer
+                                        if content in DANMU_PERIOD_MAP:
+                                            period = DANMU_PERIOD_MAP[content]
+                                            force_self = content.startswith("我的")
+                                        else:
+                                            # "N月盲盒" → month:N of current year (主播查全员/观众查自己).
+                                            mm = re.fullmatch(r"(\d{1,2})月盲盒", content)
+                                            if mm and 1 <= int(mm.group(1)) <= 12:
+                                                period = f"month:{int(mm.group(1))}"
+                                        if period and self.bot_uid:
+                                            is_streamer = (uid == self.streamer_uid) and not force_self
                                             asyncio.create_task(self.handle_blind_box_query(
                                                 None if is_streamer else uname,
-                                                DANMU_PERIOD_MAP[content],
+                                                period,
                                                 user_id=None if is_streamer else uid,
                                             ))
                         elif raw_msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
@@ -537,7 +548,7 @@ class BiliLiveClient:
 
     async def handle_blind_box_query(self, user_name, period: str = "today", user_id: int = 0):
         """Query blind box stats and reply via danmu. user_name=None for all users (streamer)."""
-        utc_start, utc_end, _ = beijing_time_range(period)
+        utc_start, utc_end, range_label = beijing_time_range(period)
         conn = sqlite3.connect(str(DB_PATH))
         sql = "SELECT extra_json FROM events WHERE event_type='gift' AND room_id=? AND timestamp >= ? AND timestamp < ? AND extra_json LIKE '%blind_name%' AND extra_json NOT LIKE '%\"blind_name\": \"\"%'"
         params: list = [self.real_room_id, utc_start, utc_end]
@@ -547,7 +558,9 @@ class BiliLiveClient:
         rows = conn.execute(sql, params).fetchall()
         conn.close()
 
-        period_label = PERIOD_LABELS.get(period, "今日")
+        # "month:N" uses the YYYY-MM label from beijing_time_range; named
+        # periods (today/yesterday/this_month/last_month) use Chinese labels.
+        period_label = PERIOD_LABELS.get(period) or range_label
         display_name = (get_nickname(self.real_room_id, user_id) or user_name) if user_name else ""
         prefix = f"{display_name}，" if display_name else ""
         if not rows:
