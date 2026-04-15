@@ -84,7 +84,7 @@ DEFAULT_COMMANDS = [
         "id": "nickname_commands",
         "name": "昵称功能",
         "type": "user_danmu",
-        "description": '观众发"叫我 xxx"设置昵称、"清除昵称"清除，机器人回弹幕确认',
+        "description": '观众发"叫我 xxx"设置昵称、"清除昵称"清除，机器人回弹幕确认；关闭后数据库保留昵称但所有播报/查询不再使用',
         "default_enabled": True,
         "config": {},
     },

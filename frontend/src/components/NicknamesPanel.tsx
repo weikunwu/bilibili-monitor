@@ -64,8 +64,8 @@ export function NicknamesPanel({ roomId }: Props) {
         </Button>
         <span className="nicknames-hint">
           {featureEnabled === false
-            ? '已关闭：观众无法用"叫我 xxx"设置昵称，机器人忽略相关弹幕'
-            : '观众发"叫我 xxx"自助设置昵称，机器人在弹幕中用此昵称称呼'}
+            ? '已关闭：观众无法用"叫我 xxx/清除昵称"改昵称，下方记录保留但所有播报/查询弹幕不再使用昵称'
+            : '观众发"叫我 xxx"设置、"清除昵称"清除；机器人在播报/查询回复中用此昵称称呼'}
         </span>
       </div>
 

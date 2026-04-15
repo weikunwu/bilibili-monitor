@@ -368,8 +368,13 @@ class BiliLiveClient:
                     and self.cookies.get("SESSDATA")
                     and self.live_status == 1
                 ):
-                    msg = messages[idx % len(messages)]
+                    raw = messages[idx % len(messages)]
                     idx += 1
+                    # 模板占位符：{主播}/{streamer} → 主播名
+                    msg = (
+                        raw.replace("{主播}", self.streamer_name or "")
+                           .replace("{streamer}", self.streamer_name or "")
+                    )
                     try:
                         await self.send_danmu(msg)
                     except Exception as e:

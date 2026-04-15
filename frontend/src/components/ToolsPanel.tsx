@@ -77,6 +77,9 @@ function ScheduledDanmuEditor({
         />
         <InputGroup.Addon>秒 (60–3600)</InputGroup.Addon>
       </InputGroup>
+      <div style={{ fontSize: 12, color: '#888' }}>
+        支持占位符：<code>{'{主播}'}</code> 替换为主播昵称
+      </div>
       {messages.map((m, idx) => (
         <div key={idx} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
           <Input
@@ -150,7 +153,7 @@ export function ToolsPanel({ roomId }: Props) {
     <div>
       <div className="panel-title">主播工具</div>
       <div style={{ padding: '0 24px 16px' }}>
-      {commands.map((cmd, i) => (
+      {commands.map((cmd, i) => cmd.id === 'nickname_commands' ? null : (
         <div key={cmd.id} className="cmd-item">
           <div className="cmd-info">
             <div className="cmd-name" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
