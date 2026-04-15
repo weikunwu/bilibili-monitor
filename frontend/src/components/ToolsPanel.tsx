@@ -480,6 +480,27 @@ export function ToolsPanel({ roomId }: Props) {
     fetchCheapGifts(roomId).then(setCheapGifts).catch(() => {})
   }, [roomId])
 
+  // 若已保存的 auto_gift.gift_id 不在当前 cheapGifts 中（B站 同名同价多 id，
+  // 漂移后旧 id 消失），尝试按 price 匹配回填并重存，避免 SelectPicker 显示为空。
+  useEffect(() => {
+    if (!roomId || cheapGifts.length === 0 || commands.length === 0) return
+    const idx = commands.findIndex((c) => c.id === 'auto_gift')
+    if (idx < 0) return
+    const cfg = commands[idx].config || {}
+    const savedId = Number(cfg.gift_id || 0)
+    const savedPrice = Number(cfg.gift_price || 0)
+    if (!savedId || cheapGifts.some((g) => g.gift_id === savedId)) return
+    const alt = cheapGifts.find((g) => g.price === savedPrice)
+    if (!alt) return
+    const num = Math.max(1, Math.ceil(1000 / alt.price))
+    const next = { gift_id: alt.gift_id, gift_price: alt.price, gift_num: num }
+    saveCommandConfig(roomId, 'auto_gift', next).then(() => {
+      setCommands((prev) => prev.map((c, i) => (
+        i === idx ? { ...c, config: { ...c.config, ...next } } : c
+      )))
+    }).catch(() => {})
+  }, [roomId, cheapGifts, commands])
+
   // 选中礼物后保存 config，数量按"总价 ≥ 1元"凑：1元 = 1000 金瓜子。
   async function handleAutoGiftChange(cmdIndex: number, giftId: number | null) {
     if (!roomId || giftId == null) return

@@ -315,6 +315,10 @@ async def cheap_gifts(room_id: int, _=Depends(require_room_access)):
     # data.global_gift.list 是全平台通用礼物。两个合并去重即可。
     d = data.get("data") or {}
     gifts = list(d.get("list") or []) + list((d.get("global_gift") or {}).get("list") or [])
+    # B站 返回顺序不稳，同名同价的不同 id 之间谁被 "保留" 会随机漂移，
+    # 导致用户前次选中的 gift_id 下次不在列表里 → SelectPicker 显示为未选。
+    # 固定按 id 升序再去重，保证每次保留同一个 gid。
+    gifts.sort(key=lambda g: int(g.get("id") or g.get("gift_id") or 0))
 
     streamer_uid = client.streamer_uid if client and getattr(client, "streamer_uid", 0) else 0
     cheap = []
