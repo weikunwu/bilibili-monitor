@@ -133,6 +133,8 @@ class BiliLiveClient:
         # throttle bursty entries so we don't flood chat in popular rooms.
         self._welcome_sent: dict[int, float] = {}
         self._last_welcome_ts: float = 0.0
+        # 挂粉提醒：{uid: (uname, enter_ts)}，进房记录、发弹幕时清除、超时 @ 后清除
+        self._lurkers: dict[int, tuple[str, float]] = {}
         # 天选/红包期间暂停欢迎弹幕到该时间点 (epoch)。0 表示未暂停。
         self._welcome_pause_until: float = 0.0
         # V2 带 fans_medal (V1 被 B站 剥光)；优先 V2，V2 不来才回退 V1。
@@ -499,6 +501,85 @@ class BiliLiveClient:
         )
         asyncio.create_task(self.send_danmu(msg))
 
+    # 挂粉提醒状态上限（LRU 式淘汰，避免大房间内存无限涨）
+    LURKER_MAX = 500
+    ROOM_ONLINE_USER_API = "https://api.live.bilibili.com/xlive/web-room/v1/dM/RoomOnlineUser"
+
+    async def _fetch_online_uids(self) -> set[int]:
+        """Top ~30 在线观众 uid 集合 (B站 的公开接口只返回 top N 带粉丝牌 / 高能)。
+        @ 前用这个判断在不在；不在就不 @ 避免打扰已离开用户。"""
+        params = {"roomid": self.real_room_id, "page": 1, "page_size": 30}
+        try:
+            async with aiohttp.ClientSession(headers=HEADERS) as session:
+                async with session.get(self.ROOM_ONLINE_USER_API, params=params, timeout=aiohttp.ClientTimeout(total=6)) as resp:
+                    data = await resp.json(content_type=None)
+        except Exception as e:
+            log.warning(f"[挂粉提醒] 在线列表获取失败: {e}")
+            return set()
+        uids: set[int] = set()
+        d = (data or {}).get("data") or {}
+        # 尝试多种嵌套结构（B站 返回格式常变）
+        for key in ("online_list", "list"):
+            for u in (d.get(key) or []):
+                uid = u.get("uid") or (u.get("user") or {}).get("uid") or 0
+                if uid: uids.add(int(uid))
+        return uids
+
+    def _track_lurker(self, data: dict):
+        """Record enter time so periodic scan can @ silent users."""
+        cmd = get_command(self.real_room_id, "lurker_mention")
+        if not cmd or not cmd.get("enabled"):
+            return
+        if data.get("msg_type") not in (None, 1):  # V2 没 msg_type (默认进入)，V1 进入 == 1
+            return
+        uid = data.get("uid") or 0
+        uname = data.get("uname") or ""
+        if not uid or not uname or uid == self.bot_uid or uid == self.streamer_uid:
+            return
+        self._lurkers[uid] = (uname, time.time())
+        # 超限淘汰最老
+        while len(self._lurkers) > self.LURKER_MAX:
+            oldest_uid = min(self._lurkers, key=lambda k: self._lurkers[k][1])
+            self._lurkers.pop(oldest_uid, None)
+
+    async def _run_lurker_scan(self):
+        """Every 30s, @ users whose enter age exceeds wait_sec."""
+        while self._running:
+            try:
+                await asyncio.sleep(30)
+            except asyncio.CancelledError:
+                raise
+            try:
+                cmd = get_command(self.real_room_id, "lurker_mention") or {}
+                if not cmd.get("enabled") or not self.cookies.get("SESSDATA"):
+                    continue
+                cfg = cmd.get("config") or {}
+                wait_sec = max(300, min(900, int(cfg.get("wait_sec") or 900)))
+                tpl = (cfg.get("template") or "").strip() or "@{name} 说点什么呀~"
+                now = time.time()
+                due = [(uid, uname) for uid, (uname, ts) in self._lurkers.items() if now - ts >= wait_sec]
+                if not due:
+                    continue
+                online = await self._fetch_online_uids()
+                for uid, uname in due:
+                    self._lurkers.pop(uid, None)
+                    # 保守策略：uid 不在在线列表 (或接口失败返回空集) 一律跳过
+                    if uid not in online:
+                        continue
+                    display = self._nickname_for(uid) or uname
+                    msg = tpl.replace("{name}", display).replace("{昵称}", display) \
+                             .replace("{streamer}", self.streamer_name or "").replace("{主播}", self.streamer_name or "")
+                    try:
+                        # 真实 @：带 reply_mid/reply_uname 让被 @ 用户收通知
+                        await self.send_danmu(msg, reply_uid=uid, reply_uname=uname)
+                    except Exception as e:
+                        log.warning(f"[挂粉提醒] 发送失败: {e}")
+                    await asyncio.sleep(2)  # 避免连续 @ 被风控
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                log.warning(f"[挂粉提醒] loop error: {e}")
+
     def _maybe_broadcast_guard_thanks(self, event: dict):
         """Thank guard (上舰/续费) events. One event per merged guard
         purchase, so no debouncing needed — emit directly."""
@@ -550,11 +631,13 @@ class BiliLiveClient:
         self._running = True
         flush_task = asyncio.create_task(self._flush_pending_guards())
         sched_task = asyncio.create_task(self._run_scheduled_danmu())
+        lurker_task = asyncio.create_task(self._run_lurker_scan())
         try:
             await self._run_loop()
         finally:
             flush_task.cancel()
             sched_task.cancel()
+            lurker_task.cancel()
 
     async def _run_scheduled_danmu(self):
         """Cycle through user-configured danmu on a fixed interval while the
@@ -686,12 +769,16 @@ class BiliLiveClient:
                                     self._seen_v2_interact = True
                                     data = pkt.get("data") or {}
                                     if isinstance(data, dict) and data.get("pb"):
-                                        self._maybe_welcome(_decode_interact_word_pb(data["pb"]))
+                                        decoded = _decode_interact_word_pb(data["pb"])
+                                        self._maybe_welcome(decoded)
+                                        self._track_lurker(decoded)
                                     continue
                                 if base_cmd == "INTERACT_WORD":
                                     # V1 仅在 V2 不来时回退使用，medal 信息缺失只能走普通
                                     if not getattr(self, "_seen_v2_interact", False):
-                                        self._maybe_welcome(pkt.get("data") or {})
+                                        data = pkt.get("data") or {}
+                                        self._maybe_welcome(data)
+                                        self._track_lurker(data)
                                     continue
                                 # 天选/红包期间暂停欢迎弹幕（避免刷屏），并发一条提示
                                 # B站 有 V1 / V2 两套 cmd (V2 为 pb 编码)，都当触发。
@@ -755,6 +842,9 @@ class BiliLiveClient:
                                     self._maybe_broadcast_blind(event)
                                     self._maybe_broadcast_gift_thanks(event)
                                     self._maybe_broadcast_guard_thanks(event)
+                                    # 发弹幕 → 取消挂粉提醒
+                                    if event.get("event_type") == "danmu":
+                                        self._lurkers.pop(event.get("user_id") or 0, None)
                                     # 指令系统
                                     if event.get("event_type") == "danmu":
                                         uid = event.get("user_id")
@@ -830,7 +920,7 @@ class BiliLiveClient:
             log.warning(f"[自动送礼] 异常: {e}")
             asyncio.create_task(self.send_danmu("[打个有效] 送礼失败"))
 
-    async def send_danmu(self, msg: str):
+    async def send_danmu(self, msg: str, reply_uid: int = 0, reply_uname: str = ""):
         if not self.cookies.get("SESSDATA"):
             return
         csrf = self.cookies.get("bili_jct", "")
@@ -845,6 +935,12 @@ class BiliLiveClient:
                         "roomid": self.real_room_id,
                         "csrf": csrf, "csrf_token": csrf,
                     }
+                    if reply_uid and reply_uname:
+                        # B站 @ 协议：reply_mid/reply_uname/reply_attr
+                        # 触发被 @ 用户在消息中心收通知 + 弹幕前显示头像
+                        payload["reply_mid"] = reply_uid
+                        payload["reply_uname"] = reply_uname
+                        payload["reply_attr"] = 0
                     for attempt in range(3):
                         async with session.post(SEND_MSG_API, data=payload) as resp:
                             data = await resp.json(content_type=None)

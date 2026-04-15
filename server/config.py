@@ -128,6 +128,17 @@ DEFAULT_COMMANDS = [
         },
     },
     {
+        "id": "lurker_mention",
+        "name": "挂粉提醒",
+        "type": "auto_broadcast",
+        "description": "用户进房后 N 秒内没发弹幕，@ 一下提醒互动（只针对在线 top 用户）",
+        "default_enabled": False,
+        "config": {
+            "wait_sec": 900,  # 15 分钟
+            "template": "@{name} 说点什么呀~",
+        },
+    },
+    {
         "id": "nickname_commands",
         "name": "昵称功能",
         "type": "user_danmu",

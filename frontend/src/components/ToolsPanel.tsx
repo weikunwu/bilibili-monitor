@@ -13,6 +13,76 @@ interface Props {
 
 const BLIND_DEFAULT_TEMPLATE = '感谢{name}的{count}个盲盒，{verdict}'
 const GUARD_DEFAULT_TEMPLATE = '感谢{name}{content}了{num}个月{guard}'
+const LURKER_DEFAULT_TEMPLATE = '@{name} 说点什么呀~'
+
+function LurkerEditor({
+  roomId, cmdId, initialTemplate, initialWaitSec, onSaved,
+}: {
+  roomId: number | null
+  cmdId: string
+  initialTemplate: string
+  initialWaitSec: number
+  onSaved: (config: { template: string; wait_sec: number }) => void
+}) {
+  const [tpl, setTpl] = useState(initialTemplate || LURKER_DEFAULT_TEMPLATE)
+  const [wait, setWait] = useState(String(initialWaitSec || 900))
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+
+  async function persist(template: string, w: number) {
+    if (!roomId) return
+    setSaving(true)
+    try {
+      await saveCommandConfig(roomId, cmdId, { template, wait_sec: w })
+      onSaved({ template, wait_sec: w })
+      setSaved(true); setTimeout(() => setSaved(false), 1500)
+    } finally { setSaving(false) }
+  }
+
+  const waitNum = Number(wait)
+  const waitInvalid = wait !== '' && Number.isFinite(waitNum) && (waitNum < 300 || waitNum > 900)
+
+  return (
+    <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ fontSize: 12, color: '#888' }}>
+        占位符：<code>{'{name}'}</code> 用户昵称，<code>{'{streamer}'}</code> 主播昵称
+      </div>
+      <Input size="sm" value={tpl} onChange={setTpl} placeholder={LURKER_DEFAULT_TEMPLATE} />
+      <InputGroup size="sm" style={{ width: 240 }}>
+        <InputGroup.Addon>等待</InputGroup.Addon>
+        <Input
+          type="number"
+          value={wait}
+          onChange={setWait}
+          style={waitInvalid ? { textDecoration: 'line-through', color: '#ef5350' } : undefined}
+          onBlur={() => {
+            const n = Number(wait)
+            if (!Number.isFinite(n) || wait === '') setWait('900')
+            else if (n < 300) setWait('300')
+            else if (n > 900) setWait('900')
+          }}
+        />
+        <InputGroup.Addon>秒 (300–900)</InputGroup.Addon>
+      </InputGroup>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
+        <button
+          className="rs-btn rs-btn-subtle rs-btn-sm" style={{ width: 88 }}
+          onClick={() => {
+            setTpl(LURKER_DEFAULT_TEMPLATE); setWait('900')
+            void persist(LURKER_DEFAULT_TEMPLATE, 900)
+          }}
+        >恢复默认</button>
+        <button
+          className="rs-btn rs-btn-primary rs-btn-sm" style={{ width: 88 }}
+          onClick={() => persist(tpl.trim() || LURKER_DEFAULT_TEMPLATE, Math.max(300, Math.min(900, Number(wait) || 900)))}
+          disabled={saving}
+        >
+          {saving ? '保存中…' : saved ? '已保存' : '保存'}
+        </button>
+      </div>
+    </div>
+  )
+}
 const WELCOME_DEFAULT_TEMPLATE = '欢迎{name}进入直播间'
 
 // 多模版编辑器，用于大航海感谢/盲盒播报/欢迎弹幕，按需提供占位符说明与默认。
@@ -374,6 +444,19 @@ export function ToolsPanel({ roomId }: Props) {
               />
             </div>
             <div className="cmd-desc">{cmd.description}</div>
+            {cmd.id === 'lurker_mention' && (
+              <LurkerEditor
+                roomId={roomId}
+                cmdId={cmd.id}
+                initialTemplate={(cmd.config?.template as string) || ''}
+                initialWaitSec={Number(cmd.config?.wait_sec || 900)}
+                onSaved={(config) => {
+                  setCommands((prev) => prev.map((c) => (
+                    c.id === cmd.id ? { ...c, config: { ...c.config, ...config } } : c
+                  )))
+                }}
+              />
+            )}
             {cmd.id === 'broadcast_welcome' && (
               <WelcomeEditor
                 roomId={roomId}
