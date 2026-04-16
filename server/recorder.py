@@ -151,7 +151,11 @@ class RecorderSession:
         spawn a new _finalize_clip task.
         """
         if not self._running or not self._segments:
-            log.warning(f"[recorder] room {self.room_id} clip skipped: not buffering")
+            log.warning(
+                f"[recorder] room {self.room_id} clip skipped: not buffering "
+                f"(running={self._running}, segments={len(self._segments)}, "
+                f"label={label}, gift_id={gift_id})"
+            )
             return
         now = time.time()
         trig = _Trigger(wall_ts=now, gift_id=gift_id, effect_id=effect_id, label=label, num=max(1, num))

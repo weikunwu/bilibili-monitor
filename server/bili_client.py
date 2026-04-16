@@ -302,19 +302,25 @@ class BiliLiveClient:
         return get_nickname(self.real_room_id, uid)
 
     def _maybe_clip(self, event: dict):
-        if not get_room_auto_clip(self.room_id):
-            return
-        session = recorder.get_session(self.real_room_id)
-        if not session or not session._running:
-            return
         if event.get("event_type") not in ("gift", "guard"):
             return
         extra = event.get("extra") or {}
-        # Use unit price only — combos of cheap gifts shouldn't trigger
-        # clips even when the total crosses the threshold. For guards/SC
-        # `price` already represents per-unit cost in 电池.
         unit_coin = extra.get("price") or 0
         if unit_coin < self.CLIP_GIFT_THRESHOLD:
+            return
+        # 高价礼物/大航海命中阈值后先记一条，便于排查 clip 为什么没录到。
+        uname = event.get("user_name", "")
+        gname = extra.get("gift_name") or extra.get("guard_name") or ""
+        if not get_room_auto_clip(self.room_id):
+            log.info(f"[recorder] room {self.real_room_id} clip skipped: auto_clip off (user={uname}, gift={gname}, price={unit_coin})")
+            return
+        session = recorder.get_session(self.real_room_id)
+        if not session or not session._running:
+            log.warning(
+                f"[recorder] room {self.real_room_id} clip skipped: no session "
+                f"(session={bool(session)}, running={session._running if session else False}, "
+                f"user={uname}, gift={gname}, price={unit_coin})"
+            )
             return
         label = event.get("user_name", "") or event.get("event_type", "")
         gift_id = int(extra.get("gift_id") or 0)
