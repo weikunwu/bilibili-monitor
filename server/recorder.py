@@ -166,6 +166,13 @@ class RecorderSession:
         if urls:
             anim_dur = await effect_catalog.fetch_duration(urls[1])
         if anim_dur is None:
+            # 没查到时长：要么 catalog 里没这个 gift/effect，要么 duration 拉取失败。
+            # clip 会用 fallback (POST_SEC_FALLBACK) 作为 tail 时长，所以录到的
+            # 长度可能短于实际动画，先留个日志便于之后补 catalog。
+            log.warning(
+                f"[recorder] room {self.room_id} clip anim duration miss: "
+                f"gift_id={gift_id} effect_id={effect_id} (fallback {self.POST_SEC_FALLBACK}s)"
+            )
             anim_dur = self.POST_SEC_FALLBACK - self.POST_TAIL_SEC  # default keeps total = FALLBACK
         # Combos play VAP num times back-to-back on the frontend; reserve
         # enough recorded tail to cover all replays plus the standard

@@ -310,15 +310,21 @@ class BiliLiveClient:
         return get_nickname(self.real_room_id, uid)
 
     def _maybe_clip(self, event: dict):
-        if event.get("event_type") not in ("gift", "guard"):
+        et = event.get("event_type")
+        if et not in ("gift", "guard"):
+            # 绝大多数事件走这里，只在价格字段存在且超阈值才打日志，避免刷屏
+            extra = event.get("extra") or {}
+            if (extra.get("price") or 0) >= self.CLIP_GIFT_THRESHOLD:
+                log.info(f"[recorder] room {self.real_room_id} clip skipped: event_type={et!r} 不在 (gift, guard)")
             return
         extra = event.get("extra") or {}
         unit_coin = extra.get("price") or 0
         if unit_coin < self.CLIP_GIFT_THRESHOLD:
             return
-        # 高价礼物/大航海命中阈值后先记一条，便于排查 clip 为什么没录到。
         uname = event.get("user_name", "")
         gname = extra.get("gift_name") or extra.get("guard_name") or ""
+        # 正向确认：命中阈值进入 clip 流程。后续任一分支都有对应日志。
+        log.info(f"[recorder] room {self.real_room_id} clip triggered: et={et} user={uname} gift={gname} price={unit_coin}")
         if not get_room_auto_clip(self.room_id):
             log.info(f"[recorder] room {self.real_room_id} clip skipped: auto_clip off (user={uname}, gift={gname}, price={unit_coin})")
             return
@@ -588,7 +594,6 @@ class BiliLiveClient:
                 if not due:
                     continue
                 online = await self._fetch_online_uids()
-                log.info(f"[挂粉提醒] room={self.real_room_id} due={[(u, n) for u, n in due]} online_size={len(online)} hit={[u for u, _ in due if u in online]}")
                 for uid, uname in due:
                     self._lurkers.pop(uid, None)
                     # 保守策略：uid 不在在线列表 (或接口失败返回空集) 一律跳过

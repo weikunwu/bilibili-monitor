@@ -129,7 +129,6 @@ def handle_message(msg: dict) -> Optional[dict]:
             "content": text,
             "extra": {"medal": medal, "emoticon": emoticon, "emots": emots},
         }
-        log.info(f"[弹幕] {medal}{user_name}: {text}")
         return event
 
     elif base_cmd == "SEND_GIFT":
@@ -167,7 +166,7 @@ def handle_message(msg: dict) -> Optional[dict]:
             },
         }
         log.info(f"[礼物] {data.get('uname')} {action} {gift_name} x{num}")
-        if price >= 100000:  # ≥ ¥1000: log raw payload so we can spot SVGA/effect fields
+        if price >= 1000000:  # ≥ ¥1000 (raw price 是金瓜子, 1000 金瓜子 = 1 元)
             log.info(f"[礼物原始数据] {json.dumps(data, ensure_ascii=False)}")
         return event
 
@@ -191,13 +190,11 @@ def handle_message(msg: dict) -> Optional[dict]:
     elif base_cmd == "GUARD_BUY":
         data = msg.get("data", {})
         log.info(f"[上舰] {data.get('username', '')} 开通 {GUARD_LEVELS.get(data.get('guard_level', 3), '舰长')}")
-        log.info(f"[上舰原始数据] {json.dumps(data, ensure_ascii=False)}")
         # Partial: caller merges with paired USER_TOAST_MSG via GuardPairer.
         return {"_partial": "guard_buy", "data": data}
 
     elif base_cmd == "USER_TOAST_MSG":
         data = msg.get("data", {})
-        log.info(f"[USER_TOAST_MSG] {json.dumps(data, ensure_ascii=False)}")
         return {"_partial": "user_toast", "data": data}
 
     elif base_cmd == "LIKE_INFO_V3_CLICK":
