@@ -459,21 +459,19 @@ function WelcomeEditor({
   )
 }
 
-const AI_REPLY_DEFAULT_SYSTEM_PROMPT = '你是B站直播间{streamer}的热心观众，用自然活泼的语气简短回复其他观众的弹幕。限制：不超过30字、不输出敏感词/脏话、不带emoji、不带话题标签、不换行，回复内容不要加引号。'
-
 function AiReplyEditor({
   roomId, cmdId, initial, onSaved, onCommitEnabled, onRestoreEnabled,
 }: {
   roomId: number | null
   cmdId: string
-  initial: { probability: number; bot_name: string; system_prompt: string }
-  onSaved: (config: { probability: number; bot_name: string; system_prompt: string }) => void
+  initial: { probability: number; bot_name: string; extra_prompt: string }
+  onSaved: (config: { probability: number; bot_name: string; extra_prompt: string }) => void
   onCommitEnabled?: () => Promise<void>
   onRestoreEnabled?: () => void
 }) {
   const [prob, setProb] = useState(String(initial.probability ?? 10))
   const [botName, setBotName] = useState(initial.bot_name || '')
-  const [sysPrompt, setSysPrompt] = useState(initial.system_prompt || AI_REPLY_DEFAULT_SYSTEM_PROMPT)
+  const [extraPrompt, setExtraPrompt] = useState(initial.extra_prompt || '')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
 
@@ -486,7 +484,7 @@ function AiReplyEditor({
     const payload = {
       probability: p,
       bot_name: botName.trim(),
-      system_prompt: sysPrompt.trim() || AI_REPLY_DEFAULT_SYSTEM_PROMPT,
+      extra_prompt: extraPrompt.trim(),
     }
     setSaving(true)
     try {
@@ -526,25 +524,24 @@ function AiReplyEditor({
         />
       </InputGroup>
       <div style={{ fontSize: 12, color: '#888' }}>
-        弹幕里含机器人名称 → 必定回复；否则按概率随机回复；同一房间 15 秒内最多回复一次
+        弹幕含机器人名称 → 必定回复；否则按概率随机回复；同一房间 15 秒内最多回复一次
       </div>
       <div style={{ fontSize: 12, color: '#888' }}>
-        系统提示词（占位符 <code>{'{streamer}'}</code> 替换为主播昵称）
+        额外提示词（可选）：在系统内置的安全/风格规则之上追加主播专属人设或口癖。占位符 <code>{'{streamer}'}</code> 替换为主播昵称。
       </div>
       <Input
         size="sm"
         as="textarea"
         rows={3}
-        value={sysPrompt}
-        onChange={setSysPrompt}
-        placeholder={AI_REPLY_DEFAULT_SYSTEM_PROMPT}
+        value={extraPrompt}
+        onChange={setExtraPrompt}
+        placeholder="例如：你特别喜欢吃辣条，回复时偶尔提一下；喜欢叫 {streamer} 为「老板」"
       />
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
         <button
           className="rs-btn rs-btn-subtle rs-btn-sm" style={{ width: 88 }}
           onClick={() => {
-            setProb('10'); setBotName('')
-            setSysPrompt(AI_REPLY_DEFAULT_SYSTEM_PROMPT)
+            setProb('10'); setBotName(''); setExtraPrompt('')
             onRestoreEnabled?.()
           }}
         >恢复默认</button>
@@ -790,7 +787,7 @@ export function ToolsPanel({ roomId }: Props) {
                 initial={{
                   probability: Number(cmd.config?.probability ?? 10),
                   bot_name: (cmd.config?.bot_name as string) || '',
-                  system_prompt: (cmd.config?.system_prompt as string) || AI_REPLY_DEFAULT_SYSTEM_PROMPT,
+                  extra_prompt: (cmd.config?.extra_prompt as string) || '',
                 }}
                 onCommitEnabled={() => commitEnabled([cmd.id])}
                 onRestoreEnabled={() => setDraftEnabled([cmd.id], false)}
