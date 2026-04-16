@@ -527,7 +527,7 @@ function AiReplyEditor({
         弹幕含机器人名称 → 必定回复；否则按概率随机回复；同一房间 15 秒内最多回复一次
       </div>
       <div style={{ fontSize: 12, color: '#888' }}>
-        额外提示词（可选）：在系统内置的安全/风格规则之上追加主播专属人设或口癖。占位符 <code>{'{streamer}'}</code> 替换为主播昵称。
+        额外提示词（可选）：给机器人补充人设或口癖。占位符 <code>{'{streamer}'}</code> 替换为主播昵称。
       </div>
       <Input
         size="sm"
