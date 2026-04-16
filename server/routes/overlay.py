@@ -107,7 +107,8 @@ def _pass_filters(event_type: str, extra: dict, settings: dict) -> bool:
     """根据房间设置判断事件是否应展示：
       - 类型：show_gift / show_blind / show_guard
       - 价格：按 price_mode (总价 total_coin / 单价 price) 在 [min_price, max_price] 区间内。
-        价格字段单位是金瓜子（1000 金瓜子 = 1 元），min/max 以元为单位；0 表示不限。
+        extra 里 price/total_coin 的单位是"电池"（raw 金瓜子 / 100），
+        10 电池 = 1 元；min_price / max_price 以元为单位；0 表示不限。
     """
     if event_type == "guard":
         if not settings.get("show_guard"):
@@ -123,7 +124,7 @@ def _pass_filters(event_type: str, extra: dict, settings: dict) -> bool:
         total = extra.get("total_coin", 0) or 0
         unit = extra.get("price", 0) or 0
     value_coin = total if settings.get("price_mode") == "total" else unit
-    value_yuan = value_coin / 1000.0
+    value_yuan = value_coin / 10.0
     mn = settings.get("min_price", 0) or 0
     mx = settings.get("max_price", 0) or 0
     if mn and value_yuan < mn:
