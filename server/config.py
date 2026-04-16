@@ -2,24 +2,36 @@
 
 import logging
 import os
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 LOG_FORMAT = "%(asctime)s UTC [%(levelname)s] %(message)s"
 logging.basicConfig(level=logging.INFO, format=LOG_FORMAT)
 log = logging.getLogger("bilibili-monitor")
 
-# Unify uvicorn loggers to same format
+BASE_DIR = Path(__file__).parent.parent
+DATA_DIR = Path(os.environ.get("DATA_DIR", str(BASE_DIR)))
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+DB_PATH = DATA_DIR / "gifts.db"
+
+# 持久化日志到 data volume，fly logs 只保留几分钟，ssh 进去可回溯 3 天。
+# 50MB × 3 backup + 当前 = 最多 ~200MB。
+_LOG_PATH = DATA_DIR / "app.log"
+_file_handler = RotatingFileHandler(
+    str(_LOG_PATH), maxBytes=50 * 1024 * 1024, backupCount=3, encoding="utf-8"
+)
+_file_handler.setFormatter(logging.Formatter(LOG_FORMAT))
+_file_handler.setLevel(logging.INFO)
+logging.getLogger().addHandler(_file_handler)
+
+# Unify uvicorn loggers to same format + 同样写文件
 for _name in ("uvicorn", "uvicorn.access", "uvicorn.error"):
     _logger = logging.getLogger(_name)
     _logger.handlers.clear()
     _handler = logging.StreamHandler()
     _handler.setFormatter(logging.Formatter(LOG_FORMAT))
     _logger.addHandler(_handler)
-
-BASE_DIR = Path(__file__).parent.parent
-DATA_DIR = Path(os.environ.get("DATA_DIR", str(BASE_DIR)))
-DATA_DIR.mkdir(parents=True, exist_ok=True)
-DB_PATH = DATA_DIR / "gifts.db"
+    _logger.addHandler(_file_handler)
 
 # ── Protocol constants ──
 HEADER_SIZE = 16
