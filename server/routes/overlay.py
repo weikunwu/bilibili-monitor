@@ -16,7 +16,7 @@ from ..db import verify_overlay_token
 
 router = APIRouter()
 
-MAX_USERS = 10
+MAX_EVENTS = 10
 
 
 def _row_to_gift_user(event_id: int, user_name: str, user_id: int, extra_json: str) -> dict | None:
@@ -53,7 +53,7 @@ def _row_to_gift_user(event_id: int, user_name: str, user_id: int, extra_json: s
 async def overlay_gifts(
     room_id: int,
     token: str = Query(..., description="overlay token, generated from room settings"),
-    max: int = Query(MAX_USERS, ge=1, le=MAX_USERS),
+    max: int = Query(MAX_EVENTS, ge=1, le=MAX_EVENTS),
 ):
     """Return the most recent N gift events (today, Beijing time) as individual cards.
 
