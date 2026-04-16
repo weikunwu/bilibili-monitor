@@ -637,7 +637,7 @@ class BiliLiveClient:
         )
         asyncio.create_task(self.send_danmu(msg))
 
-    AI_REPLY_API = "https://openrouter.ai/api/v1/chat/completions"
+    AI_REPLY_API = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
     AI_REPLY_ROOM_COOLDOWN = 15  # 同一房间两次回复间隔（秒）
     # 硬编码 base prompt，用户无法修改；只能通过 extra_prompt 追加风格/人设。
     AI_REPLY_BASE_PROMPT = (
@@ -660,7 +660,7 @@ class BiliLiveClient:
     )
 
     async def _maybe_ai_reply(self, uid: int, uname: str, content: str, extra: dict | None = None):
-        """观众弹幕命中机器人名 → 必定回复；否则纯 random 掷骰子。同一房间受冷却限制。API Key 从环境变量 OPENROUTER_API_KEY 读取。"""
+        """观众弹幕命中机器人名 → 必定回复；否则纯 random 掷骰子。同一房间受冷却限制。API Key 从环境变量 BIGMODEL_API_KEY 读取。"""
         if not uid or not uname or not content:
             return
         # 未开播不回复（直播间非 live 状态聊的多是测试消息，避免机器人乱讲）
@@ -675,7 +675,7 @@ class BiliLiveClient:
         # 整条弹幕就是一个大表情（extra.emoticon 非空）→ 直接跳过
         if (extra.get("emoticon") or {}).get("url"):
             return
-        api_key = (os.environ.get("OPENROUTER_API_KEY") or "").strip()
+        api_key = (os.environ.get("BIGMODEL_API_KEY") or "").strip()
         if not api_key:
             return
         cmd = get_command(self.real_room_id, "ai_reply")
@@ -711,7 +711,7 @@ class BiliLiveClient:
         # 占坑防并发双发（异步 OpenRouter 调用期间可能又来新弹幕）。
         self._last_ai_reply_ts = now
 
-        model = (cfg.get("model") or "openrouter/free").strip()
+        model = (cfg.get("model") or "glm-4.7-flash").strip()
         display_name = self._nickname_for(uid) or uname
         base_prompt = (
             self.AI_REPLY_BASE_PROMPT
@@ -737,16 +737,13 @@ class BiliLiveClient:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_msg},
             ],
-            # openrouter/free 常路由到推理模型，思考会吃掉大量 token，留足额度
-            "max_tokens": 600,
+            "max_tokens": 300,
             "temperature": 0.8,
         }
         log.info(f"[AI回复] room={self.real_room_id} {'命中' if mentioned else '随机'} 触发={uname}({uid}) 请求 model={model}")
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
-            "HTTP-Referer": "https://live.bilibili.com/",
-            "X-Title": "bilibili-monitor",
         }
         reply_text = ""
         try:
@@ -766,7 +763,7 @@ class BiliLiveClient:
                             finish = choices[0].get("finish_reason") or ""
                             log.warning(f"[AI回复] {model} 200 但 content 为空 finish={finish} reasoning={reasoning[:120]!r} usage={data.get('usage')}")
         except Exception as e:
-            log.warning(f"[AI回复] OpenRouter 调用异常: {e}")
+            log.warning(f"[AI回复] BigModel 调用异常: {e}")
             return
         if not reply_text:
             return
