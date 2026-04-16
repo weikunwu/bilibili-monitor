@@ -13,6 +13,8 @@ interface Props {
 
 const BLIND_DEFAULT_TEMPLATE = '感谢{name}的{count}个盲盒，{verdict}'
 const GUARD_DEFAULT_TEMPLATE = '感谢{name}{content}了{num}个月{guard}'
+const FOLLOW_DEFAULT_TEMPLATE = '感谢{name}的关注~'
+const LIKE_DEFAULT_TEMPLATE = '感谢{name}的点赞~'
 const LURKER_DEFAULT_TEMPLATE = '说点什么呀~'
 
 function LurkerEditor({
@@ -85,51 +87,73 @@ function LurkerEditor({
 }
 const WELCOME_DEFAULT_TEMPLATE = '欢迎{name}进入直播间'
 
-// 感谢弹幕分组：礼物感谢 / 大航海感谢 / 盲盒播报 共用同一个总开关和保存/恢复默认按钮。
+// 感谢弹幕分组：礼物/大航海/盲盒/关注/点赞 共用同一个总开关和保存/恢复默认按钮。
 // 总开关：任一子项开启即显示开启；关时一键全关，开时一键全开。
 function ThanksGroup({
-  roomId, master, gift, guard, blind, onToggleDraft, onUpdateConfig, onCommitEnabled, onRestoreEnabled,
+  roomId, master, gift, guard, blind, follow, like,
+  onToggleDraft, onUpdateConfig, onCommitEnabled, onRestoreEnabled,
 }: {
   roomId: number | null
   master: Command
   gift: Command
   guard: Command
   blind: Command
+  follow: Command
+  like: Command
   onToggleDraft: (cmdId: string) => void
   onUpdateConfig: (cmdId: string, config: Record<string, unknown>) => void
   onCommitEnabled: (cmdIds: string[]) => Promise<void>
   onRestoreEnabled?: () => void
 }) {
-  const initGuardTpls = (guard.config?.templates as string[])
-    || (guard.config?.template ? [guard.config.template as string] : [GUARD_DEFAULT_TEMPLATE])
-  const initBlindTpls = (blind.config?.templates as string[])
-    || (blind.config?.template ? [blind.config.template as string] : [BLIND_DEFAULT_TEMPLATE])
-
-  const [guardTpls, setGuardTpls] = useState<string[]>(initGuardTpls.length ? initGuardTpls : [GUARD_DEFAULT_TEMPLATE])
-  const [blindTpls, setBlindTpls] = useState<string[]>(initBlindTpls.length ? initBlindTpls : [BLIND_DEFAULT_TEMPLATE])
+  const initTpls = (cmd: Command, def: string): string[] => {
+    const t = cmd.config?.templates as string[] | undefined
+    if (t && t.length) return t
+    const legacy = cmd.config?.template as string | undefined
+    return [legacy || def]
+  }
+  const [guardTpls, setGuardTpls] = useState<string[]>(initTpls(guard, GUARD_DEFAULT_TEMPLATE))
+  const [blindTpls, setBlindTpls] = useState<string[]>(initTpls(blind, BLIND_DEFAULT_TEMPLATE))
+  const [followTpls, setFollowTpls] = useState<string[]>(initTpls(follow, FOLLOW_DEFAULT_TEMPLATE))
+  const [likeTpls, setLikeTpls] = useState<string[]>(initTpls(like, LIKE_DEFAULT_TEMPLATE))
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
 
+  const allIds = [
+    'broadcast_thanks', 'broadcast_gift', 'broadcast_guard', 'broadcast_blind',
+    'broadcast_follow', 'broadcast_like',
+  ]
+
   async function saveAll() {
     if (!roomId) return
-    const gFinal = guardTpls.map((s) => s.trim()).filter(Boolean)
-    const bFinal = blindTpls.map((s) => s.trim()).filter(Boolean)
-    const g = gFinal.length ? gFinal : [GUARD_DEFAULT_TEMPLATE]
-    const b = bFinal.length ? bFinal : [BLIND_DEFAULT_TEMPLATE]
+    const clean = (arr: string[], def: string) => {
+      const c = arr.map((s) => s.trim()).filter(Boolean)
+      return c.length ? c : [def]
+    }
+    const g = clean(guardTpls, GUARD_DEFAULT_TEMPLATE)
+    const b = clean(blindTpls, BLIND_DEFAULT_TEMPLATE)
+    const f = clean(followTpls, FOLLOW_DEFAULT_TEMPLATE)
+    const l = clean(likeTpls, LIKE_DEFAULT_TEMPLATE)
     setSaving(true)
     try {
-      await onCommitEnabled(['broadcast_thanks', 'broadcast_gift', 'broadcast_guard', 'broadcast_blind'])
+      await onCommitEnabled(allIds)
       await saveCommandConfig(roomId, 'broadcast_guard', { templates: g })
       await saveCommandConfig(roomId, 'broadcast_blind', { templates: b })
+      await saveCommandConfig(roomId, 'broadcast_follow', { templates: f })
+      await saveCommandConfig(roomId, 'broadcast_like', { templates: l })
       onUpdateConfig('broadcast_guard', { templates: g })
       onUpdateConfig('broadcast_blind', { templates: b })
-      setGuardTpls(g); setBlindTpls(b)
+      onUpdateConfig('broadcast_follow', { templates: f })
+      onUpdateConfig('broadcast_like', { templates: l })
+      setGuardTpls(g); setBlindTpls(b); setFollowTpls(f); setLikeTpls(l)
       setSaved(true); setTimeout(() => setSaved(false), 1500)
     } finally { setSaving(false) }
   }
 
   function restoreDefaults() {
-    setGuardTpls([GUARD_DEFAULT_TEMPLATE]); setBlindTpls([BLIND_DEFAULT_TEMPLATE])
+    setGuardTpls([GUARD_DEFAULT_TEMPLATE])
+    setBlindTpls([BLIND_DEFAULT_TEMPLATE])
+    setFollowTpls([FOLLOW_DEFAULT_TEMPLATE])
+    setLikeTpls([LIKE_DEFAULT_TEMPLATE])
     onRestoreEnabled?.()
   }
 
@@ -202,6 +226,14 @@ function ThanksGroup({
           {section(
             blind, blindTpls, setBlindTpls, BLIND_DEFAULT_TEMPLATE,
             <>占位符：<code>{'{name}'}</code> 用户昵称，<code>{'{streamer}'}</code> 主播昵称，<code>{'{count}'}</code> 盲盒数，<code>{'{verdict}'}</code> 盈亏（如 "赚3元"/"亏5元"/"不亏不赚"）</>,
+          )}
+          {section(
+            follow, followTpls, setFollowTpls, FOLLOW_DEFAULT_TEMPLATE,
+            <>占位符：<code>{'{name}'}</code> 用户昵称，<code>{'{streamer}'}</code> 主播昵称</>,
+          )}
+          {section(
+            like, likeTpls, setLikeTpls, LIKE_DEFAULT_TEMPLATE,
+            <>占位符：<code>{'{name}'}</code> 用户昵称，<code>{'{streamer}'}</code> 主播昵称</>,
           )}
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: 8 }}>
@@ -558,6 +590,9 @@ function AiReplyEditor({
 export function ToolsPanel({ roomId }: Props) {
   const [commands, setCommands] = useState<Command[]>([])
   const [autoClip, setAutoClip] = useState(false)
+  const [committedAutoClip, setCommittedAutoClip] = useState(false)
+  const [autoClipSaving, setAutoClipSaving] = useState(false)
+  const [autoClipSaved, setAutoClipSaved] = useState(false)
   const [cheapGifts, setCheapGifts] = useState<CheapGift[]>([])
 
   const [committedEnabled, setCommittedEnabled] = useState<Record<string, boolean>>({})
@@ -568,7 +603,7 @@ export function ToolsPanel({ roomId }: Props) {
       setCommands(cmds)
       setCommittedEnabled(Object.fromEntries(cmds.map((c) => [c.id, c.enabled])))
     }).catch(() => {})
-    fetchAutoClip(roomId).then(setAutoClip).catch(() => {})
+    fetchAutoClip(roomId).then((v) => { setAutoClip(v); setCommittedAutoClip(v) }).catch(() => {})
     fetchCheapGifts(roomId).then(setCheapGifts).catch(() => {})
   }, [roomId])
 
@@ -671,10 +706,20 @@ export function ToolsPanel({ roomId }: Props) {
     }
   }
 
-  async function handleAutoClipToggle(enabled: boolean) {
+  async function saveAutoClip() {
     if (!roomId) return
-    setAutoClip(enabled)
-    try { await toggleAutoClip(roomId, enabled) } catch { setAutoClip(!enabled) }
+    if (autoClip === committedAutoClip) {
+      setAutoClipSaved(true); setTimeout(() => setAutoClipSaved(false), 1500)
+      return
+    }
+    setAutoClipSaving(true)
+    try {
+      await toggleAutoClip(roomId, autoClip)
+      setCommittedAutoClip(autoClip)
+      setAutoClipSaved(true); setTimeout(() => setAutoClipSaved(false), 1500)
+    } catch {
+      setAutoClip(committedAutoClip)
+    } finally { setAutoClipSaving(false) }
   }
 
   return (
@@ -683,12 +728,14 @@ export function ToolsPanel({ roomId }: Props) {
       <div style={{ padding: '0 24px 16px' }}>
       {commands.map((cmd, i) => {
         if (cmd.id === 'nickname_commands') return null
-        if (cmd.id === 'broadcast_gift' || cmd.id === 'broadcast_guard' || cmd.id === 'broadcast_blind') return null
+        if (['broadcast_gift', 'broadcast_guard', 'broadcast_blind', 'broadcast_follow', 'broadcast_like'].includes(cmd.id)) return null
         if (cmd.id === 'broadcast_thanks') {
           const gift = commands.find((c) => c.id === 'broadcast_gift')
           const guard = commands.find((c) => c.id === 'broadcast_guard')
           const blind = commands.find((c) => c.id === 'broadcast_blind')
-          if (!gift || !guard || !blind) return null
+          const follow = commands.find((c) => c.id === 'broadcast_follow')
+          const like = commands.find((c) => c.id === 'broadcast_like')
+          if (!gift || !guard || !blind || !follow || !like) return null
           return (
             <ThanksGroup
               key="thanks_group"
@@ -697,9 +744,11 @@ export function ToolsPanel({ roomId }: Props) {
               gift={gift}
               guard={guard}
               blind={blind}
+              follow={follow}
+              like={like}
               onToggleDraft={toggleDraft}
               onCommitEnabled={commitEnabled}
-              onRestoreEnabled={() => setDraftEnabled(['broadcast_thanks', 'broadcast_gift', 'broadcast_guard', 'broadcast_blind'], true)}
+              onRestoreEnabled={() => setDraftEnabled(['broadcast_thanks', 'broadcast_gift', 'broadcast_guard', 'broadcast_blind', 'broadcast_follow', 'broadcast_like'], true)}
               onUpdateConfig={(cid, config) => {
                 setCommands((prev) => prev.map((c) => (
                   c.id === cid ? { ...c, config: { ...c.config, ...config } } : c
@@ -790,7 +839,7 @@ export function ToolsPanel({ roomId }: Props) {
                   extra_prompt: (cmd.config?.extra_prompt as string) || '',
                 }}
                 onCommitEnabled={() => commitEnabled([cmd.id])}
-                onRestoreEnabled={() => setDraftEnabled([cmd.id], false)}
+                onRestoreEnabled={() => setDraftEnabled([cmd.id], true)}
                 onSaved={(config) => {
                   setCommands((prev) => prev.map((c) => (
                     c.id === cmd.id ? { ...c, config: { ...c.config, ...config } } : c
@@ -835,13 +884,24 @@ export function ToolsPanel({ roomId }: Props) {
         <div className="cmd-info">
           <div className="cmd-name" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span>礼物自动剪辑</span>
-            <Toggle checked={autoClip} onChange={handleAutoClipToggle} size="sm" />
+            <Toggle checked={autoClip} onChange={setAutoClip} size="sm" />
             <span style={{ color: '#ef5350', fontWeight: 'normal' }}>
               非实际录屏！！仅模拟合成！！
             </span>
           </div>
           <div className="cmd-desc">直播时收到单价 ≥<span style={{ color: '#ef5350' }}>¥1000</span> 礼物时自动录制前后片段，可在礼物和大航海列表下载</div>
           <div className="cmd-desc">录制片段仅保留 24 小时</div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: 6 }}>
+            <button
+              className="rs-btn rs-btn-subtle rs-btn-sm" style={{ width: 88 }}
+              onClick={() => setAutoClip(false)}
+            >恢复默认</button>
+            <button
+              className="rs-btn rs-btn-primary rs-btn-sm" style={{ width: 88 }}
+              onClick={saveAutoClip}
+              disabled={autoClipSaving}
+            >{autoClipSaving ? '保存中…' : autoClipSaved ? '已保存' : '保存'}</button>
+          </div>
         </div>
       </div>
     </div>

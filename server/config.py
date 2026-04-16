@@ -102,9 +102,29 @@ DEFAULT_COMMANDS = [
         "id": "broadcast_thanks",
         "name": "感谢弹幕",
         "type": "auto_broadcast",
-        "description": "感谢弹幕总开关；关闭后礼物感谢/大航海感谢/盲盒播报都不发",
+        "description": "感谢弹幕总开关；关闭后礼物/大航海/盲盒/关注/点赞感谢都不发",
         "default_enabled": True,
         "config": {},
+    },
+    {
+        "id": "broadcast_follow",
+        "name": "关注感谢",
+        "type": "auto_broadcast",
+        "description": "观众在本场直播关注主播后，机器人按模版感谢一次（同一用户一次）",
+        "default_enabled": True,
+        "config": {
+            "templates": ["感谢{name}的关注~"],
+        },
+    },
+    {
+        "id": "broadcast_like",
+        "name": "点赞感谢",
+        "type": "auto_broadcast",
+        "description": "观众在本场直播首次点赞后，机器人按模版感谢一次（同一用户一次）",
+        "default_enabled": True,
+        "config": {
+            "templates": ["感谢{name}的点赞~"],
+        },
     },
     {
         "id": "broadcast_gift",

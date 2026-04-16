@@ -144,6 +144,10 @@ class BiliLiveClient:
         self._seen_v2_red_pocket: bool = False
         # Per-command round-robin index for multi-template broadcasts.
         self._tpl_idx: dict[str, int] = {}
+        # 关注/点赞感谢：已感谢过的 uid 集合，每 24h 自动清空一次（以便老观众次日再来时能再感谢）。
+        self._thanked_follow: set[int] = set()
+        self._thanked_like: set[int] = set()
+        self._thanks_clear_ts: float = time.time()
         # 本房间 AI 回复上一次发送时间（防止同房间高频刷屏）。
         self._last_ai_reply_ts: float = 0.0
 
@@ -604,6 +608,82 @@ class BiliLiveClient:
             except Exception as e:
                 log.warning(f"[挂粉提醒] loop error: {e}")
 
+    THANKS_DEDUP_TTL = 24 * 3600  # 关注/点赞感谢去重集合滚动清理周期
+
+    def _maybe_roll_thanks_dedup(self):
+        """每 24h 清空 followed/liked 集合，次日老观众可再次被感谢。"""
+        now = time.time()
+        if now - self._thanks_clear_ts >= self.THANKS_DEDUP_TTL:
+            self._thanked_follow.clear()
+            self._thanked_like.clear()
+            self._thanks_clear_ts = now
+
+    def _maybe_broadcast_follow_thanks(self, uid: int, uname: str):
+        """Thank a user when they follow the streamer (INTERACT_WORD msg_type=2).
+        Dedup: once per uid per 24h 滚动窗口."""
+        if not uid or not uname:
+            return
+        if uid == self.bot_uid or uid == self.streamer_uid:
+            return
+        self._maybe_roll_thanks_dedup()
+        if uid in self._thanked_follow:
+            return
+        if not self.cookies.get("SESSDATA"):
+            return
+        master = get_command(self.real_room_id, "broadcast_thanks")
+        if not master or not master["enabled"]:
+            return
+        cmd_cfg = get_command(self.real_room_id, "broadcast_follow")
+        if not cmd_cfg or not cmd_cfg["enabled"]:
+            return
+        self._thanked_follow.add(uid)
+        display_name = self._nickname_for(uid) or uname
+        tpl = self._pick_template(
+            "broadcast_follow",
+            cmd_cfg.get("config") or {},
+            "感谢{name}的关注~",
+        )
+        msg = (
+            tpl.replace("{name}", display_name).replace("{昵称}", display_name)
+               .replace("{streamer}", self.streamer_name or "").replace("{主播}", self.streamer_name or "")
+        )
+        asyncio.create_task(self.send_danmu(msg))
+
+    def _maybe_broadcast_like_thanks(self, event: dict):
+        """Thank a user when they click 点赞 (LIKE_INFO_V3_CLICK).
+        Dedup: once per uid per 24h 滚动窗口（观众连击点赞只感谢一次）。"""
+        if event.get("event_type") != "like":
+            return
+        uid = event.get("user_id") or 0
+        uname = event.get("user_name", "") or ""
+        if not uid or not uname:
+            return
+        if uid == self.bot_uid or uid == self.streamer_uid:
+            return
+        self._maybe_roll_thanks_dedup()
+        if uid in self._thanked_like:
+            return
+        if not self.cookies.get("SESSDATA"):
+            return
+        master = get_command(self.real_room_id, "broadcast_thanks")
+        if not master or not master["enabled"]:
+            return
+        cmd_cfg = get_command(self.real_room_id, "broadcast_like")
+        if not cmd_cfg or not cmd_cfg["enabled"]:
+            return
+        self._thanked_like.add(uid)
+        display_name = self._nickname_for(uid) or uname
+        tpl = self._pick_template(
+            "broadcast_like",
+            cmd_cfg.get("config") or {},
+            "感谢{name}的点赞~",
+        )
+        msg = (
+            tpl.replace("{name}", display_name).replace("{昵称}", display_name)
+               .replace("{streamer}", self.streamer_name or "").replace("{主播}", self.streamer_name or "")
+        )
+        asyncio.create_task(self.send_danmu(msg))
+
     def _maybe_broadcast_guard_thanks(self, event: dict):
         """Thank guard (上舰/续费) events. One event per merged guard
         purchase, so no debouncing needed — emit directly."""
@@ -945,6 +1025,11 @@ class BiliLiveClient:
                                         decoded = _decode_interact_word_pb(data["pb"])
                                         self._maybe_welcome(decoded)
                                         self._track_lurker(decoded)
+                                        # msg_type=2 即关注（1=进入、3=分享）
+                                        if decoded.get("msg_type") == 2:
+                                            self._maybe_broadcast_follow_thanks(
+                                                decoded.get("uid") or 0, decoded.get("uname") or "",
+                                            )
                                     continue
                                 if base_cmd == "INTERACT_WORD":
                                     # V1 仅在 V2 不来时回退使用，medal 信息缺失只能走普通
@@ -952,6 +1037,10 @@ class BiliLiveClient:
                                         data = pkt.get("data") or {}
                                         self._maybe_welcome(data)
                                         self._track_lurker(data)
+                                        if data.get("msg_type") == 2:
+                                            self._maybe_broadcast_follow_thanks(
+                                                data.get("uid") or 0, data.get("uname") or "",
+                                            )
                                     continue
                                 # 天选/红包期间暂停欢迎弹幕（避免刷屏），并发一条提示
                                 # B站 有 V1 / V2 两套 cmd (V2 为 pb 编码)，都当触发。
@@ -1008,13 +1097,16 @@ class BiliLiveClient:
                                         )
                                     event["room_id"] = self.real_room_id
                                     skip_danmu = event["event_type"] == "danmu" and not get_room_save_danmu(self.room_id)
-                                    if not skip_danmu:
+                                    # 点赞事件只用于"点赞感谢"，不入库/不推前端
+                                    skip_persist = skip_danmu or event["event_type"] == "like"
+                                    if not skip_persist:
                                         save_event(event)
                                         await self.on_event(event)
                                     self._maybe_clip(event)
                                     self._maybe_broadcast_blind(event)
                                     self._maybe_broadcast_gift_thanks(event)
                                     self._maybe_broadcast_guard_thanks(event)
+                                    self._maybe_broadcast_like_thanks(event)
                                     # 发弹幕 → 取消挂粉提醒
                                     if event.get("event_type") == "danmu":
                                         self._lurkers.pop(event.get("user_id") or 0, None)

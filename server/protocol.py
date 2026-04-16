@@ -200,6 +200,18 @@ def handle_message(msg: dict) -> Optional[dict]:
         log.info(f"[USER_TOAST_MSG] {json.dumps(data, ensure_ascii=False)}")
         return {"_partial": "user_toast", "data": data}
 
+    elif base_cmd == "LIKE_INFO_V3_CLICK":
+        data = msg.get("data", {})
+        uname = data.get("uname") or ""
+        uid = data.get("uid") or 0
+        if not uid or not uname:
+            return None
+        return {
+            "timestamp": now, "event_type": "like",
+            "user_name": uname, "user_id": uid, "content": "",
+            "extra": {},
+        }
+
     return None
 
 
