@@ -40,6 +40,9 @@ export default function App() {
   const [rooms, setRooms] = useState<Room[]>([])
 
   useEffect(() => {
+    // 公开的 OBS 叠加页：没有登录 cookie，跳过初始用户/房间拉取，
+    // 否则 fetchRooms 401 会把观众强跳到登录页。
+    if (window.location.pathname.startsWith('/overlay/')) return
     fetchMe().then(setCurrentUser)
     fetchRooms().then(setRooms)
   }, [])
