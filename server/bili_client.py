@@ -639,6 +639,13 @@ class BiliLiveClient:
 
     AI_REPLY_API = "https://openrouter.ai/api/v1/chat/completions"
     AI_REPLY_ROOM_COOLDOWN = 15  # 同一房间两次回复间隔（秒）
+    # 429 时按顺序降级尝试的免费模型（主模型失败 → 遍历这里）
+    AI_REPLY_FALLBACK_MODELS = [
+        "deepseek/deepseek-chat-v3-0324:free",
+        "google/gemini-2.0-flash-exp:free",
+        "qwen/qwen-2.5-72b-instruct:free",
+        "mistralai/mistral-small-3.1-24b-instruct:free",
+    ]
 
     async def _maybe_ai_reply(self, uid: int, uname: str, content: str):
         """观众弹幕命中机器人名 → 必定回复；否则纯 random 掷骰子。同一房间受冷却限制。API Key 从环境变量 OPENROUTER_API_KEY 读取。"""
@@ -675,7 +682,12 @@ class BiliLiveClient:
         # 占坑防并发双发（异步 OpenRouter 调用期间可能又来新弹幕）。
         self._last_ai_reply_ts = now
 
-        model = (cfg.get("model") or "meta-llama/llama-3.3-70b-instruct:free").strip()
+        primary_model = (cfg.get("model") or "meta-llama/llama-3.3-70b-instruct:free").strip()
+        # 去重，确保主模型排第一，避免 429 时立即重试同一个
+        models_to_try = [primary_model]
+        for m in self.AI_REPLY_FALLBACK_MODELS:
+            if m not in models_to_try:
+                models_to_try.append(m)
         display_name = self._nickname_for(uid) or uname
         system_tpl = cfg.get("system_prompt") or ""
         system_prompt = (
@@ -683,15 +695,6 @@ class BiliLiveClient:
                       .replace("{主播}", self.streamer_name or "")
         ).strip() or "你是B站直播间的热心观众，用自然活泼的语气简短回复其他观众的弹幕，不超过30字，不换行。"
         user_msg = f"{display_name}: {content}"
-        payload = {
-            "model": model,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_msg},
-            ],
-            "max_tokens": 120,
-            "temperature": 0.8,
-        }
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
@@ -699,21 +702,38 @@ class BiliLiveClient:
             "X-Title": "bilibili-monitor",
         }
         reply_text = ""
+        used_model = ""
         try:
             async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=20)) as s:
-                async with s.post(self.AI_REPLY_API, headers=headers, data=json.dumps(payload)) as r:
-                    data = await r.json(content_type=None)
-                    if r.status != 200:
-                        log.warning(f"[AI回复] HTTP {r.status}: {str(data)[:300]}")
-                        return
-                    choices = data.get("choices") or []
-                    if choices:
-                        msg = choices[0].get("message") or {}
-                        reply_text = (msg.get("content") or "").strip()
+                for model in models_to_try:
+                    payload = {
+                        "model": model,
+                        "messages": [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_msg},
+                        ],
+                        "max_tokens": 120,
+                        "temperature": 0.8,
+                    }
+                    async with s.post(self.AI_REPLY_API, headers=headers, data=json.dumps(payload)) as r:
+                        data = await r.json(content_type=None)
+                        if r.status == 429:
+                            log.info(f"[AI回复] {model} 限流，尝试下一个")
+                            continue
+                        if r.status != 200:
+                            log.warning(f"[AI回复] {model} HTTP {r.status}: {str(data)[:300]}")
+                            return
+                        choices = data.get("choices") or []
+                        if choices:
+                            msg = choices[0].get("message") or {}
+                            reply_text = (msg.get("content") or "").strip()
+                        used_model = model
+                        break
         except Exception as e:
             log.warning(f"[AI回复] OpenRouter 调用异常: {e}")
             return
         if not reply_text:
+            log.warning(f"[AI回复] 所有模型均限流或空响应，放弃")
             return
         # 清洗：去掉引号、换行、首尾 @mention；截到 40 字以内。
         reply_text = reply_text.replace("\n", " ").replace("\r", " ").strip()
@@ -727,7 +747,7 @@ class BiliLiveClient:
             return
         try:
             await self.send_danmu(reply_text, reply_uid=uid, reply_uname=uname)
-            log.info(f"[AI回复] room={self.real_room_id} {'@命中' if mentioned else '随机'} to={uname}({uid}) msg={reply_text!r}")
+            log.info(f"[AI回复] room={self.real_room_id} {'@命中' if mentioned else '随机'} model={used_model} to={uname}({uid}) msg={reply_text!r}")
         except Exception as e:
             log.warning(f"[AI回复] 发送失败: {e}")
 
