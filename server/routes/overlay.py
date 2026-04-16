@@ -19,60 +19,34 @@ router = APIRouter()
 MAX_USERS = 10
 
 
-def _build_recent_gift_users(rows) -> list[dict]:
-    """Aggregate today's gifts by user; order by last-seen gift timestamp desc.
+def _row_to_gift_user(event_id: int, user_name: str, user_id: int, extra_json: str) -> dict | None:
+    """Convert a single gift event row into a GiftUser-shaped dict (one gift entry).
 
-    rows: iterable of (user_name, user_id, timestamp, extra_json)
+    The frontend renderer expects GiftUser with gifts/gift_coins/gift_imgs/gift_actions/gift_ids
+    maps keyed by gift name. For overlay we never aggregate — each event is its own card.
     """
-    users: dict = {}
-    for user_name, user_id, ts, extra_json in rows:
-        try:
-            extra = json.loads(extra_json)
-        except Exception:
-            continue
-        key = user_name or str(user_id)
-        if key not in users:
-            users[key] = {
-                "user_name": user_name,
-                "avatar": extra.get("avatar", ""),
-                "gifts": {},
-                "gift_coins": {},
-                "gift_imgs": {},
-                "gift_actions": {},
-                "gift_ids": {},
-                "guard_level": 0,
-                "total_coin": 0,
-                "_last_ts": ts,
-            }
-        u = users[key]
-        if ts > u["_last_ts"]:
-            u["_last_ts"] = ts
-        gift_name = extra.get("gift_name", "?")
-        num = extra.get("num", 1)
-        u["gifts"][gift_name] = u["gifts"].get(gift_name, 0) + num
-        tc = extra.get("total_coin", 0)
-        u["total_coin"] += tc
-        u["gift_coins"][gift_name] = u["gift_coins"].get(gift_name, 0) + tc
-        if not u["avatar"] and extra.get("avatar"):
-            u["avatar"] = extra["avatar"]
-        gift_img = extra.get("gift_img", "")
-        if gift_img and gift_name not in u["gift_imgs"]:
-            u["gift_imgs"][gift_name] = gift_img
-        action = extra.get("action", "投喂")
-        blind_name = extra.get("blind_name", "")
-        if gift_name not in u["gift_actions"]:
-            u["gift_actions"][gift_name] = f"{blind_name} 爆出" if blind_name else action
-        gid = extra.get("gift_id", 0)
-        if gid and gift_name not in u["gift_ids"]:
-            u["gift_ids"][gift_name] = gid
-        gl = extra.get("guard_level", 0)
-        if gl and (not u["guard_level"] or gl < u["guard_level"]):
-            u["guard_level"] = gl
-
-    ordered = sorted(users.values(), key=lambda x: x["_last_ts"], reverse=True)
-    for u in ordered:
-        u.pop("_last_ts", None)
-    return ordered[:MAX_USERS]
+    try:
+        extra = json.loads(extra_json)
+    except Exception:
+        return None
+    gift_name = extra.get("gift_name", "?")
+    num = extra.get("num", 1)
+    total_coin = extra.get("total_coin", 0)
+    action = extra.get("action", "投喂")
+    blind_name = extra.get("blind_name", "")
+    action_str = f"{blind_name} 爆出" if blind_name else action
+    return {
+        "event_id": event_id,
+        "user_name": user_name or str(user_id),
+        "avatar": extra.get("avatar", ""),
+        "gifts": {gift_name: num},
+        "gift_coins": {gift_name: total_coin},
+        "gift_imgs": {gift_name: extra.get("gift_img", "")} if extra.get("gift_img") else {},
+        "gift_actions": {gift_name: action_str},
+        "gift_ids": {gift_name: extra.get("gift_id", 0)} if extra.get("gift_id") else {},
+        "guard_level": extra.get("guard_level", 0),
+        "total_coin": total_coin,
+    }
 
 
 @router.get("/api/overlay/gifts/{room_id}")
@@ -81,7 +55,10 @@ async def overlay_gifts(
     token: str = Query(..., description="overlay token, generated from room settings"),
     max: int = Query(MAX_USERS, ge=1, le=MAX_USERS),
 ):
-    """Return up to `max` most-recently-active users' today gift aggregate. Requires overlay token."""
+    """Return the most recent N gift events (today, Beijing time) as individual cards.
+
+    不做聚合：每条礼物事件 = 一张卡。Requires overlay token.
+    """
     if not verify_overlay_token(room_id, token):
         raise HTTPException(status_code=403, detail="invalid overlay token")
     beijing_tz = timezone(timedelta(hours=8))
@@ -93,12 +70,13 @@ async def overlay_gifts(
 
     conn = sqlite3.connect(str(DB_PATH))
     rows = conn.execute(
-        "SELECT user_name, user_id, timestamp, extra_json FROM events "
+        "SELECT id, user_name, user_id, extra_json FROM events "
         "WHERE event_type='gift' AND room_id=? AND timestamp >= ? AND timestamp < ? "
-        "AND extra_json NOT LIKE '%\"coin_type\": \"silver\"%'",
-        (room_id, utc_start, utc_end),
+        "AND extra_json NOT LIKE '%\"coin_type\": \"silver\"%' "
+        "ORDER BY id DESC LIMIT ?",
+        (room_id, utc_start, utc_end, max),
     ).fetchall()
     conn.close()
 
-    users = _build_recent_gift_users(rows)
-    return {"room_id": room_id, "users": users[:max]}
+    items = [g for g in (_row_to_gift_user(*r) for r in rows) if g]
+    return {"room_id": room_id, "users": items}

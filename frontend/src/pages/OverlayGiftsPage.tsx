@@ -3,13 +3,15 @@ import { useParams, useSearchParams } from 'react-router-dom'
 import type { GiftUser } from '../types'
 import { generateGiftCard } from '../lib/giftCard'
 
+type OverlayItem = GiftUser & { event_id: number }
+
 const POLL_MS = 5000
 
 export function OverlayGiftsPage() {
   const { roomId } = useParams()
   const [searchParams] = useSearchParams()
   const token = searchParams.get('token') || ''
-  const [users, setUsers] = useState<GiftUser[]>([])
+  const [users, setUsers] = useState<OverlayItem[]>([])
   const [error, setError] = useState<string>('')
 
   useEffect(() => {
@@ -50,7 +52,7 @@ export function OverlayGiftsPage() {
           再加 marginTop=-6 抵消首张卡上方的多余空白。 */}
       <div style={{ display: 'flex', flexDirection: 'column', padding: 8 }}>
         {users.map((u, i) => (
-          <GiftCardCanvas key={u.user_name} user={u} first={i === 0} />
+          <GiftCardCanvas key={u.event_id} user={u} first={i === 0} />
         ))}
       </div>
       {error && (
