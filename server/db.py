@@ -153,6 +153,8 @@ def init_db():
     conn.execute("CREATE INDEX IF NOT EXISTS idx_events_room_ts ON events(room_id, timestamp)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_events_room_type_ts ON events(room_id, event_type, timestamp)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_events_ts ON events(timestamp)")
+    # 按房间 + 用户 + 时间的 GROUP BY 查询（list_room_users）会走这个索引。
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_events_room_user_ts ON events(room_id, user_id, timestamp)")
     # Drop superseded single-column indexes from earlier schemas.
     conn.execute("DROP INDEX IF EXISTS idx_events_type")
     conn.execute("DROP INDEX IF EXISTS idx_events_room")

@@ -2,6 +2,7 @@
 
 import json
 import sqlite3
+import time
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 from urllib.parse import urlparse
@@ -15,6 +16,11 @@ from ..auth import require_room_access
 from ..manager import manager
 
 router = APIRouter()
+
+# stats 短 TTL 缓存：每次 save_event 也会 bump room 的版本号，保证数据写入后
+# 下一次 /api/stats 立刻看到新值；用户静态看页时 TTL 兜底，避免重复聚合全表。
+_STATS_TTL_SEC = 15.0
+_stats_cache: dict[int, tuple[float, dict]] = {}
 
 
 # Only allow CDN hosts we actually need. Anything else would make the
@@ -93,10 +99,11 @@ def _query_events(
         conditions.append("user_name=?")
         params.append(user_name)
     # exclude silver coin gifts (free gifts like 辣条)
-    conditions.append("extra_json NOT LIKE '%\"coin_type\": \"silver\"%'")
+    conditions.append("COALESCE(json_extract(extra_json, '$.coin_type'), '') != 'silver'")
     where = " WHERE " + " AND ".join(conditions)
     rows = conn.execute(
-        f"SELECT * FROM events{where} ORDER BY id DESC LIMIT ? OFFSET ?",
+        f"SELECT id, room_id, timestamp, event_type, user_name, user_id, content, extra_json "
+        f"FROM events{where} ORDER BY id DESC LIMIT ? OFFSET ?",
         params + [limit, offset],
     ).fetchall()
     conn.close()
@@ -135,68 +142,122 @@ for _t in ("danmu", "gift", "guard", "superchat"):
     router.add_api_route(f"/api/events/{_t}", _make_typed_endpoint(_t), methods=["GET"])
 
 
-@router.get("/api/stats")
-async def get_stats(room_id: int = Query(...), _=Depends(require_room_access)):
+def _compute_stats(room_id: int) -> dict:
+    """单次 GROUP BY 拿回四类事件的 COUNT；比 5 次独立 COUNT 少 5x 往返。
+    SC 的 price 汇总用 json_extract 交给 SQLite，避免把所有 extra_json 拉到 Python。"""
     conn = sqlite3.connect(str(DB_PATH))
-    rp = [room_id]
-    total = conn.execute("SELECT COUNT(*) FROM events WHERE room_id=?", rp).fetchone()[0]
-    danmu_count = conn.execute("SELECT COUNT(*) FROM events WHERE event_type='danmu' AND room_id=?", rp).fetchone()[0]
-    gift_count = conn.execute("SELECT COUNT(*) FROM events WHERE event_type='gift' AND room_id=?", rp).fetchone()[0]
-    sc_count = conn.execute("SELECT COUNT(*) FROM events WHERE event_type='superchat' AND room_id=?", rp).fetchone()[0]
-    guard_count = conn.execute("SELECT COUNT(*) FROM events WHERE event_type='guard' AND room_id=?", rp).fetchone()[0]
-    sc_rows = conn.execute("SELECT extra_json FROM events WHERE event_type='superchat' AND room_id=?", rp).fetchall()
-    sc_total = 0
-    for row in sc_rows:
-        try:
-            extra = json.loads(row[0])
-            sc_total += extra.get("price", 0)
-        except Exception:
-            pass
+    rows = conn.execute(
+        "SELECT event_type, COUNT(*) FROM events WHERE room_id=? GROUP BY event_type",
+        (room_id,),
+    ).fetchall()
+    counts = {r[0]: r[1] for r in rows}
+    total = sum(counts.values())
+    sc_total = conn.execute(
+        "SELECT COALESCE(SUM(CAST(json_extract(extra_json, '$.price') AS INTEGER)), 0) "
+        "FROM events WHERE event_type='superchat' AND room_id=?",
+        (room_id,),
+    ).fetchone()[0] or 0
     conn.close()
-    client = manager.get(room_id)
-    pop = client.popularity if client else 0
     return {
-        "total": total, "danmu": danmu_count, "gift": gift_count,
-        "superchat": sc_count, "guard": guard_count, "sc_total_price": sc_total,
-        "popularity": pop,
+        "total": total,
+        "danmu": counts.get("danmu", 0),
+        "gift": counts.get("gift", 0),
+        "superchat": counts.get("superchat", 0),
+        "guard": counts.get("guard", 0),
+        "sc_total_price": sc_total,
     }
 
 
-def _build_gift_users(rows, sort_by: str = "value") -> dict:
+@router.get("/api/stats")
+async def get_stats(room_id: int = Query(...), _=Depends(require_room_access)):
+    # TTL 缓存：stats 聚合是纯 COUNT，15 秒内的陈旧数据可接受；popularity 不缓存
+    # (由内存 client 取，实时)。
+    now = time.time()
+    hit = _stats_cache.get(room_id)
+    if hit and now - hit[0] < _STATS_TTL_SEC:
+        stats = hit[1]
+    else:
+        stats = _compute_stats(room_id)
+        _stats_cache[room_id] = (now, stats)
+    client = manager.get(room_id)
+    pop = client.popularity if client else 0
+    return {**stats, "popularity": pop}
+
+
+def _gift_summary_sql(where: str, params: list) -> list[tuple]:
+    """SQL 侧按 (user_id, gift_name) 聚合礼物事件，避免拉全量 extra_json
+    到 Python 再 json.loads 循环汇总。
+
+    数值字段用 SUM 聚合；guard_level 取 "最小非零"（总督=1 优于 舰长=3）；
+    展示字段 (avatar/action/blind_name/img) 从该组最早一条事件 (MIN(id))
+    的 extra_json 取值 —— 保持与旧的 "first-seen wins" 语义一致。
+    """
+    conn = sqlite3.connect(str(DB_PATH))
+    rows = conn.execute(f"""
+        WITH agg AS (
+          SELECT
+            user_id,
+            json_extract(extra_json, '$.gift_name') AS gn,
+            MIN(id) AS first_id,
+            SUM(COALESCE(CAST(json_extract(extra_json, '$.num') AS INTEGER), 1))        AS num_sum,
+            SUM(COALESCE(json_extract(extra_json, '$.total_coin'), 0))                  AS coin_sum,
+            MIN(CASE WHEN CAST(json_extract(extra_json, '$.guard_level') AS INTEGER) > 0
+                     THEN CAST(json_extract(extra_json, '$.guard_level') AS INTEGER) END) AS guard_level
+          FROM events
+          WHERE {where}
+          GROUP BY user_id, json_extract(extra_json, '$.gift_name')
+        )
+        SELECT
+          e.user_name,
+          agg.user_id,
+          agg.gn,
+          agg.num_sum,
+          agg.coin_sum,
+          json_extract(e.extra_json, '$.avatar'),
+          json_extract(e.extra_json, '$.gift_img'),
+          json_extract(e.extra_json, '$.gift_gif'),
+          CAST(json_extract(e.extra_json, '$.gift_id') AS INTEGER),
+          agg.guard_level,
+          json_extract(e.extra_json, '$.action'),
+          json_extract(e.extra_json, '$.blind_name')
+        FROM agg
+        JOIN events e ON e.id = agg.first_id
+        ORDER BY agg.first_id
+    """, params).fetchall()
+    conn.close()
+    return rows
+
+
+def _build_gift_users_from_agg(rows: list[tuple], sort_by: str = "value") -> dict:
+    """把 SQL 侧聚合后的行再组装成按用户嵌套的字典（前端期望的形状）。"""
     users: dict = {}
-    for user_name, user_id, extra_json in rows:
-        extra = json.loads(extra_json)
-        key = user_name or str(user_id)
-        if key not in users:
-            users[key] = {
-                "user_name": user_name, "avatar": extra.get("avatar", ""),
+    for (user_name, user_id, gift_name, num_sum, coin_sum, avatar, gift_img,
+         gift_gif, gift_id, guard_level, action, blind_name) in rows:
+        key = user_id  # 用 uid 去重，避免用户改名后被拆成两行
+        u = users.get(key)
+        if u is None:
+            u = users[key] = {
+                "user_name": user_name or str(user_id), "avatar": avatar or "",
                 "gifts": {}, "gift_coins": {}, "gift_imgs": {}, "gift_actions": {},
-                "guard_level": 0, "total_coin": 0, "gift_ids": {},
+                "guard_level": 0, "total_coin": 0, "gift_ids": {}, "gift_gifs": {},
             }
-        gift_name = extra.get("gift_name", "?")
-        num = extra.get("num", 1)
-        users[key]["gifts"][gift_name] = users[key]["gifts"].get(gift_name, 0) + num
-        tc = extra.get("total_coin", 0)
-        users[key]["total_coin"] += tc
-        users[key]["gift_coins"][gift_name] = users[key]["gift_coins"].get(gift_name, 0) + tc
-        if not users[key]["avatar"] and extra.get("avatar"):
-            users[key]["avatar"] = extra["avatar"]
-        gift_img = extra.get("gift_img", "")
-        if gift_img and gift_name not in users[key]["gift_imgs"]:
-            users[key]["gift_imgs"][gift_name] = gift_img
-        action = extra.get("action", "投喂")
-        blind_name = extra.get("blind_name", "")
-        if gift_name not in users[key]["gift_actions"]:
-            users[key]["gift_actions"][gift_name] = f"{blind_name} 爆出" if blind_name else action
-        gid = extra.get("gift_id", 0)
-        if gid and gift_name not in users[key]["gift_ids"]:
-            users[key]["gift_ids"][gift_name] = gid
-        gif_url = extra.get("gift_gif", "")
-        if gif_url and gift_name not in users[key].get("gift_gifs", {}):
-            users[key].setdefault("gift_gifs", {})[gift_name] = gif_url
-        gl = extra.get("guard_level", 0)
-        if gl and (not users[key]["guard_level"] or gl < users[key]["guard_level"]):
-            users[key]["guard_level"] = gl
+        gname = gift_name or "?"
+        u["gifts"][gname] = num_sum or 0
+        u["gift_coins"][gname] = coin_sum or 0
+        u["total_coin"] += (coin_sum or 0)
+        if avatar and not u["avatar"]:
+            u["avatar"] = avatar
+        if gift_img:
+            u["gift_imgs"][gname] = gift_img
+        if gift_gif:
+            u["gift_gifs"][gname] = gift_gif
+        if gift_id:
+            u["gift_ids"][gname] = gift_id
+        u["gift_actions"][gname] = (
+            f"{blind_name} 爆出" if blind_name else (action or "投喂")
+        )
+        if guard_level and (not u["guard_level"] or guard_level < u["guard_level"]):
+            u["guard_level"] = guard_level
 
     if sort_by == "tier":
         def _tier(battery: float) -> int:
@@ -226,9 +287,8 @@ async def gift_summary(
     _=Depends(require_room_access),
 ):
     beijing_tz = timezone(timedelta(hours=8))
-    conn = sqlite3.connect(str(DB_PATH))
     if date:
-        where = "event_type='gift' AND room_id=? AND timestamp LIKE ? AND extra_json NOT LIKE '%\"coin_type\": \"silver\"%'"
+        where = "event_type='gift' AND room_id=? AND timestamp LIKE ? AND COALESCE(json_extract(extra_json, '$.coin_type'), '') != 'silver'"
         params: list = [room_id, date + "%"]
     else:
         now_bj = datetime.now(beijing_tz)
@@ -236,17 +296,16 @@ async def gift_summary(
         bj_end = bj_start + timedelta(days=1)
         utc_start = bj_start.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         utc_end = bj_end.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-        where = "event_type='gift' AND room_id=? AND timestamp >= ? AND timestamp < ? AND extra_json NOT LIKE '%\"coin_type\": \"silver\"%'"
+        where = "event_type='gift' AND room_id=? AND timestamp >= ? AND timestamp < ? AND COALESCE(json_extract(extra_json, '$.coin_type'), '') != 'silver'"
         params = [room_id, utc_start, utc_end]
     if user_name:
         where += " AND user_name=?"
         params.append(user_name)
     if blind_only:
-        where += " AND extra_json LIKE '%blind_name%' AND extra_json NOT LIKE '%\"blind_name\": \"\"%'"
-    rows = conn.execute(f"SELECT user_name, user_id, extra_json FROM events WHERE {where}", params).fetchall()
-    conn.close()
+        where += " AND COALESCE(json_extract(extra_json, '$.blind_name'), '') != ''"
 
-    users = _build_gift_users(rows, sort_by=sort)
+    agg_rows = _gift_summary_sql(where, params)
+    users = _build_gift_users_from_agg(agg_rows, sort_by=sort)
     result = sorted(users.values(), key=lambda x: x["total_coin"], reverse=True)
     display_date = date if date else datetime.now(beijing_tz).strftime("%Y-%m-%d")
     return {"date": display_date, "users": result}
@@ -262,54 +321,72 @@ async def blind_box_summary(
 ):
     utc_start, utc_end = time_from, time_to
     label = f"{time_from[:10]} ~ {time_to[:10]}"
-    conn = sqlite3.connect(str(DB_PATH))
-    where = "event_type='gift' AND room_id=? AND timestamp >= ? AND timestamp < ? AND extra_json LIKE '%blind_name%' AND extra_json NOT LIKE '%\"blind_name\": \"\"%'"
+    # SQL 侧按 (user_id, blind_name, gift_name) 聚合，Python 只做最后一层字典嵌套。
+    where = (
+        "event_type='gift' AND room_id=? AND timestamp >= ? AND timestamp < ? "
+        "AND COALESCE(json_extract(extra_json, '$.blind_name'), '') != ''"
+    )
     params: list = [room_id, utc_start, utc_end]
     if user_name:
         where += " AND user_name=?"
         params.append(user_name)
-    rows = conn.execute(f"SELECT user_name, user_id, extra_json FROM events WHERE {where}", params).fetchall()
+
+    conn = sqlite3.connect(str(DB_PATH))
+    rows = conn.execute(f"""
+        SELECT
+          MAX(user_name)                                           AS user_name,
+          user_id                                                   AS user_id,
+          json_extract(extra_json, '$.blind_name')                  AS blind_name,
+          json_extract(extra_json, '$.gift_name')                   AS gift_name,
+          SUM(COALESCE(CAST(json_extract(extra_json, '$.num') AS INTEGER), 1))        AS num_sum,
+          SUM(COALESCE(json_extract(extra_json, '$.price'), 0) *
+              COALESCE(CAST(json_extract(extra_json, '$.num') AS INTEGER), 1))       AS value_sum,
+          SUM(COALESCE(json_extract(extra_json, '$.blind_price'), 0) *
+              COALESCE(CAST(json_extract(extra_json, '$.num') AS INTEGER), 1))       AS cost_sum,
+          MAX(json_extract(extra_json, '$.avatar'))                 AS avatar,
+          MAX(json_extract(extra_json, '$.gift_img'))               AS gift_img
+        FROM events
+        WHERE {where}
+        GROUP BY user_id,
+                 json_extract(extra_json, '$.blind_name'),
+                 json_extract(extra_json, '$.gift_name')
+    """, params).fetchall()
     conn.close()
 
-    users: dict[str, dict] = {}
-    for uname, uid, extra_json in rows:
-        try:
-            extra = json.loads(extra_json)
-        except (json.JSONDecodeError, TypeError):
-            continue
-        blind_name = extra.get("blind_name", "")
+    users: dict = {}
+    for uname, uid, blind_name, gift_name, num_sum, value_sum, cost_sum, avatar, gift_img in rows:
         if not blind_name:
             continue
-        key = f"{uid}_{uname}"
-        if key not in users:
-            users[key] = {
-                "user_name": uname, "user_id": uid,
-                "avatar": extra.get("avatar", ""),
+        u = users.get(uid)
+        if u is None:
+            u = users[uid] = {
+                "user_name": uname or "", "user_id": uid,
+                "avatar": avatar or "",
                 "total_boxes": 0, "total_cost": 0, "total_value": 0,
                 "boxes": {},
             }
-        if extra.get("avatar"):
-            users[key]["avatar"] = extra["avatar"]
-        num = extra.get("num", 1)
-        price = extra.get("price", 0)
-        blind_price = extra.get("blind_price", 0)
-        gift_name = extra.get("gift_name", "")
+        if avatar and not u["avatar"]:
+            u["avatar"] = avatar
+        num = num_sum or 0
+        value = value_sum or 0
+        cost = cost_sum or 0
+        u["total_boxes"] += num
+        u["total_cost"] += cost
+        u["total_value"] += value
 
-        users[key]["total_boxes"] += num
-        users[key]["total_cost"] += blind_price * num
-        users[key]["total_value"] += price * num
+        box = u["boxes"].get(blind_name)
+        if box is None:
+            box = u["boxes"][blind_name] = {
+                "name": blind_name, "count": 0, "cost": 0, "value": 0, "gifts": {},
+            }
+        box["count"] += num
+        box["cost"] += cost
+        box["value"] += value
 
-        box_key = blind_name
-        if box_key not in users[key]["boxes"]:
-            users[key]["boxes"][box_key] = {"name": blind_name, "count": 0, "cost": 0, "value": 0, "gifts": {}}
-        users[key]["boxes"][box_key]["count"] += num
-        users[key]["boxes"][box_key]["cost"] += blind_price * num
-        users[key]["boxes"][box_key]["value"] += price * num
-
-        if gift_name not in users[key]["boxes"][box_key]["gifts"]:
-            users[key]["boxes"][box_key]["gifts"][gift_name] = {"name": gift_name, "count": 0, "value": 0, "img": extra.get("gift_img", "")}
-        users[key]["boxes"][box_key]["gifts"][gift_name]["count"] += num
-        users[key]["boxes"][box_key]["gifts"][gift_name]["value"] += price * num
+        gname = gift_name or ""
+        box["gifts"][gname] = {
+            "name": gname, "count": num, "value": value, "img": gift_img or "",
+        }
 
     result = sorted(users.values(), key=lambda x: x["total_boxes"], reverse=True)
     for u in result:
