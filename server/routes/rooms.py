@@ -16,6 +16,7 @@ from ..db import (
     get_or_create_overlay_token, rotate_overlay_token,
     add_room as db_add_room, add_user_room, remove_user_room, is_room_claimed,
     count_user_rooms,
+    get_overlay_settings, update_overlay_settings, clear_overlay_history,
 )
 from ..auth import require_room_access
 from ..config import ROOM_INFO_API, H5_ROOM_INFO_API, MASTER_INFO_API, HEADERS
@@ -340,6 +341,47 @@ async def rotate_overlay_token_route(room_id: int, request: Request, _=Depends(r
     uid = getattr(request.state, "user_id", None)
     token = rotate_overlay_token(room_id, uid)
     return {"room_id": room_id, "token": token}
+
+
+@router.get("/api/rooms/{room_id}/overlay-settings")
+async def get_overlay_settings_route(room_id: int, _=Depends(require_room_access)):
+    return get_overlay_settings(room_id)
+
+
+@router.put("/api/rooms/{room_id}/overlay-settings")
+async def put_overlay_settings_route(room_id: int, request: Request, _=Depends(require_room_access)):
+    body = await request.json()
+    patch: dict = {}
+    if "max_events" in body:
+        v = int(body["max_events"])
+        if v < 1 or v > 20:
+            raise HTTPException(400, "max_events 必须在 1~20 之间")
+        patch["max_events"] = v
+    if "min_price" in body:
+        patch["min_price"] = max(0, int(body["min_price"]))
+    if "max_price" in body:
+        patch["max_price"] = max(0, int(body["max_price"]))
+    if "price_mode" in body:
+        mode = str(body["price_mode"])
+        if mode not in ("total", "unit"):
+            raise HTTPException(400, "price_mode 必须是 total 或 unit")
+        patch["price_mode"] = mode
+    for k in ("show_gift", "show_blind", "show_guard"):
+        if k in body:
+            patch[k] = bool(body[k])
+    # 合理性：max_price > 0 时必须 >= min_price
+    merged = {**get_overlay_settings(room_id), **patch}
+    if merged["max_price"] and merged["max_price"] < merged["min_price"]:
+        raise HTTPException(400, "最高价不能小于最低价")
+    return update_overlay_settings(room_id, patch)
+
+
+@router.post("/api/rooms/{room_id}/overlay-settings/clear")
+async def clear_overlay_history_route(room_id: int, _=Depends(require_room_access)):
+    """清空当前 overlay 展示：记录一个 cleared_at (UTC now)，overlay 查询时仅返回此时间之后的事件。"""
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    return clear_overlay_history(room_id, now)
 
 
 @router.get("/api/rooms/{room_id}/nicknames")

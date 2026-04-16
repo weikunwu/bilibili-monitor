@@ -42,6 +42,86 @@ def rotate_overlay_token(room_id: int, user_id: Optional[int] = None) -> str:
     return token
 
 
+OVERLAY_DEFAULTS: dict = {
+    "max_events": 10,
+    "min_price": 0,
+    "max_price": 0,
+    "price_mode": "total",
+    "show_gift": 1,
+    "show_blind": 1,
+    "show_guard": 1,
+    "cleared_at": "",
+}
+
+
+def get_overlay_settings(room_id: int) -> dict:
+    """Load overlay settings for a room; return defaults if not configured."""
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.row_factory = sqlite3.Row
+    row = conn.execute(
+        "SELECT max_events, min_price, max_price, price_mode, "
+        "show_gift, show_blind, show_guard, cleared_at "
+        "FROM overlay_settings WHERE room_id=?",
+        (room_id,),
+    ).fetchone()
+    conn.close()
+    if not row:
+        return dict(OVERLAY_DEFAULTS)
+    d = dict(row)
+    for k in ("show_gift", "show_blind", "show_guard"):
+        d[k] = bool(d[k])
+    return d
+
+
+def update_overlay_settings(room_id: int, patch: dict) -> dict:
+    """Upsert overlay settings for a room. Only whitelisted keys are applied."""
+    allowed = {
+        "max_events", "min_price", "max_price", "price_mode",
+        "show_gift", "show_blind", "show_guard",
+    }
+    current = get_overlay_settings(room_id)
+    for k in allowed:
+        if k in patch:
+            current[k] = patch[k]
+    # Coerce booleans back to int for storage
+    show_gift = int(bool(current["show_gift"]))
+    show_blind = int(bool(current["show_blind"]))
+    show_guard = int(bool(current["show_guard"]))
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.execute(
+        "INSERT INTO overlay_settings "
+        "(room_id, max_events, min_price, max_price, price_mode, "
+        "show_gift, show_blind, show_guard, cleared_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?) "
+        "ON CONFLICT(room_id) DO UPDATE SET "
+        "max_events=excluded.max_events, min_price=excluded.min_price, "
+        "max_price=excluded.max_price, price_mode=excluded.price_mode, "
+        "show_gift=excluded.show_gift, show_blind=excluded.show_blind, "
+        "show_guard=excluded.show_guard",
+        (
+            room_id, int(current["max_events"]), int(current["min_price"]),
+            int(current["max_price"]), str(current["price_mode"]),
+            show_gift, show_blind, show_guard, current.get("cleared_at") or "",
+        ),
+    )
+    conn.commit()
+    conn.close()
+    return get_overlay_settings(room_id)
+
+
+def clear_overlay_history(room_id: int, cleared_at_utc: str) -> dict:
+    """Set cleared_at timestamp so overlay only shows events newer than this."""
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.execute(
+        "INSERT INTO overlay_settings (room_id, cleared_at) VALUES (?,?) "
+        "ON CONFLICT(room_id) DO UPDATE SET cleared_at=excluded.cleared_at",
+        (room_id, cleared_at_utc),
+    )
+    conn.commit()
+    conn.close()
+    return get_overlay_settings(room_id)
+
+
 def verify_overlay_token(room_id: int, token: str) -> bool:
     if not token:
         return False
@@ -172,6 +252,20 @@ def init_db():
             room_id INTEGER NOT NULL UNIQUE,
             created_by INTEGER,
             created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+    """)
+    # OBS 叠加页展示设置 (每房间一条)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS overlay_settings (
+            room_id INTEGER PRIMARY KEY,
+            max_events INTEGER NOT NULL DEFAULT 10,
+            min_price INTEGER NOT NULL DEFAULT 0,
+            max_price INTEGER NOT NULL DEFAULT 0,
+            price_mode TEXT NOT NULL DEFAULT 'total',
+            show_gift INTEGER NOT NULL DEFAULT 1,
+            show_blind INTEGER NOT NULL DEFAULT 1,
+            show_guard INTEGER NOT NULL DEFAULT 1,
+            cleared_at TEXT NOT NULL DEFAULT ''
         )
     """)
 

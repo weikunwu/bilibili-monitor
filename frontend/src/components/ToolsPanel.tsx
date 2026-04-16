@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
-import { Toggle, SelectPicker, Input, InputGroup } from 'rsuite'
+import { Toggle, SelectPicker, Input, InputGroup, Button, IconButton } from 'rsuite'
+import PlusIcon from '@rsuite/icons/Plus'
+import CloseIcon from '@rsuite/icons/Close'
 import type { Command } from '../types'
 import {
   fetchCommands, toggleCommand, fetchAutoClip, toggleAutoClip,
@@ -71,17 +73,17 @@ function LurkerEditor({
         <InputGroup.Addon>秒 (300–900)</InputGroup.Addon>
       </InputGroup>
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
-        <button
-          className="rs-btn rs-btn-subtle rs-btn-sm" style={{ width: 88 }}
+        <Button
+          appearance="subtle" size="sm" style={{ width: 88 }}
           onClick={() => { setTpl(LURKER_DEFAULT_TEMPLATE); setWait('900'); onRestoreEnabled?.() }}
-        >恢复默认</button>
-        <button
-          className="rs-btn rs-btn-primary rs-btn-sm" style={{ width: 88 }}
+        >恢复默认</Button>
+        <Button
+          appearance="primary" size="sm" style={{ width: 88 }}
           onClick={() => persist(tpl.trim() || LURKER_DEFAULT_TEMPLATE, Math.max(300, Math.min(900, Number(wait) || 900)))}
           disabled={saving}
         >
           {saving ? '保存中…' : saved ? '已保存' : '保存'}
-        </button>
+        </Button>
       </div>
     </div>
   )
@@ -174,7 +176,7 @@ function ThanksGroup({
     placeholdersHint: React.ReactNode = null,
   ) {
     return (
-      <div key={cmd.id} style={{ border: '1px solid #2a2a2a', borderRadius: 6, padding: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div key={cmd.id} style={{ border: '1px solid #2a2a4a', borderRadius: 8, padding: 12, display: 'flex', flexDirection: 'column', gap: 8, background: '#14141f' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 500 }}>
           <Toggle size="sm" checked={cmd.enabled} onChange={() => onToggleDraft(cmd.id)} />
           <span>{cmd.name}</span>
@@ -192,20 +194,22 @@ function ThanksGroup({
                   onChange={(v) => setItems(items.map((s, i) => (i === idx ? v : s)))}
                   placeholder={placeholder} style={{ flex: 1 }}
                 />
-                <button
-                  className="rs-btn rs-btn-subtle rs-btn-sm"
+                <IconButton
+                  appearance="subtle" size="sm"
+                  icon={<CloseIcon />}
                   onClick={() => {
                     const next = items.filter((_, j) => j !== idx)
                     setItems(next.length ? next : [''])
                   }}
                   title="删除"
-                >×</button>
+                />
               </div>
             ))}
-            <button
-              className="rs-btn rs-btn-subtle rs-btn-sm" style={{ alignSelf: 'flex-start' }}
+            <Button
+              appearance="subtle" size="sm" startIcon={<PlusIcon />}
+              style={{ alignSelf: 'flex-start' }}
               onClick={() => setItems([...items, ''])}
-            >+ 添加一条</button>
+            >添加一条</Button>
           </>
         ) : null}
       </div>
@@ -248,14 +252,12 @@ function ThanksGroup({
           )}
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: 8 }}>
-          <button
-            className="rs-btn rs-btn-subtle rs-btn-sm" style={{ width: 88 }}
+          <Button appearance="subtle" size="sm" style={{ width: 88 }}
             onClick={restoreDefaults}
-          >恢复默认</button>
-          <button
-            className="rs-btn rs-btn-primary rs-btn-sm" style={{ width: 88 }}
+          >恢复默认</Button>
+          <Button appearance="primary" size="sm" style={{ width: 88 }}
             onClick={saveAll} disabled={saving}
-          >{saving ? '保存中…' : saved ? '已保存' : '保存'}</button>
+          >{saving ? '保存中…' : saved ? '已保存' : '保存'}</Button>
         </div>
       </div>
     </div>
@@ -344,33 +346,34 @@ function ScheduledDanmuEditor({
             placeholder={`弹幕 ${idx + 1}`}
             style={{ flex: 1 }}
           />
-          <button
-            className="rs-btn rs-btn-subtle rs-btn-sm"
+          <IconButton
+            appearance="subtle" size="sm"
+            icon={<CloseIcon />}
             onClick={() => removeMsg(idx)}
             title="删除"
-          >×</button>
+          />
         </div>
       ))}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <button className="rs-btn rs-btn-subtle rs-btn-sm" onClick={addMsg}>+ 添加一条</button>
+        <Button appearance="subtle" size="sm" startIcon={<PlusIcon />} onClick={addMsg}>添加一条</Button>
         <div style={{ display: 'flex', gap: 6 }}>
-          <button
-            className="rs-btn rs-btn-subtle rs-btn-sm"
+          <Button
+            appearance="subtle" size="sm"
             style={{ width: 88 }}
             onClick={() => {
               setMessages(['动动手指给{streamer}点点关注'])
               setInterval('300')
               onRestoreEnabled?.()
             }}
-          >恢复默认</button>
-          <button
-            className="rs-btn rs-btn-primary rs-btn-sm"
+          >恢复默认</Button>
+          <Button
+            appearance="primary" size="sm"
             style={{ width: 88 }}
             onClick={handleSave}
             disabled={saving}
           >
             {saving ? '保存中…' : saved ? '已保存' : '保存'}
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -425,7 +428,7 @@ function WelcomeEditor({
     const items = (cfg[tplKey(k)] as string[]) || []
     const placeholder = WELCOME_DEFAULTS[tplKey(k)] as string[]
     return (
-      <div key={k} style={{ border: '1px solid #2a2a2a', borderRadius: 6, padding: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div key={k} style={{ border: '1px solid #2a2a4a', borderRadius: 8, padding: 12, display: 'flex', flexDirection: 'column', gap: 8, background: '#14141f' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 500 }}>
           <Toggle
             size="sm"
@@ -447,20 +450,22 @@ function WelcomeEditor({
               }}
               placeholder={placeholder[0]} style={{ flex: 1 }}
             />
-            <button
-              className="rs-btn rs-btn-subtle rs-btn-sm"
+            <IconButton
+              appearance="subtle" size="sm"
+              icon={<CloseIcon />}
               onClick={() => {
                 const next = items.filter((_, j) => j !== idx)
                 setCfg({ ...cfg, [tplKey(k)]: next.length ? next : [''] })
               }}
               title="删除"
-            >×</button>
+            />
           </div>
         ))}
-        <button
-          className="rs-btn rs-btn-subtle rs-btn-sm" style={{ alignSelf: 'flex-start' }}
+        <Button
+          appearance="subtle" size="sm" startIcon={<PlusIcon />}
+          style={{ alignSelf: 'flex-start' }}
           onClick={() => setCfg({ ...cfg, [tplKey(k)]: [...items, ''] })}
-        >+ 添加一条</button>
+        >添加一条</Button>
       </div>
     )
   }
@@ -488,15 +493,15 @@ function WelcomeEditor({
         {(['normal', 'medal', 'guard'] as Kind[]).map(section)}
       </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
-        <button
-          className="rs-btn rs-btn-subtle rs-btn-sm" style={{ width: 88 }}
+        <Button
+          appearance="subtle" size="sm" style={{ width: 88 }}
           onClick={() => { setCfg(WELCOME_DEFAULTS); onRestoreEnabled?.() }}
-        >恢复默认</button>
-        <button
-          className="rs-btn rs-btn-primary rs-btn-sm" style={{ width: 88 }}
+        >恢复默认</Button>
+        <Button
+          appearance="primary" size="sm" style={{ width: 88 }}
           onClick={() => persist(cleanCfg(cfg))}
           disabled={saving}
-        >{saving ? '保存中…' : saved ? '已保存' : '保存'}</button>
+        >{saving ? '保存中…' : saved ? '已保存' : '保存'}</Button>
       </div>
     </div>
   )
@@ -581,18 +586,18 @@ function AiReplyEditor({
         placeholder="例如：你特别喜欢吃辣条，回复时偶尔提一下；喜欢叫 {streamer} 为「老板」"
       />
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
-        <button
-          className="rs-btn rs-btn-subtle rs-btn-sm" style={{ width: 88 }}
+        <Button
+          appearance="subtle" size="sm" style={{ width: 88 }}
           onClick={() => {
             setProb('10'); setBotName(''); setExtraPrompt('')
             onRestoreEnabled?.()
           }}
-        >恢复默认</button>
-        <button
-          className="rs-btn rs-btn-primary rs-btn-sm" style={{ width: 88 }}
+        >恢复默认</Button>
+        <Button
+          appearance="primary" size="sm" style={{ width: 88 }}
           onClick={persist}
           disabled={saving}
-        >{saving ? '保存中…' : saved ? '已保存' : '保存'}</button>
+        >{saving ? '保存中…' : saved ? '已保存' : '保存'}</Button>
       </div>
     </div>
   )
@@ -877,14 +882,14 @@ export function ToolsPanel({ roomId }: Props) {
                   style={{ width: 240 }}
                 />
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
-                  <button
-                    className="rs-btn rs-btn-subtle rs-btn-sm" style={{ width: 88 }}
+                  <Button
+                    appearance="subtle" size="sm" style={{ width: 88 }}
                     onClick={() => restoreAutoGiftDefault(i)}
-                  >恢复默认</button>
-                  <button
-                    className="rs-btn rs-btn-primary rs-btn-sm" style={{ width: 88 }}
+                  >恢复默认</Button>
+                  <Button
+                    appearance="primary" size="sm" style={{ width: 88 }}
                     onClick={() => saveAutoGift(i)} disabled={autoGiftSaving}
-                  >{autoGiftSaving ? '保存中…' : autoGiftSaved ? '已保存' : '保存'}</button>
+                  >{autoGiftSaving ? '保存中…' : autoGiftSaved ? '已保存' : '保存'}</Button>
                 </div>
               </div>
             )}
@@ -905,15 +910,15 @@ export function ToolsPanel({ roomId }: Props) {
           <div className="cmd-desc">直播时收到单价 ≥<span style={{ color: '#ef5350' }}>¥1000</span> 礼物时自动录制前后片段，可在礼物和大航海列表下载</div>
           <div className="cmd-desc">录制片段仅保留 24 小时</div>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: 6 }}>
-            <button
-              className="rs-btn rs-btn-subtle rs-btn-sm" style={{ width: 88 }}
+            <Button
+              appearance="subtle" size="sm" style={{ width: 88 }}
               onClick={() => setAutoClip(false)}
-            >恢复默认</button>
-            <button
-              className="rs-btn rs-btn-primary rs-btn-sm" style={{ width: 88 }}
+            >恢复默认</Button>
+            <Button
+              appearance="primary" size="sm" style={{ width: 88 }}
               onClick={saveAutoClip}
               disabled={autoClipSaving}
-            >{autoClipSaving ? '保存中…' : autoClipSaved ? '已保存' : '保存'}</button>
+            >{autoClipSaving ? '保存中…' : autoClipSaved ? '已保存' : '保存'}</Button>
           </div>
         </div>
       </div>

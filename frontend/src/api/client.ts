@@ -210,6 +210,47 @@ export async function rotateOverlayToken(roomId: number): Promise<string> {
   return String(d.token || '')
 }
 
+export interface OverlaySettings {
+  max_events: number
+  min_price: number
+  max_price: number
+  price_mode: 'total' | 'unit'
+  show_gift: boolean
+  show_blind: boolean
+  show_guard: boolean
+  cleared_at: string
+}
+
+export async function fetchOverlaySettings(roomId: number): Promise<OverlaySettings> {
+  const r = await fetch(`/api/rooms/${roomId}/overlay-settings`)
+  if (!r.ok) throw new Error('读取 overlay 设置失败')
+  return r.json()
+}
+
+export async function updateOverlaySettings(
+  roomId: number, patch: Partial<OverlaySettings>,
+): Promise<OverlaySettings> {
+  const r = await fetch(`/api/rooms/${roomId}/overlay-settings`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  })
+  if (!r.ok) {
+    const d = await r.json().catch(() => ({}))
+    throw new Error(d.detail || '保存失败')
+  }
+  return r.json()
+}
+
+export async function clearOverlayHistory(roomId: number): Promise<OverlaySettings> {
+  const r = await fetch(`/api/rooms/${roomId}/overlay-settings/clear`, { method: 'POST' })
+  if (!r.ok) {
+    const d = await r.json().catch(() => ({}))
+    throw new Error(d.detail || '清除失败')
+  }
+  return r.json()
+}
+
 export async function fetchCommands(roomId: number): Promise<Command[]> {
   const res = await fetch(`/api/commands?room_id=${roomId}`)
   return res.json()

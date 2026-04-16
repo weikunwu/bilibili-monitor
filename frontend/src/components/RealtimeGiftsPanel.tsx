@@ -1,19 +1,95 @@
 import { useEffect, useState } from 'react'
-import { Input, Button } from 'rsuite'
-import { fetchOverlayToken, rotateOverlayToken } from '../api/client'
+import {
+  Input, InputGroup, Button, Checkbox, CheckboxGroup,
+  RadioGroup, Radio, Message, Tag, useToaster,
+} from 'rsuite'
+import CopyIcon from '@rsuite/icons/Copy'
+import VisibleIcon from '@rsuite/icons/Visible'
+import ReloadIcon from '@rsuite/icons/Reload'
+import TrashIcon from '@rsuite/icons/Trash'
+import {
+  fetchOverlayToken, rotateOverlayToken,
+  fetchOverlaySettings, updateOverlaySettings, clearOverlayHistory,
+  type OverlaySettings,
+} from '../api/client'
 
 interface Props {
   roomId: number
 }
 
+const DEFAULTS: OverlaySettings = {
+  max_events: 10,
+  min_price: 0,
+  max_price: 0,
+  price_mode: 'total',
+  show_gift: true,
+  show_blind: true,
+  show_guard: true,
+  cleared_at: '',
+}
+
+const LABEL_WIDTH = 84
+
+function Section({
+  title, description, children,
+}: { title: string; description?: string; children: React.ReactNode }) {
+  return (
+    <div
+      style={{
+        background: '#1a1a2e', border: '1px solid #2a2a4a', borderRadius: 10,
+        padding: '16px 20px',
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, marginBottom: description ? 4 : 12 }}>
+        <div style={{ fontSize: 15, fontWeight: 600, color: '#e8e8e8' }}>{title}</div>
+      </div>
+      {description && (
+        <div style={{ fontSize: 12, color: '#888', lineHeight: 1.6, marginBottom: 12 }}>{description}</div>
+      )}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>{children}</div>
+    </div>
+  )
+}
+
+function Row({
+  label, children,
+}: { label: string; children: React.ReactNode }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+      <div style={{ width: LABEL_WIDTH, flexShrink: 0, fontSize: 13, color: '#bbb' }}>{label}</div>
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        {children}
+      </div>
+    </div>
+  )
+}
+
+function formatClearedAt(utc: string): string {
+  if (!utc) return ''
+  // "YYYY-MM-DD HH:MM:SS" (UTC) → Beijing time
+  const d = new Date(utc.replace(' ', 'T') + 'Z')
+  if (isNaN(d.getTime())) return utc
+  const pad = (n: number) => n.toString().padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
 export function RealtimeGiftsPanel({ roomId }: Props) {
+  const toaster = useToaster()
   const [token, setToken] = useState('')
   const [copied, setCopied] = useState(false)
   const [rotating, setRotating] = useState(false)
 
+  const [committed, setCommitted] = useState<OverlaySettings>(DEFAULTS)
+  const [draft, setDraft] = useState<OverlaySettings>(DEFAULTS)
+  const [saving, setSaving] = useState(false)
+  const [clearing, setClearing] = useState(false)
+
   useEffect(() => {
     let cancelled = false
     fetchOverlayToken(roomId).then((t) => { if (!cancelled) setToken(t) }).catch(() => {})
+    fetchOverlaySettings(roomId).then((s) => {
+      if (!cancelled) { setCommitted(s); setDraft(s) }
+    }).catch(() => {})
     return () => { cancelled = true }
   }, [roomId])
 
@@ -25,9 +101,7 @@ export function RealtimeGiftsPanel({ roomId }: Props) {
       await navigator.clipboard.writeText(url)
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
-    } catch {
-      // ignore
-    }
+    } catch { /* ignore */ }
   }
 
   async function rotate() {
@@ -39,26 +113,181 @@ export function RealtimeGiftsPanel({ roomId }: Props) {
     } finally { setRotating(false) }
   }
 
+  async function save() {
+    setSaving(true)
+    try {
+      const s = await updateOverlaySettings(roomId, {
+        max_events: draft.max_events,
+        min_price: draft.min_price,
+        max_price: draft.max_price,
+        price_mode: draft.price_mode,
+        show_gift: draft.show_gift,
+        show_blind: draft.show_blind,
+        show_guard: draft.show_guard,
+      })
+      setCommitted(s)
+      setDraft(s)
+      toaster.push(<Message type="success" showIcon closable>已保存</Message>, { duration: 2000 })
+    } catch (e) {
+      toaster.push(<Message type="error" showIcon closable>{(e as Error).message}</Message>, { duration: 3000 })
+    } finally { setSaving(false) }
+  }
+
+  async function clearDisplay() {
+    if (!confirm('清除当前 overlay 展示？之后只会显示本次清除之后的新事件。')) return
+    setClearing(true)
+    try {
+      const s = await clearOverlayHistory(roomId)
+      setCommitted(s)
+      setDraft(s)
+      toaster.push(<Message type="success" showIcon closable>已清除</Message>, { duration: 2000 })
+    } catch (e) {
+      toaster.push(<Message type="error" showIcon closable>{(e as Error).message}</Message>, { duration: 3000 })
+    } finally { setClearing(false) }
+  }
+
+  function resetDraft() {
+    setDraft(committed)
+  }
+
+  const dirty = (
+    draft.max_events !== committed.max_events
+    || draft.min_price !== committed.min_price
+    || draft.max_price !== committed.max_price
+    || draft.price_mode !== committed.price_mode
+    || draft.show_gift !== committed.show_gift
+    || draft.show_blind !== committed.show_blind
+    || draft.show_guard !== committed.show_guard
+  )
+
+  const shownTypes: string[] = []
+  if (draft.show_gift) shownTypes.push('gift')
+  if (draft.show_blind) shownTypes.push('blind')
+  if (draft.show_guard) shownTypes.push('guard')
+
   return (
     <div>
       <div className="panel-title">实时礼物</div>
-      <div style={{ padding: '0 24px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div style={{ fontSize: 13, color: '#bbb', lineHeight: 1.6 }}>
-          OBS 浏览器源用。打开下面的链接会显示"今天最近收到的礼物"（最多 10 位观众，按最近送礼时间排序，每 5 秒刷新）。
-          链接带 token 鉴权，任何人知道这个 URL 都能看到；token 外泄后点"重新生成"即可让旧链接失效。
-        </div>
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          <Input readOnly value={url} size="sm" style={{ flex: 1 }} placeholder="加载中…" />
-          <Button appearance="primary" size="sm" onClick={copy} disabled={!url} style={{ width: 88 }}>
-            {copied ? '已复制' : '复制链接'}
+      <div style={{ padding: '0 24px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+        <Section
+          title="OBS 浏览器源链接"
+          description="链接带 token 鉴权，任何人知道 URL 都能看到该房间的礼物聚合。Token 外泄后点「重新生成」让旧链接失效。"
+        >
+          <InputGroup size="sm" inside>
+            <Input readOnly value={url} placeholder="加载中…" />
+            <InputGroup.Button onClick={copy} disabled={!url} title="复制链接">
+              <CopyIcon style={{ fontSize: 14 }} /> {copied ? '已复制' : '复制'}
+            </InputGroup.Button>
+            <InputGroup.Button onClick={() => url && window.open(url, '_blank')} disabled={!url} title="打开预览">
+              <VisibleIcon style={{ fontSize: 14 }} /> 预览
+            </InputGroup.Button>
+          </InputGroup>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <Button
+                appearance="subtle" size="sm" color="red"
+                startIcon={<TrashIcon />} onClick={clearDisplay} loading={clearing}
+              >
+                清除当前展示
+              </Button>
+              {committed.cleared_at && (
+                <Tag color="cyan">已清除至 {formatClearedAt(committed.cleared_at)}</Tag>
+              )}
+            </div>
+            <Button appearance="subtle" size="sm" startIcon={<ReloadIcon />} onClick={rotate} loading={rotating}>
+              重新生成 token
+            </Button>
+          </div>
+        </Section>
+
+        <Section title="展示设置">
+          <Row label="最多展示">
+            <Input
+              type="number" size="sm"
+              value={String(draft.max_events)}
+              onChange={(v) => {
+                const n = Math.max(1, Math.min(20, Number(v) || 10))
+                setDraft({ ...draft, max_events: n })
+              }}
+              style={{ width: 110 }}
+            />
+            <span style={{ color: '#888', fontSize: 12 }}>条事件（1–20）</span>
+          </Row>
+
+          <Row label="展示类型">
+            <CheckboxGroup
+              inline
+              value={shownTypes}
+              onChange={(vals) => {
+                const arr = (vals as string[]) || []
+                setDraft({
+                  ...draft,
+                  show_gift: arr.includes('gift'),
+                  show_blind: arr.includes('blind'),
+                  show_guard: arr.includes('guard'),
+                })
+              }}
+            >
+              <Checkbox value="gift">礼物</Checkbox>
+              <Checkbox value="blind">盲盒</Checkbox>
+              <Checkbox value="guard">大航海</Checkbox>
+            </CheckboxGroup>
+          </Row>
+
+          <Row label="价格基准">
+            <RadioGroup
+              inline
+              value={draft.price_mode}
+              onChange={(v) => setDraft({ ...draft, price_mode: (v as 'total' | 'unit') })}
+            >
+              <Radio value="total">总价</Radio>
+              <Radio value="unit">单价</Radio>
+            </RadioGroup>
+            <span style={{ color: '#888', fontSize: 12 }}>
+              {draft.price_mode === 'total' ? '按该事件的总金额判断' : '按单个礼物的单价判断'}
+            </span>
+          </Row>
+
+          <Row label="价格区间">
+            <InputGroup size="sm" style={{ width: 150 }}>
+              <Input
+                type="number"
+                value={String(draft.min_price)}
+                onChange={(v) => setDraft({ ...draft, min_price: Math.max(0, Number(v) || 0) })}
+                placeholder="最低"
+              />
+              <InputGroup.Addon>元</InputGroup.Addon>
+            </InputGroup>
+            <span style={{ color: '#666' }}>—</span>
+            <InputGroup size="sm" style={{ width: 150 }}>
+              <Input
+                type="number"
+                value={String(draft.max_price)}
+                onChange={(v) => setDraft({ ...draft, max_price: Math.max(0, Number(v) || 0) })}
+                placeholder="最高"
+              />
+              <InputGroup.Addon>元</InputGroup.Addon>
+            </InputGroup>
+            <span style={{ color: '#888', fontSize: 12 }}>0 表示不限</span>
+          </Row>
+        </Section>
+
+        <div
+          style={{
+            display: 'flex', justifyContent: 'flex-end', gap: 8,
+            padding: '12px 0', borderTop: '1px solid #2a2a4a',
+          }}
+        >
+          <Button appearance="subtle" size="sm" onClick={resetDraft} disabled={!dirty || saving}>
+            撤销
           </Button>
-          <Button appearance="subtle" size="sm" onClick={() => url && window.open(url, '_blank')} disabled={!url}>
-            打开预览
-          </Button>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-          <Button appearance="ghost" size="sm" onClick={rotate} disabled={rotating}>
-            {rotating ? '生成中…' : '重新生成 token'}
+          <Button
+            appearance="primary" size="sm"
+            onClick={save} disabled={!dirty} loading={saving}
+            style={{ minWidth: 88 }}
+          >
+            保存更改
           </Button>
         </div>
       </div>
