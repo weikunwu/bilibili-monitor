@@ -97,6 +97,50 @@ def _decode_interact_word_pb(b64: str) -> dict:
     return out
 
 
+# ── OpenRouter 免费模型列表缓存 ──
+# 全局（跨房间）共享，避免每个房间各自拉一次。
+_or_free_models: list[str] = []
+_or_free_models_ts: float = 0.0
+_or_free_models_lock = asyncio.Lock()
+
+
+async def _fetch_openrouter_free_models(api_key: str, ttl: float) -> list[str]:
+    """从 OpenRouter /models 拉一份免费模型 id 列表，缓存 ttl 秒。
+    判定 free 的口径：pricing.prompt == "0" 且 pricing.completion == "0"。"""
+    global _or_free_models, _or_free_models_ts
+    now = time.time()
+    if _or_free_models and (now - _or_free_models_ts) < ttl:
+        return _or_free_models
+    async with _or_free_models_lock:
+        now = time.time()
+        if _or_free_models and (now - _or_free_models_ts) < ttl:
+            return _or_free_models
+        try:
+            headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as s:
+                async with s.get("https://openrouter.ai/api/v1/models", headers=headers) as r:
+                    data = await r.json(content_type=None)
+        except Exception as e:
+            log.warning(f"[AI回复] 拉 OpenRouter 模型列表失败: {e}")
+            return _or_free_models  # 旧缓存也比空强
+        free: list[str] = []
+        for m in (data.get("data") or []):
+            p = m.get("pricing") or {}
+            # pricing 是字符串如 "0.0000001"；"0" / "0.0" 都当免费
+            try:
+                if float(p.get("prompt") or 0) == 0 and float(p.get("completion") or 0) == 0:
+                    mid = m.get("id")
+                    if mid:
+                        free.append(mid)
+            except (TypeError, ValueError):
+                continue
+        if free:
+            _or_free_models = free
+            _or_free_models_ts = now
+            log.info(f"[AI回复] 刷新 OpenRouter 免费模型: {len(free)} 个")
+        return _or_free_models
+
+
 class BiliLiveClient:
     def __init__(self, room_id: int, on_event, cookies: dict = None):
         self.room_id = room_id
@@ -638,14 +682,9 @@ class BiliLiveClient:
         asyncio.create_task(self.send_danmu(msg))
 
     AI_REPLY_API = "https://openrouter.ai/api/v1/chat/completions"
+    AI_REPLY_MODELS_API = "https://openrouter.ai/api/v1/models"
     AI_REPLY_ROOM_COOLDOWN = 15  # 同一房间两次回复间隔（秒）
-    # 429 时按顺序降级尝试的免费模型（主模型失败 → 遍历这里）
-    AI_REPLY_FALLBACK_MODELS = [
-        "deepseek/deepseek-chat-v3-0324:free",
-        "google/gemini-2.0-flash-exp:free",
-        "qwen/qwen-2.5-72b-instruct:free",
-        "mistralai/mistral-small-3.1-24b-instruct:free",
-    ]
+    AI_REPLY_MODELS_TTL = 3600  # 免费模型列表缓存 1 小时
 
     async def _maybe_ai_reply(self, uid: int, uname: str, content: str):
         """观众弹幕命中机器人名 → 必定回复；否则纯 random 掷骰子。同一房间受冷却限制。API Key 从环境变量 OPENROUTER_API_KEY 读取。"""
@@ -683,11 +722,11 @@ class BiliLiveClient:
         self._last_ai_reply_ts = now
 
         primary_model = (cfg.get("model") or "meta-llama/llama-3.3-70b-instruct:free").strip()
-        # 去重，确保主模型排第一，避免 429 时立即重试同一个
-        models_to_try = [primary_model]
-        for m in self.AI_REPLY_FALLBACK_MODELS:
-            if m not in models_to_try:
-                models_to_try.append(m)
+        # 主模型排第一；其余从 OpenRouter 动态拉到的所有免费模型里 shuffle 后依次尝试。
+        free_pool = await _fetch_openrouter_free_models(api_key, self.AI_REPLY_MODELS_TTL)
+        fallbacks = [m for m in free_pool if m != primary_model]
+        random.shuffle(fallbacks)
+        models_to_try = [primary_model] + fallbacks
         display_name = self._nickname_for(uid) or uname
         system_tpl = cfg.get("system_prompt") or ""
         system_prompt = (
@@ -717,12 +756,12 @@ class BiliLiveClient:
                     }
                     async with s.post(self.AI_REPLY_API, headers=headers, data=json.dumps(payload)) as r:
                         data = await r.json(content_type=None)
-                        if r.status == 429:
-                            log.info(f"[AI回复] {model} 限流，尝试下一个")
-                            continue
                         if r.status != 200:
-                            log.warning(f"[AI回复] {model} HTTP {r.status}: {str(data)[:300]}")
-                            return
+                            # 401/403 (key 问题) 没救，直接停；其它错误 (429/404/5xx) 换下一个
+                            log.info(f"[AI回复] {model} HTTP {r.status}: {str(data)[:200]}")
+                            if r.status in (401, 403):
+                                return
+                            continue
                         choices = data.get("choices") or []
                         if choices:
                             msg = choices[0].get("message") or {}
