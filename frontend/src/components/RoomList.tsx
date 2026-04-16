@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { MdCircle } from 'react-icons/md'
 import { Button, ButtonToolbar, IconButton, Input, Modal, useToaster, Message } from 'rsuite'
 import PlayOutlineIcon from '@rsuite/icons/PlayOutline'
@@ -38,19 +38,43 @@ function formatFans(n: number): string {
 }
 
 function StreamerBlock({ room }: { room: Room }) {
+  const ref = useRef<HTMLDivElement>(null)
   const [fresh, setFresh] = useState<StreamerInfo | null>(null)
+  const [visible, setVisible] = useState(false)
+
+  // IntersectionObserver：卡片滚到可视区域附近才拉取最新主播资料，
+  // 避免一进页面就并发发几十个 streamer-info 请求。
   useEffect(() => {
+    if (visible) return
+    const el = ref.current
+    if (!el) return
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setVisible(true)
+          io.disconnect()
+        }
+      },
+      { rootMargin: '200px' },
+    )
+    io.observe(el)
+    return () => io.disconnect()
+  }, [visible])
+
+  useEffect(() => {
+    if (!visible) return
     let cancelled = false
     fetchStreamerInfo(room.room_id).then((v) => {
       if (!cancelled && (v.streamer_avatar || v.streamer_name)) setFresh(v)
     })
     return () => { cancelled = true }
-  }, [room.room_id])
+  }, [visible, room.room_id])
+
   const avatar = fresh?.streamer_avatar || room.streamer_avatar
   const name = fresh?.streamer_name || room.streamer_name
   const followers = fresh?.followers ?? room.followers
   return (
-    <div className="rc-streamer">
+    <div className="rc-streamer" ref={ref}>
       {avatar ? (
         <img className="rc-avatar" src={avatar} referrerPolicy="no-referrer" alt="" />
       ) : (
