@@ -2,12 +2,55 @@
 
 import json
 import os
+import secrets
 import sqlite3
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
 from .config import DB_PATH, DEFAULT_COMMANDS, log
 from .crypto import hash_password
+
+
+def get_or_create_overlay_token(room_id: int, user_id: Optional[int] = None) -> str:
+    """Return the stored overlay token for this room; create one if missing."""
+    conn = sqlite3.connect(str(DB_PATH))
+    row = conn.execute("SELECT token FROM overlay_tokens WHERE room_id=?", (room_id,)).fetchone()
+    if row:
+        conn.close()
+        return row[0]
+    token = secrets.token_urlsafe(24)
+    conn.execute(
+        "INSERT INTO overlay_tokens (token, room_id, created_by) VALUES (?,?,?)",
+        (token, room_id, user_id),
+    )
+    conn.commit()
+    conn.close()
+    return token
+
+
+def rotate_overlay_token(room_id: int, user_id: Optional[int] = None) -> str:
+    """Replace the overlay token for this room with a fresh one. Old links stop working."""
+    token = secrets.token_urlsafe(24)
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.execute(
+        "INSERT OR REPLACE INTO overlay_tokens (token, room_id, created_by, created_at) "
+        "VALUES (?,?,?,datetime('now'))",
+        (token, room_id, user_id),
+    )
+    conn.commit()
+    conn.close()
+    return token
+
+
+def verify_overlay_token(room_id: int, token: str) -> bool:
+    if not token:
+        return False
+    conn = sqlite3.connect(str(DB_PATH))
+    row = conn.execute(
+        "SELECT 1 FROM overlay_tokens WHERE room_id=? AND token=?", (room_id, token),
+    ).fetchone()
+    conn.close()
+    return row is not None
 
 
 def init_db():
@@ -120,6 +163,15 @@ def init_db():
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
             expires_at TEXT NOT NULL,
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+    """)
+    # OBS 叠加页 token：每房间一条，生成需登录，使用无需登录（只能拿只读的礼物聚合）
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS overlay_tokens (
+            token TEXT PRIMARY KEY,
+            room_id INTEGER NOT NULL UNIQUE,
+            created_by INTEGER,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
         )
     """)
 

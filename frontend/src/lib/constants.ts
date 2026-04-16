@@ -12,6 +12,7 @@ export const TAB_ALL = 'all' as const
 export const TAB_BLINDBOX = 'blindbox' as const
 export const TAB_TOOLS = 'tools' as const
 export const TAB_NICKNAMES = 'nicknames' as const
+export const TAB_REALTIME_GIFTS = 'realtime_gifts' as const
 export const TAB_ADMIN = 'admin' as const
 
 export const BADGE_NAMES: Record<string, string> = {

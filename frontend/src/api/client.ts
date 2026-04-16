@@ -181,6 +181,18 @@ export async function toggleAutoClip(roomId: number, enabled: boolean): Promise<
   })
 }
 
+export async function fetchOverlayToken(roomId: number): Promise<string> {
+  const r = await fetch(`/api/rooms/${roomId}/overlay-token`)
+  const d = await r.json()
+  return String(d.token || '')
+}
+
+export async function rotateOverlayToken(roomId: number): Promise<string> {
+  const r = await fetch(`/api/rooms/${roomId}/overlay-token/rotate`, { method: 'POST' })
+  const d = await r.json()
+  return String(d.token || '')
+}
+
 export async function fetchCommands(roomId: number): Promise<Command[]> {
   const res = await fetch(`/api/commands?room_id=${roomId}`)
   return res.json()

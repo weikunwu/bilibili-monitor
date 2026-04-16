@@ -65,6 +65,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
         path = request.url.path
         if path in ("/api/auth",) or path.startswith("/static/") or path.startswith("/assets/"):
             return await call_next(request)
+        # /overlay/* 是公开的 OBS 叠加页 (SPA + 公开 API)，不需要登录
+        if path.startswith("/overlay/") or path.startswith("/api/overlay/"):
+            return await call_next(request)
 
         token = request.cookies.get("auth_token")
         user = get_session_user(token)

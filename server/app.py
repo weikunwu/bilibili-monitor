@@ -12,7 +12,7 @@ from .db import init_db, cleanup_old_events
 from .auth import AuthMiddleware, get_session_user, get_user_allowed_rooms, handle_login, handle_logout, handle_change_password
 from .manager import manager
 from . import recorder, effect_catalog
-from .routes import events, rooms, bot, admin, clips
+from .routes import events, rooms, bot, admin, clips, overlay
 
 app = FastAPI(title="大黄狗机器人")
 
@@ -31,6 +31,7 @@ app.include_router(rooms.router)
 app.include_router(bot.router)
 app.include_router(admin.router)
 app.include_router(clips.router)
+app.include_router(overlay.router)
 
 
 @app.post("/api/auth")
@@ -69,6 +70,11 @@ async def spa_room_fallback():
 
 @app.get("/admin")
 async def spa_admin_fallback():
+    return FileResponse(BASE_DIR / "frontend" / "dist" / "index.html")
+
+
+@app.get("/overlay/{path:path}")
+async def spa_overlay_fallback():
     return FileResponse(BASE_DIR / "frontend" / "dist" / "index.html")
 
 

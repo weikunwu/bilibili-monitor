@@ -13,6 +13,7 @@ from ..db import (
     get_room_commands, save_command_state, save_command_config, get_command, get_all_rooms,
     get_room_save_danmu, set_room_save_danmu, get_room_auto_clip, set_room_auto_clip,
     list_nicknames, upsert_nickname, delete_nickname, list_room_users,
+    get_or_create_overlay_token, rotate_overlay_token,
 )
 from ..auth import require_room_access
 from ..config import ROOM_INFO_API, H5_ROOM_INFO_API, MASTER_INFO_API, HEADERS
@@ -219,6 +220,20 @@ async def toggle_auto_clip(room_id: int, request: Request, _=Depends(require_roo
         elif not enabled:
             asyncio.create_task(recorder.stop_for(client.real_room_id))
     return {"ok": True, "room_id": room_id, "auto_clip": enabled}
+
+
+@router.get("/api/rooms/{room_id}/overlay-token")
+async def get_overlay_token(room_id: int, request: Request, _=Depends(require_room_access)):
+    uid = getattr(request.state, "user_id", None)
+    token = get_or_create_overlay_token(room_id, uid)
+    return {"room_id": room_id, "token": token}
+
+
+@router.post("/api/rooms/{room_id}/overlay-token/rotate")
+async def rotate_overlay_token_route(room_id: int, request: Request, _=Depends(require_room_access)):
+    uid = getattr(request.state, "user_id", None)
+    token = rotate_overlay_token(room_id, uid)
+    return {"room_id": room_id, "token": token}
 
 
 @router.get("/api/rooms/{room_id}/nicknames")

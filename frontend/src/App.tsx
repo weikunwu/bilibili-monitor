@@ -5,7 +5,7 @@ import { fetchRooms, fetchEvents, fetchMe, toggleSaveDanmu, type CurrentUser } f
 import { useWebSocket } from './hooks/useWebSocket'
 import { useLocalStorage } from './hooks/useLocalStorage'
 import { localToUTC, fmtDate } from './lib/formatters'
-import { MAX_EVENTS, TAB_ALL, TAB_BLINDBOX, TAB_TOOLS, TAB_NICKNAMES, EVENT_DANMU, EVENT_GIFT, EVENT_SUPERCHAT, EVENT_GUARD } from './lib/constants'
+import { MAX_EVENTS, TAB_ALL, TAB_BLINDBOX, TAB_TOOLS, TAB_NICKNAMES, TAB_REALTIME_GIFTS, EVENT_DANMU, EVENT_GIFT, EVENT_SUPERCHAT, EVENT_GUARD } from './lib/constants'
 import { TabSidebar } from './components/TabBar'
 
 import { EventList } from './components/EventList'
@@ -15,7 +15,9 @@ import { SuperChatPanel } from './components/SuperChatPanel'
 import { ToolsPanel } from './components/ToolsPanel'
 import { BlindBoxPanel } from './components/BlindBoxPanel'
 import { NicknamesPanel } from './components/NicknamesPanel'
+import { RealtimeGiftsPanel } from './components/RealtimeGiftsPanel'
 import { AdminPanel } from './components/AdminPanel'
+import { OverlayGiftsPage } from './pages/OverlayGiftsPage'
 import { QrLoginModal } from './components/QrLoginModal'
 import { GiftImageModal, type GiftImageModalRef } from './components/GiftImageModal'
 import { RoomList } from './components/RoomList'
@@ -31,7 +33,7 @@ function todayRange(): DateRange {
   ]
 }
 
-const VALID_TABS: TabType[] = [TAB_ALL, EVENT_DANMU, EVENT_GIFT, EVENT_SUPERCHAT, EVENT_GUARD, TAB_BLINDBOX, TAB_NICKNAMES, TAB_TOOLS]
+const VALID_TABS: TabType[] = [TAB_ALL, EVENT_DANMU, EVENT_GIFT, EVENT_SUPERCHAT, EVENT_GUARD, TAB_BLINDBOX, TAB_NICKNAMES, TAB_REALTIME_GIFTS, TAB_TOOLS]
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null)
@@ -66,6 +68,7 @@ export default function App() {
           ? <AdminPage rooms={rooms} currentUser={currentUser} onRoomsChanged={() => fetchRooms().then(setRooms)} />
           : <Navigate to="/" replace />
       } />
+      <Route path="/overlay/:roomId/gifts" element={<OverlayGiftsPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )
@@ -181,6 +184,9 @@ function RoomPage({ rooms, currentUser, onRoomsChanged }: {
     }
     if (activeTab === 'nicknames') {
       return <NicknamesPanel roomId={roomId} />
+    }
+    if (activeTab === TAB_REALTIME_GIFTS) {
+      return <RealtimeGiftsPanel roomId={roomId} />
     }
     if (activeTab === EVENT_SUPERCHAT) {
       return (
