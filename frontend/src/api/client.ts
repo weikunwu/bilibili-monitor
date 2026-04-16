@@ -151,6 +151,23 @@ export async function addRoom(roomId: number): Promise<{ ok: boolean; room_id: n
   return res.json()
 }
 
+export async function bindRoomSelf(roomId: number): Promise<{ ok: boolean; room_id: number }> {
+  const res = await fetch(`/api/rooms/${roomId}/bind`, { method: 'POST' })
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({}))
+    throw new Error(d.detail || '绑定失败')
+  }
+  return res.json()
+}
+
+export async function unbindRoomSelf(roomId: number): Promise<void> {
+  const res = await fetch(`/api/rooms/${roomId}/unbind`, { method: 'POST' })
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({}))
+    throw new Error(d.detail || '解绑失败')
+  }
+}
+
 export async function removeRoom(roomId: number): Promise<void> {
   const res = await fetch(`/api/admin/rooms/${roomId}`, { method: 'DELETE' })
   if (!res.ok) {

@@ -272,6 +272,37 @@ def assign_user_rooms(user_id: int, room_ids: list[int]):
     conn.close()
 
 
+def add_user_room(user_id: int, room_id: int):
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.execute("INSERT OR IGNORE INTO user_rooms (user_id, room_id) VALUES (?,?)", (user_id, room_id))
+    conn.commit()
+    conn.close()
+
+
+def remove_user_room(user_id: int, room_id: int) -> bool:
+    conn = sqlite3.connect(str(DB_PATH))
+    cur = conn.execute("DELETE FROM user_rooms WHERE user_id=? AND room_id=?", (user_id, room_id))
+    conn.commit()
+    deleted = cur.rowcount > 0
+    conn.close()
+    return deleted
+
+
+def count_user_rooms(user_id: int) -> int:
+    conn = sqlite3.connect(str(DB_PATH))
+    n = conn.execute("SELECT COUNT(*) FROM user_rooms WHERE user_id=?", (user_id,)).fetchone()[0]
+    conn.close()
+    return n
+
+
+def is_room_claimed(room_id: int) -> bool:
+    """Whether the room is already bound to any (non-admin) user."""
+    conn = sqlite3.connect(str(DB_PATH))
+    row = conn.execute("SELECT 1 FROM user_rooms WHERE room_id=? LIMIT 1", (room_id,)).fetchone()
+    conn.close()
+    return row is not None
+
+
 def cleanup_old_events():
     conn = sqlite3.connect(str(DB_PATH))
     cutoff = (datetime.now(timezone.utc) - timedelta(days=548)).strftime("%Y-%m-%d %H:%M:%S")

@@ -2,7 +2,7 @@
 
 import asyncio
 import time
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict, deque
 
 import aiohttp
 from fastapi import APIRouter, Depends, Query, Request, HTTPException
@@ -14,6 +14,8 @@ from ..db import (
     get_room_save_danmu, set_room_save_danmu, get_room_auto_clip, set_room_auto_clip,
     list_nicknames, upsert_nickname, delete_nickname, list_room_users,
     get_or_create_overlay_token, rotate_overlay_token,
+    add_room as db_add_room, add_user_room, remove_user_room, is_room_claimed,
+    count_user_rooms,
 )
 from ..auth import require_room_access
 from ..config import ROOM_INFO_API, H5_ROOM_INFO_API, MASTER_INFO_API, HEADERS
@@ -109,6 +111,110 @@ async def get_rooms(request: Request):
             info["save_danmu"] = get_room_save_danmu(room_id)
             result.append(info)
     return result
+
+
+# ── 绑定/解绑接口防滥用 ──
+# 每个用户在 window 秒内最多 limit 次操作；超过返回 429。
+# 绑定操作会调 B站 API + 可能触发 WS 客户端创建，阀值严一些；
+# 解绑是本地 DB 操作，阀值稍宽。
+_ROOM_MUTATION_LIMIT = {
+    "bind": (10, 60.0),
+    "unbind": (30, 60.0),
+}
+_MAX_ROOMS_PER_USER = 20
+_user_mutation_buckets: dict[str, dict[int, deque[float]]] = defaultdict(lambda: defaultdict(deque))
+
+
+def _check_user_mutation_rate(user_id: int, bucket: str):
+    limit, window = _ROOM_MUTATION_LIMIT[bucket]
+    q = _user_mutation_buckets[bucket][user_id]
+    now = time.time()
+    cutoff = now - window
+    while q and q[0] < cutoff:
+        q.popleft()
+    if len(q) >= limit:
+        raise HTTPException(status_code=429, detail="操作过于频繁，请稍后再试")
+    q.append(now)
+
+
+async def _room_exists_on_bili(room_id: int) -> bool:
+    """向 B站 校验房间号是否有效。网络异常视为 False（宁缺毋滥）。"""
+    try:
+        async with aiohttp.ClientSession(headers=HEADERS) as session:
+            async with session.get(
+                ROOM_INFO_API, params={"room_id": room_id},
+                timeout=aiohttp.ClientTimeout(total=8),
+            ) as resp:
+                data = await resp.json(content_type=None)
+                # code 0 且 uid 非 0 才算真实存在（空房间/错误房号 B站 会给不同错误码或空 uid）
+                return data.get("code") == 0 and int((data.get("data") or {}).get("uid") or 0) > 0
+    except Exception:
+        return False
+
+
+@router.post("/api/rooms/{room_id}/bind")
+async def bind_room_self(room_id: int, request: Request):
+    """登录用户自助绑定房间（不存在则先创建再绑定）。
+
+    规则：
+      - 房间号 ≤ 0 → 拒绝
+      - 房间不存在于 B站 → 拒绝
+      - 房间已被任何用户绑定 → 拒绝（已绑定账号）
+      - 房间存在但未绑定 → 分配给当前用户（非管理员）
+      - 房间不存在 → 校验后创建并分配（非管理员）
+    管理员在此接口下不做自动分配，本身已能看到所有房间。"""
+    if room_id <= 0:
+        raise HTTPException(400, "房间号无效")
+
+    user_id = getattr(request.state, "user_id", None)
+    is_admin = getattr(request.state, "user_role", "") == "admin"
+    if user_id is None:
+        raise HTTPException(401, "未登录")
+
+    # 限流先行：就算房号非法也要消耗配额，否则可以无限探测 B站。
+    if not is_admin:
+        _check_user_mutation_rate(user_id, "bind")
+        if count_user_rooms(user_id) >= _MAX_ROOMS_PER_USER:
+            raise HTTPException(400, f"单账号最多绑定 {_MAX_ROOMS_PER_USER} 个房间")
+
+    existing = {r[0] for r in get_all_rooms()}
+    already = room_id in existing
+
+    if already and is_room_claimed(room_id):
+        raise HTTPException(400, "该房间已绑定其他账号")
+
+    if not already:
+        if not await _room_exists_on_bili(room_id):
+            raise HTTPException(400, "房间号不存在或无法访问")
+        db_add_room(room_id)
+        client = manager.add_room(room_id)
+        await client.ensure_info()
+
+    if not is_admin:
+        add_user_room(user_id, room_id)
+
+    return {"ok": True, "room_id": room_id}
+
+
+@router.post("/api/rooms/{room_id}/unbind")
+async def unbind_room_self(room_id: int, request: Request, _=Depends(require_room_access)):
+    """解绑当前账号与房间的绑定：只删 user_rooms 映射，房间本身保留。
+    普通用户无权删除房间，房间删除统一走 /api/admin/rooms。"""
+    is_admin = getattr(request.state, "user_role", "") == "admin"
+    if is_admin:
+        raise HTTPException(400, "管理员账号无需解绑")
+    user_id = getattr(request.state, "user_id", None)
+    if user_id is None:
+        raise HTTPException(401, "未登录")
+    _check_user_mutation_rate(user_id, "unbind")
+    ok = remove_user_room(user_id, room_id)
+    if not ok:
+        raise HTTPException(404, "房间未绑定到当前账号")
+    # 房间绑定唯一（bind 时会拒绝已被其他账号占用的房间），解绑后没有非管理员
+    # 用户再用它，直接停止监听；管理员若需要可在管理后台重新启动。
+    if manager.has(room_id):
+        manager.stop_room(room_id)
+    return {"ok": True, "room_id": room_id}
 
 
 @router.get("/api/commands")

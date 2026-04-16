@@ -94,6 +94,7 @@ function HomePage({ rooms, currentUser, onRoomsChanged }: { rooms: Room[]; curre
         onSelectRoom={(id) => navigate(`/room/${id}/all`)}
         onRoomsChanged={onRoomsChanged}
         onBindBot={(id) => setBindRoomId(id)}
+        isAdmin={currentUser?.role === 'admin'}
       />
       {bindRoomId && (
         <QrLoginModal
