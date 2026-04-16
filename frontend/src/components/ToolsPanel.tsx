@@ -218,6 +218,14 @@ function ThanksGroup({
           gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)',
           gap: 8,
         }}>
+          {section(
+            follow, followTpls, setFollowTpls, FOLLOW_DEFAULT_TEMPLATE,
+            <>占位符：<code>{'{name}'}</code> 用户昵称，<code>{'{streamer}'}</code> 主播昵称</>,
+          )}
+          {section(
+            like, likeTpls, setLikeTpls, LIKE_DEFAULT_TEMPLATE,
+            <>占位符：<code>{'{name}'}</code> 用户昵称，<code>{'{streamer}'}</code> 主播昵称</>,
+          )}
           {section(gift, null, null, '')}
           {section(
             guard, guardTpls, setGuardTpls, GUARD_DEFAULT_TEMPLATE,
@@ -226,14 +234,6 @@ function ThanksGroup({
           {section(
             blind, blindTpls, setBlindTpls, BLIND_DEFAULT_TEMPLATE,
             <>占位符：<code>{'{name}'}</code> 用户昵称，<code>{'{streamer}'}</code> 主播昵称，<code>{'{count}'}</code> 盲盒数，<code>{'{verdict}'}</code> 盈亏（如 "赚3元"/"亏5元"/"不亏不赚"）</>,
-          )}
-          {section(
-            follow, followTpls, setFollowTpls, FOLLOW_DEFAULT_TEMPLATE,
-            <>占位符：<code>{'{name}'}</code> 用户昵称，<code>{'{streamer}'}</code> 主播昵称</>,
-          )}
-          {section(
-            like, likeTpls, setLikeTpls, LIKE_DEFAULT_TEMPLATE,
-            <>占位符：<code>{'{name}'}</code> 用户昵称，<code>{'{streamer}'}</code> 主播昵称</>,
           )}
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: 8 }}>
