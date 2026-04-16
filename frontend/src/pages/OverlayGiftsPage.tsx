@@ -46,9 +46,11 @@ export function OverlayGiftsPage() {
         fontFamily: '-apple-system, "PingFang SC", sans-serif',
       }}
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 8 }}>
-        {users.map((u) => (
-          <GiftCardCanvas key={u.user_name} user={u} />
+      {/* 外层 gap 为 0：canvas 本身 PAD_TOP=6 已经留了相邻卡的间距，
+          再加 marginTop=-6 抵消首张卡上方的多余空白。 */}
+      <div style={{ display: 'flex', flexDirection: 'column', padding: 8 }}>
+        {users.map((u, i) => (
+          <GiftCardCanvas key={u.user_name} user={u} first={i === 0} />
         ))}
       </div>
       {error && (
@@ -60,7 +62,7 @@ export function OverlayGiftsPage() {
   )
 }
 
-function GiftCardCanvas({ user }: { user: GiftUser }) {
+function GiftCardCanvas({ user, first }: { user: GiftUser; first: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   // 每次 gifts/total 变化才重绘，减小闪烁
   const sig = JSON.stringify({
@@ -73,5 +75,10 @@ function GiftCardCanvas({ user }: { user: GiftUser }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sig])
 
-  return <canvas ref={canvasRef} style={{ display: 'block' }} />
+  return (
+    <canvas
+      ref={canvasRef}
+      style={{ display: 'block', marginTop: first ? -6 : 0 }}
+    />
+  )
 }
