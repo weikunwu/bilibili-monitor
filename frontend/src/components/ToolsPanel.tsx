@@ -469,7 +469,7 @@ function AiReplyEditor({
   onCommitEnabled?: () => Promise<void>
   onRestoreEnabled?: () => void
 }) {
-  const [prob, setProb] = useState(String(initial.probability ?? 10))
+  const [prob, setProb] = useState(String(initial.probability ?? 0))
   const [botName, setBotName] = useState(initial.bot_name || '')
   const [extraPrompt, setExtraPrompt] = useState(initial.extra_prompt || '')
   const [saving, setSaving] = useState(false)
@@ -507,7 +507,7 @@ function AiReplyEditor({
           style={probInvalid ? { textDecoration: 'line-through', color: '#ef5350' } : undefined}
           onBlur={() => {
             const n = Number(prob)
-            if (!Number.isFinite(n) || prob === '') setProb('10')
+            if (!Number.isFinite(n) || prob === '') setProb('0')
             else if (n < 0) setProb('0')
             else if (n > 50) setProb('50')
             else setProb(String(Math.round(n)))
@@ -541,7 +541,7 @@ function AiReplyEditor({
         <button
           className="rs-btn rs-btn-subtle rs-btn-sm" style={{ width: 88 }}
           onClick={() => {
-            setProb('10'); setBotName(''); setExtraPrompt('')
+            setProb('0'); setBotName(''); setExtraPrompt('')
             onRestoreEnabled?.()
           }}
         >恢复默认</button>
@@ -785,7 +785,7 @@ export function ToolsPanel({ roomId }: Props) {
                 roomId={roomId}
                 cmdId={cmd.id}
                 initial={{
-                  probability: Number(cmd.config?.probability ?? 10),
+                  probability: Number(cmd.config?.probability ?? 0),
                   bot_name: (cmd.config?.bot_name as string) || '',
                   extra_prompt: (cmd.config?.extra_prompt as string) || '',
                 }}
