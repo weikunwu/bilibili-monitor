@@ -127,6 +127,16 @@ DEFAULT_COMMANDS = [
         },
     },
     {
+        "id": "broadcast_share",
+        "name": "分享感谢",
+        "type": "auto_broadcast",
+        "description": "观众分享直播间后，机器人按模版感谢一次（同一用户一次）",
+        "default_enabled": True,
+        "config": {
+            "templates": ["感谢{name}的分享~"],
+        },
+    },
+    {
         "id": "broadcast_gift",
         "name": "礼物感谢",
         "type": "auto_broadcast",
