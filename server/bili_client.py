@@ -711,7 +711,7 @@ class BiliLiveClient:
         # 占坑防并发双发（异步 OpenRouter 调用期间可能又来新弹幕）。
         self._last_ai_reply_ts = now
 
-        model = (cfg.get("model") or "glm-4.7-flash").strip()
+        model = (cfg.get("model") or "glm-4-flash").strip()
         display_name = self._nickname_for(uid) or uname
         base_prompt = (
             self.AI_REPLY_BASE_PROMPT

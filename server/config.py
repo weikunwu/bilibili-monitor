@@ -81,7 +81,7 @@ DEFAULT_COMMANDS = [
         "config": {
             "probability": 10,  # 0–50
             "bot_name": "",
-            "model": "glm-4.7-flash",
+            "model": "glm-4-flash",
             "extra_prompt": "",  # 用户可选追加提示词，内置 base prompt 无法修改
         },
     },
