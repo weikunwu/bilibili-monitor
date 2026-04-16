@@ -6,10 +6,12 @@ token 校验通过后只返回只读的礼物聚合，不含任何账户/密码/
 
 import json
 import sqlite3
+import time
+from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
 
 import aiohttp
-from fastapi import APIRouter, HTTPException, Query, Response
+from fastapi import APIRouter, HTTPException, Query, Request, Response
 
 from ..config import DB_PATH, HEADERS
 from ..db import verify_overlay_token
@@ -19,6 +21,37 @@ from .events import _is_allowed_proxy_host
 router = APIRouter()
 
 MAX_EVENTS = 10
+
+# ── 速率限制 ──
+# 每个 IP 在 60 秒窗口内的调用次数上限（超过返回 429）。
+# gifts: 正常 poll 12/min (每 5 秒一次)，留 5x buffer
+# proxy-image: 每次 poll 最多 20 张图 (10 头像 + 10 礼物图)，浏览器 24h 缓存；留 15x buffer
+RATE_LIMIT = {
+    "gifts": (60, 60.0),
+    "proxy": (300, 60.0),
+}
+# name -> {ip: deque[timestamp]}
+_rate_buckets: dict[str, dict[str, deque[float]]] = defaultdict(lambda: defaultdict(deque))
+
+
+def _client_ip(request: Request) -> str:
+    xff = request.headers.get("x-forwarded-for", "")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _check_rate(request: Request, bucket: str):
+    limit, window = RATE_LIMIT[bucket]
+    ip = _client_ip(request)
+    q = _rate_buckets[bucket][ip]
+    now = time.time()
+    cutoff = now - window
+    while q and q[0] < cutoff:
+        q.popleft()
+    if len(q) >= limit:
+        raise HTTPException(status_code=429, detail="rate limit exceeded")
+    q.append(now)
 
 
 def _row_to_gift_user(event_id: int, user_name: str, user_id: int, extra_json: str) -> dict | None:
@@ -54,6 +87,7 @@ def _row_to_gift_user(event_id: int, user_name: str, user_id: int, extra_json: s
 @router.get("/api/overlay/gifts/{room_id}")
 async def overlay_gifts(
     room_id: int,
+    request: Request,
     token: str = Query(..., description="overlay token, generated from room settings"),
     max: int = Query(MAX_EVENTS, ge=1, le=MAX_EVENTS),
 ):
@@ -61,6 +95,7 @@ async def overlay_gifts(
 
     不做聚合：每条礼物事件 = 一张卡。Requires overlay token.
     """
+    _check_rate(request, "gifts")
     if not verify_overlay_token(room_id, token):
         raise HTTPException(status_code=403, detail="invalid overlay token")
     beijing_tz = timezone(timedelta(hours=8))
@@ -87,10 +122,12 @@ async def overlay_gifts(
 @router.get("/api/overlay/proxy-image/{room_id}")
 async def overlay_proxy_image(
     room_id: int,
+    request: Request,
     token: str = Query(...),
     url: str = Query(...),
 ):
     """叠加页用的 B站 CDN 图片代理，token 鉴权防滥用 (主接口 /api/proxy-image 仍需登录)。"""
+    _check_rate(request, "proxy")
     if not verify_overlay_token(room_id, token):
         raise HTTPException(status_code=403, detail="invalid overlay token")
     if not _is_allowed_proxy_host(url):
