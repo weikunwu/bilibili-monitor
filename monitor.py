@@ -3,6 +3,13 @@
 import argparse
 import asyncio
 
+# 本地开发从 .env 加载环境变量；生产（Fly）用 secrets，.env 不存在直接跳过。
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 from server.app import main
 
 if __name__ == "__main__":

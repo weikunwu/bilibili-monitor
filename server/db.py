@@ -123,7 +123,7 @@ def init_db():
         )
     """)
 
-    admin_email = os.environ.get("ADMIN_EMAIL", "admin@bilibili-monitor.local")
+    admin_email = os.environ.get("ADMIN_EMAIL", "")
     admin_password = os.environ.get("ADMIN_PASSWORD", "")
     if admin_password:
         user_count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]

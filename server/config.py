@@ -73,6 +73,19 @@ HEADERS = {
 # ── 默认指令 ──
 DEFAULT_COMMANDS = [
     {
+        "id": "ai_reply",
+        "name": "AI 机器人",
+        "type": "user_danmu",
+        "description": "观众发弹幕时，机器人按概率自动 @ 回复；若弹幕中带了机器人名称，则必定回复（忽略概率和冷却）。",
+        "default_enabled": False,
+        "config": {
+            "probability": 10,  # 0–50
+            "bot_name": "",
+            "model": "meta-llama/llama-3.3-70b-instruct:free",
+            "system_prompt": "你是B站直播间{streamer}的热心观众，用自然活泼的语气简短回复其他观众的弹幕。限制：不超过30字、不输出敏感词/脏话、不带emoji、不带话题标签、不换行，回复内容不要加引号。",
+        },
+    },
+    {
         "id": "auto_gift",
         "name": "打个有效",
         "type": "streamer_danmu",

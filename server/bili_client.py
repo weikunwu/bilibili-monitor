@@ -3,6 +3,8 @@
 import asyncio
 import base64
 import json
+import os
+import random
 import re
 import sqlite3
 import time
@@ -142,6 +144,8 @@ class BiliLiveClient:
         self._seen_v2_red_pocket: bool = False
         # Per-command round-robin index for multi-template broadcasts.
         self._tpl_idx: dict[str, int] = {}
+        # 本房间 AI 回复上一次发送时间（防止同房间高频刷屏）。
+        self._last_ai_reply_ts: float = 0.0
 
     def _make_cookie_header(self) -> dict:
         headers = dict(HEADERS)
@@ -633,6 +637,96 @@ class BiliLiveClient:
         )
         asyncio.create_task(self.send_danmu(msg))
 
+    AI_REPLY_API = "https://openrouter.ai/api/v1/chat/completions"
+    AI_REPLY_ROOM_COOLDOWN = 15  # 同一房间两次回复间隔（秒）
+
+    async def _maybe_ai_reply(self, uid: int, uname: str, content: str):
+        """观众弹幕命中机器人名 → 必定回复；否则纯 random 掷骰子。同一房间受冷却限制。API Key 从环境变量 OPENROUTER_API_KEY 读取。"""
+        if not uid or not uname or not content:
+            return
+        if uid == self.bot_uid or uid == self.streamer_uid:
+            return
+        if not self.cookies.get("SESSDATA"):
+            return
+        api_key = (os.environ.get("OPENROUTER_API_KEY") or "").strip()
+        if not api_key:
+            return
+        cmd = get_command(self.real_room_id, "ai_reply")
+        if not cmd or not cmd.get("enabled"):
+            return
+        now = time.time()
+        if now - self._last_ai_reply_ts < self.AI_REPLY_ROOM_COOLDOWN:
+            return
+        cfg = cmd.get("config") or {}
+        bot_name = (cfg.get("bot_name") or "").strip()
+        mentioned = bool(bot_name) and bot_name in content
+        if not mentioned:
+            try:
+                prob = int(cfg.get("probability") or 0)
+            except (TypeError, ValueError):
+                prob = 0
+            prob = max(0, min(50, prob))
+            if prob <= 0 or random.random() * 100 >= prob:
+                return
+        # 占坑防并发双发（异步 OpenRouter 调用期间可能又来新弹幕）。
+        self._last_ai_reply_ts = now
+
+        model = (cfg.get("model") or "meta-llama/llama-3.3-70b-instruct:free").strip()
+        display_name = self._nickname_for(uid) or uname
+        system_tpl = cfg.get("system_prompt") or ""
+        system_prompt = (
+            system_tpl.replace("{streamer}", self.streamer_name or "")
+                      .replace("{主播}", self.streamer_name or "")
+        ).strip() or "你是B站直播间的热心观众，用自然活泼的语气简短回复其他观众的弹幕，不超过30字，不换行。"
+        user_msg = f"{display_name}: {content}"
+        payload = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_msg},
+            ],
+            "max_tokens": 120,
+            "temperature": 0.8,
+        }
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://live.bilibili.com/",
+            "X-Title": "bilibili-monitor",
+        }
+        reply_text = ""
+        try:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=20)) as s:
+                async with s.post(self.AI_REPLY_API, headers=headers, data=json.dumps(payload)) as r:
+                    data = await r.json(content_type=None)
+                    if r.status != 200:
+                        log.warning(f"[AI回复] HTTP {r.status}: {str(data)[:300]}")
+                        return
+                    choices = data.get("choices") or []
+                    if choices:
+                        msg = choices[0].get("message") or {}
+                        reply_text = (msg.get("content") or "").strip()
+        except Exception as e:
+            log.warning(f"[AI回复] OpenRouter 调用异常: {e}")
+            return
+        if not reply_text:
+            return
+        # 清洗：去掉引号、换行、首尾 @mention；截到 40 字以内。
+        reply_text = reply_text.replace("\n", " ").replace("\r", " ").strip()
+        reply_text = reply_text.strip('"\u201c\u201d\'「」')
+        if reply_text.startswith("@"):
+            # 去掉模型手动加的 @xxx 前缀，避免重复 @。
+            reply_text = re.sub(r"^@\S+\s*", "", reply_text)
+        if len(reply_text) > 40:
+            reply_text = reply_text[:40]
+        if not reply_text:
+            return
+        try:
+            await self.send_danmu(reply_text, reply_uid=uid, reply_uname=uname)
+            log.info(f"[AI回复] room={self.real_room_id} {'@命中' if mentioned else '随机'} to={uname}({uid}) msg={reply_text!r}")
+        except Exception as e:
+            log.warning(f"[AI回复] 发送失败: {e}")
+
     async def _flush_gift_burst(self, uid: int):
         try:
             await asyncio.sleep(self.BLIND_IDLE_SEC)
@@ -904,6 +998,10 @@ class BiliLiveClient:
                                                 period,
                                                 user_id=None if is_streamer else uid,
                                             ))
+                                        # AI 回复（排除主播/机器人自己、指令类消息）
+                                        elif uid and uid != self.bot_uid and uid != self.streamer_uid and content:
+                                            if not (content == "清除昵称" or content.startswith("叫我")):
+                                                asyncio.create_task(self._maybe_ai_reply(uid, uname, content))
                         elif raw_msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
                             break
                 finally:

@@ -8,6 +8,11 @@ __pycache__/
 gifts.db
 cookies.json
 .cookie_secret
+.env
+.env.*
+!.env.example
+app.log
+app.log.*
 
 # Claude Code
 .claude/
