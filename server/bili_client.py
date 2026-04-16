@@ -644,7 +644,11 @@ class BiliLiveClient:
         """观众弹幕命中机器人名 → 必定回复；否则纯 random 掷骰子。同一房间受冷却限制。API Key 从环境变量 OPENROUTER_API_KEY 读取。"""
         if not uid or not uname or not content:
             return
-        if uid == self.bot_uid or uid == self.streamer_uid:
+        # 未开播不回复（直播间非 live 状态聊的多是测试消息，避免机器人乱讲）
+        if self.live_status != 1:
+            return
+        # 机器人自己的弹幕跳过，主播可以触发
+        if self.bot_uid and uid == self.bot_uid:
             return
         if not self.cookies.get("SESSDATA"):
             return
@@ -998,8 +1002,8 @@ class BiliLiveClient:
                                                 period,
                                                 user_id=None if is_streamer else uid,
                                             ))
-                                        # AI 回复（排除主播/机器人自己、指令类消息）
-                                        elif uid and uid != self.bot_uid and uid != self.streamer_uid and content:
+                                        # AI 回复（跳过机器人自己，主播可触发；指令类消息不走 AI）
+                                        elif uid and (not self.bot_uid or uid != self.bot_uid) and content:
                                             if not (content == "清除昵称" or content.startswith("叫我")):
                                                 asyncio.create_task(self._maybe_ai_reply(uid, uname, content))
                         elif raw_msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
