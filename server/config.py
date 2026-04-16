@@ -79,7 +79,7 @@ DEFAULT_COMMANDS = [
         "description": "观众发弹幕时，机器人按概率自动回复；若弹幕中带了机器人名称，则必定回复（忽略概率和冷却）。",
         "default_enabled": True,
         "config": {
-            "probability": 0,  # 0–50；默认 0 = 只在被 @ 时回复
+            "probability": 10,  # 0–50
             "bot_name": "",
             "model": "glm-4-flash",
             "extra_prompt": "",  # 用户可选追加提示词，内置 base prompt 无法修改
