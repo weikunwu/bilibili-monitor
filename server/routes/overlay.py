@@ -8,10 +8,12 @@ import json
 import sqlite3
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, HTTPException, Query
+import aiohttp
+from fastapi import APIRouter, HTTPException, Query, Response
 
-from ..config import DB_PATH
+from ..config import DB_PATH, HEADERS
 from ..db import verify_overlay_token
+from .events import _is_allowed_proxy_host
 
 
 router = APIRouter()
@@ -80,3 +82,27 @@ async def overlay_gifts(
 
     items = [g for g in (_row_to_gift_user(*r) for r in rows) if g]
     return {"room_id": room_id, "users": items}
+
+
+@router.get("/api/overlay/proxy-image/{room_id}")
+async def overlay_proxy_image(
+    room_id: int,
+    token: str = Query(...),
+    url: str = Query(...),
+):
+    """叠加页用的 B站 CDN 图片代理，token 鉴权防滥用 (主接口 /api/proxy-image 仍需登录)。"""
+    if not verify_overlay_token(room_id, token):
+        raise HTTPException(status_code=403, detail="invalid overlay token")
+    if not _is_allowed_proxy_host(url):
+        return Response(status_code=400)
+    try:
+        async with aiohttp.ClientSession(headers=HEADERS) as session:
+            async with session.get(url, allow_redirects=False) as resp:
+                content_type = resp.headers.get("Content-Type", "image/png")
+                data = await resp.read()
+                return Response(content=data, media_type=content_type, headers={
+                    "Cache-Control": "public, max-age=86400",
+                    "Access-Control-Allow-Origin": "*",
+                })
+    except Exception:
+        return Response(status_code=502)

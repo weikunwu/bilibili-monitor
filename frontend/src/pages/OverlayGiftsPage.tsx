@@ -52,7 +52,13 @@ export function OverlayGiftsPage() {
           再加 marginTop=-6 抵消首张卡上方的多余空白。 */}
       <div style={{ display: 'flex', flexDirection: 'column', padding: 8 }}>
         {users.map((u, i) => (
-          <GiftCardCanvas key={u.event_id} user={u} first={i === 0} />
+          <GiftCardCanvas
+            key={u.event_id}
+            user={u}
+            first={i === 0}
+            roomId={roomId!}
+            token={token}
+          />
         ))}
       </div>
       {error && (
@@ -64,7 +70,9 @@ export function OverlayGiftsPage() {
   )
 }
 
-function GiftCardCanvas({ user, first }: { user: GiftUser; first: boolean }) {
+function GiftCardCanvas({
+  user, first, roomId, token,
+}: { user: GiftUser; first: boolean; roomId: string; token: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   // 每次 gifts/total 变化才重绘，减小闪烁
   const sig = JSON.stringify({
@@ -73,9 +81,11 @@ function GiftCardCanvas({ user, first }: { user: GiftUser; first: boolean }) {
 
   useEffect(() => {
     if (!canvasRef.current) return
-    generateGiftCard(canvasRef.current, user).catch(() => {})
+    const proxyUrl = (src: string) =>
+      `/api/overlay/proxy-image/${roomId}?token=${encodeURIComponent(token)}&url=${encodeURIComponent(src)}`
+    generateGiftCard(canvasRef.current, user, { proxyUrl }).catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sig])
+  }, [sig, roomId, token])
 
   return (
     <canvas

@@ -2,7 +2,13 @@ import type { GiftUser } from '../types'
 import { GUARD_FRAME_URLS, CARD_TPL_URLS } from './constants'
 import { getProxyImageUrl } from './formatters'
 
-function loadImage(src: string, proxy = false): Promise<HTMLImageElement | null> {
+type ProxyUrlFn = (src: string) => string
+
+function loadImage(
+  src: string,
+  proxy = false,
+  proxyFn: ProxyUrlFn = getProxyImageUrl,
+): Promise<HTMLImageElement | null> {
   return new Promise((resolve) => {
     if (!src) { resolve(null); return }
     const img = new Image()
@@ -10,11 +16,16 @@ function loadImage(src: string, proxy = false): Promise<HTMLImageElement | null>
     img.onload = () => resolve(img)
     img.onerror = () => resolve(null)
     // B站 CDN 图片通过后端代理加载，解决 CORS 问题
-    img.src = proxy ? getProxyImageUrl(src) : src
+    img.src = proxy ? proxyFn(src) : src
   })
 }
 
-export async function generateGiftCard(canvas: HTMLCanvasElement, u: GiftUser) {
+export async function generateGiftCard(
+  canvas: HTMLCanvasElement,
+  u: GiftUser,
+  opts?: { proxyUrl?: ProxyUrlFn },
+) {
+  const proxyFn = opts?.proxyUrl || getProxyImageUrl
   const ctx = canvas.getContext('2d')!
   const dpr = 2
   const gifts = Object.entries(u.gifts)
@@ -36,9 +47,9 @@ export async function generateGiftCard(canvas: HTMLCanvasElement, u: GiftUser) {
   ctx.clearRect(0, 0, W, H)
 
   const [avatar, guardFrame, ...giftImgObjs] = await Promise.all([
-    loadImage(u.avatar || '', true),
+    loadImage(u.avatar || '', true, proxyFn),
     u.guard_level > 0 ? loadImage(GUARD_FRAME_URLS[u.guard_level]) : Promise.resolve(null),
-    ...gifts.map(([name]) => loadImage(giftImgs[name] || '', true)),
+    ...gifts.map(([name]) => loadImage(giftImgs[name] || '', true, proxyFn)),
   ])
 
   const cardTpls: Record<string, HTMLImageElement | null> = {}
