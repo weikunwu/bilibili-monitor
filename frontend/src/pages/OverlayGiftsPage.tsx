@@ -14,6 +14,19 @@ export function OverlayGiftsPage() {
   const [users, setUsers] = useState<OverlayItem[]>([])
   const [error, setError] = useState<string>('')
 
+  // 全局 body/html 背景是深色 (#0f0f1a)，OBS 浏览器源需要透明，
+  // 挂载期间强制 html/body 透明，卸载还原。
+  useEffect(() => {
+    const prevHtml = document.documentElement.style.background
+    const prevBody = document.body.style.background
+    document.documentElement.style.background = 'transparent'
+    document.body.style.background = 'transparent'
+    return () => {
+      document.documentElement.style.background = prevHtml
+      document.body.style.background = prevBody
+    }
+  }, [])
+
   useEffect(() => {
     if (!roomId) return
     if (!token) { setError('missing token'); return }
