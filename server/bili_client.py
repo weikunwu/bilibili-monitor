@@ -708,9 +708,11 @@ class BiliLiveClient:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": f"{display_name}: {content}"},
             ],
-            "max_tokens": 120,
+            # openrouter/free 常路由到推理模型，思考会吃掉大量 token，留足额度
+            "max_tokens": 600,
             "temperature": 0.8,
         }
+        log.info(f"[AI回复] room={self.real_room_id} {'命中' if mentioned else '随机'} 触发={uname}({uid}) 请求 model={model}")
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
@@ -729,6 +731,11 @@ class BiliLiveClient:
                     if choices:
                         msg = choices[0].get("message") or {}
                         reply_text = (msg.get("content") or "").strip()
+                        # 兼容部分推理模型把答案放在 reasoning 里返回空 content 的情况
+                        if not reply_text:
+                            reasoning = (msg.get("reasoning") or "").strip()
+                            finish = choices[0].get("finish_reason") or ""
+                            log.warning(f"[AI回复] {model} 200 但 content 为空 finish={finish} reasoning={reasoning[:120]!r} usage={data.get('usage')}")
         except Exception as e:
             log.warning(f"[AI回复] OpenRouter 调用异常: {e}")
             return
