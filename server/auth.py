@@ -18,13 +18,13 @@ from .crypto import hash_password, verify_password
 
 LOGIN_HTML = """<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>登录 - 大黄狗机器人</title>
+<title>登录 - 布布机器人</title>
 <style>body{background:#0f0f1a;color:#e0e0e0;font-family:-apple-system,sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0}
 .box{background:#1a1a2e;padding:40px;border-radius:16px;border:1px solid #2a2a4a;text-align:center;min-width:300px}
 h2{color:#fb7299;margin-bottom:20px}input{background:#0f0f1a;border:1px solid #2a2a4a;color:#ccc;padding:10px 16px;border-radius:8px;font-size:16px;width:100%;margin-bottom:16px;box-sizing:border-box}
 input:focus{border-color:#fb7299;outline:none}button{background:#fb7299;color:#fff;border:none;padding:10px 24px;border-radius:8px;font-size:16px;cursor:pointer;width:100%}
 button:hover{background:#e0607e}.err{color:#ef5350;font-size:13px;margin-bottom:12px}</style></head>
-<body><div class="box"><h2>大黄狗机器人</h2><div class="err" id="err"></div>
+<body><div class="box"><h2>布布机器人</h2><div class="err" id="err"></div>
 <form onsubmit="return doLogin()"><input type="email" id="em" placeholder="邮箱" autofocus>
 <input type="password" id="pw" placeholder="密码">
 <button type="submit">登录</button></form></div>

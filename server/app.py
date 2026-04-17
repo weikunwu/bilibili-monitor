@@ -14,7 +14,7 @@ from .manager import manager
 from . import recorder, effect_catalog
 from .routes import events, rooms, bot, admin, clips, overlay
 
-app = FastAPI(title="大黄狗机器人")
+app = FastAPI(title="布布机器人")
 
 # ── Static files ──
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
