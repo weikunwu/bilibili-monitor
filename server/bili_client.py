@@ -1116,18 +1116,17 @@ class BiliLiveClient:
                                                 elif content.startswith("叫我"):
                                                     asyncio.create_task(self.handle_set_nickname(uid, uname, content[2:].strip()))
                                         # 盲盒查询指令 (skip when no bot bound — we can't reply anyway)
+                                        # 主播查全员 / 观众查自己，对所有别名一致（"我的盲盒"不再特殊处理）。
                                         period = None
-                                        force_self = False  # "我的…" scopes to sender even for streamer
                                         if content in DANMU_PERIOD_MAP:
                                             period = DANMU_PERIOD_MAP[content]
-                                            force_self = content.startswith("我的")
                                         else:
-                                            # "N月盲盒" → month:N of current year (主播查全员/观众查自己).
+                                            # "N月盲盒" → month:N of current year.
                                             mm = re.fullmatch(r"(\d{1,2})月盲盒", content)
                                             if mm and 1 <= int(mm.group(1)) <= 12:
                                                 period = f"month:{int(mm.group(1))}"
                                         if period and self.bot_uid:
-                                            is_streamer = (uid == self.streamer_uid) and not force_self
+                                            is_streamer = (uid == self.streamer_uid)
                                             asyncio.create_task(self.handle_blind_box_query(
                                                 None if is_streamer else uname,
                                                 period,
