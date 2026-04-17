@@ -90,11 +90,13 @@ export async function authLogout(): Promise<void> {
   await fetch('/api/logout', { method: 'POST' })
 }
 
-export async function sendRegisterCode(email: string): Promise<{ ok: boolean; error?: string }> {
+export async function sendRegisterCode(
+  email: string, turnstileToken: string,
+): Promise<{ ok: boolean; error?: string }> {
   const res = await fetch('/api/register/send-code', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email }),
+    body: JSON.stringify({ email, turnstile_token: turnstileToken }),
   })
   return res.json()
 }
@@ -110,12 +112,20 @@ export async function registerWithCode(
   return res.json()
 }
 
-export async function sendPasswordResetCode(email: string): Promise<{ ok: boolean; error?: string }> {
+export async function sendPasswordResetCode(
+  email: string, turnstileToken: string,
+): Promise<{ ok: boolean; error?: string }> {
   const res = await fetch('/api/password-reset/send-code', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email }),
+    body: JSON.stringify({ email, turnstile_token: turnstileToken }),
   })
+  return res.json()
+}
+
+export async function fetchPublicConfig(): Promise<{ turnstile_site_key: string }> {
+  const res = await fetch('/api/public-config')
+  if (!res.ok) return { turnstile_site_key: '' }
   return res.json()
 }
 

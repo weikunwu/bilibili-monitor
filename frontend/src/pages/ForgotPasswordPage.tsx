@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Button, Input, Message, useToaster } from 'rsuite'
-import { sendPasswordResetCode, resetPassword } from '../api/client'
+import { sendPasswordResetCode, resetPassword, fetchPublicConfig } from '../api/client'
+import { TurnstileWidget } from '../components/TurnstileWidget'
 
 export function ForgotPasswordPage() {
   const toaster = useToaster()
@@ -11,6 +12,13 @@ export function ForgotPasswordPage() {
   const [cooldown, setCooldown] = useState(0)
   const [sending, setSending] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [siteKey, setSiteKey] = useState('')
+  const [turnstileToken, setTurnstileToken] = useState('')
+  const resetCaptchaRef = useRef<(() => void) | null>(null)
+
+  useEffect(() => {
+    fetchPublicConfig().then((c) => setSiteKey(c.turnstile_site_key || ''))
+  }, [])
 
   useEffect(() => {
     if (cooldown <= 0) return
@@ -25,15 +33,17 @@ export function ForgotPasswordPage() {
 
   const handleSendCode = async () => {
     if (!email || !email.includes('@')) { showErr('请输入有效邮箱'); return }
+    if (siteKey && !turnstileToken) { showErr('请先完成人机校验'); return }
     setSending(true)
     try {
-      const res = await sendPasswordResetCode(email.trim().toLowerCase())
+      const res = await sendPasswordResetCode(email.trim().toLowerCase(), turnstileToken)
       if (res.ok) {
         showOk('验证码已发送，请查收邮箱（含垃圾箱）')
         setCooldown(60)
       } else {
         showErr(res.error || '发送失败')
       }
+      resetCaptchaRef.current?.()
     } finally {
       setSending(false)
     }
@@ -85,6 +95,9 @@ export function ForgotPasswordPage() {
           </div>
           <Input type="password" placeholder="新密码（至少 6 位）" value={password} onChange={setPassword} />
           <Input type="password" placeholder="确认新密码" value={confirm} onChange={setConfirm} />
+          {siteKey && (
+            <TurnstileWidget siteKey={siteKey} onToken={setTurnstileToken} resetRef={resetCaptchaRef} />
+          )}
           <Button
             appearance="primary"
             onClick={handleReset}

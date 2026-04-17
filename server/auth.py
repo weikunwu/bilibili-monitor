@@ -16,6 +16,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from .config import DB_PATH, log
 from .crypto import hash_password, verify_password
 from .email_send import send_verification_code, send_reset_code
+from . import turnstile
 
 
 def get_session_user(token: str) -> Optional[dict]:
@@ -48,7 +49,7 @@ def get_user_allowed_rooms(user_id: int, role: str) -> Optional[list[int]]:
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         path = request.url.path
-        if path in ("/api/auth", "/login", "/register", "/forgot-password") \
+        if path in ("/api/auth", "/api/public-config", "/login", "/register", "/forgot-password") \
                 or path.startswith("/api/register/") or path.startswith("/api/password-reset/") \
                 or path.startswith("/static/") or path.startswith("/assets/"):
             return await call_next(request)
@@ -215,8 +216,11 @@ async def handle_send_register_code(request: Request):
     ip = _client_ip(request)
     body = await request.json()
     email = body.get("email", "").strip().lower()
+    ts_token = body.get("turnstile_token") or ""
     if not _valid_email(email):
         return HTMLResponse('{"ok":false,"error":"邮箱格式不正确"}', status_code=400)
+    if not await turnstile.verify(ts_token, ip):
+        return HTMLResponse('{"ok":false,"error":"人机校验失败，请刷新重试"}', status_code=400)
 
     now = time.time()
     hist = [t for t in _ip_send_log[ip] if now - t < _IP_SEND_WINDOW_SEC]
@@ -226,8 +230,11 @@ async def handle_send_register_code(request: Request):
     conn = sqlite3.connect(str(DB_PATH))
     row = conn.execute("SELECT 1 FROM users WHERE email=?", (email,)).fetchone()
     if row:
+        # 不明说"已被注册"以防枚举；失败同样返回 ok:true 但不真正发信。
         conn.close()
-        return HTMLResponse('{"ok":false,"error":"该邮箱已被注册"}', status_code=400)
+        hist.append(now)
+        _ip_send_log[ip] = hist
+        return HTMLResponse('{"ok":true}')
 
     # Cooldown: same email can only trigger a new send every 60s.
     prev = conn.execute(
@@ -283,8 +290,9 @@ async def handle_register(request: Request):
     conn = sqlite3.connect(str(DB_PATH))
     row = conn.execute("SELECT 1 FROM users WHERE email=?", (email,)).fetchone()
     if row:
+        # 防止在验证环节枚举：邮箱已存在时回"验证码不正确"，跟真的码错一样。
         conn.close()
-        return HTMLResponse('{"ok":false,"error":"该邮箱已被注册"}', status_code=400)
+        return HTMLResponse('{"ok":false,"error":"验证码不正确"}', status_code=400)
 
     ver = conn.execute(
         "SELECT code, expires_at, attempts FROM email_verifications WHERE email=?",
@@ -348,8 +356,11 @@ async def handle_send_reset_code(request: Request):
     ip = _client_ip(request)
     body = await request.json()
     email = body.get("email", "").strip().lower()
+    ts_token = body.get("turnstile_token") or ""
     if not _valid_email(email):
         return HTMLResponse('{"ok":false,"error":"邮箱格式不正确"}', status_code=400)
+    if not await turnstile.verify(ts_token, ip):
+        return HTMLResponse('{"ok":false,"error":"人机校验失败，请刷新重试"}', status_code=400)
 
     now = time.time()
     hist = [t for t in _ip_send_log[ip] if now - t < _IP_SEND_WINDOW_SEC]
@@ -359,8 +370,11 @@ async def handle_send_reset_code(request: Request):
     conn = sqlite3.connect(str(DB_PATH))
     row = conn.execute("SELECT 1 FROM users WHERE email=?", (email,)).fetchone()
     if not row:
+        # 不明说"未注册"以防枚举；失败同样返回 ok:true 但不真正发信。
         conn.close()
-        return HTMLResponse('{"ok":false,"error":"该邮箱未注册"}', status_code=400)
+        hist.append(now)
+        _ip_send_log[ip] = hist
+        return HTMLResponse('{"ok":true}')
 
     prev = conn.execute(
         "SELECT sent_at FROM password_resets WHERE email=?", (email,)
@@ -415,8 +429,9 @@ async def handle_reset_password(request: Request):
     conn = sqlite3.connect(str(DB_PATH))
     urow = conn.execute("SELECT id FROM users WHERE email=?", (email,)).fetchone()
     if not urow:
+        # 防枚举：用跟"码错"一样的回复。
         conn.close()
-        return HTMLResponse('{"ok":false,"error":"该邮箱未注册"}', status_code=400)
+        return HTMLResponse('{"ok":false,"error":"验证码不正确"}', status_code=400)
     user_id = urow[0]
 
     ver = conn.execute(

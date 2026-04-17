@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from .config import BASE_DIR, log
 from .db import init_db, cleanup_old_events
 from .auth import AuthMiddleware, get_session_user, get_user_allowed_rooms, handle_login, handle_logout, handle_change_password, handle_send_register_code, handle_register, handle_send_reset_code, handle_reset_password
+from . import turnstile
 from .manager import manager
 from . import recorder, effect_catalog
 from .routes import events, rooms, bot, admin, clips, overlay
@@ -78,6 +79,13 @@ async def auth_send_reset_code(request: Request):
 @app.post("/api/password-reset/verify")
 async def auth_reset_password(request: Request):
     return await handle_reset_password(request)
+
+
+@app.get("/api/public-config")
+async def public_config():
+    return {
+        "turnstile_site_key": turnstile.site_key() if turnstile.enabled() else "",
+    }
 
 
 @app.get("/api/me")
