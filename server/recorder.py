@@ -96,6 +96,8 @@ class RecorderSession:
         self._task: Optional[asyncio.Task] = None
         self._session: Optional[aiohttp.ClientSession] = None
         self._pending_clip: Optional[_PendingClip] = None
+        self._last_data_ts: float = 0.0   # last time m3u8 showed init/segments
+        self._empty_playlist: bool = False  # one-shot log gate
 
     # ── Public ──
 
@@ -137,6 +139,11 @@ class RecorderSession:
     POST_TAIL_SEC = 5.0         # record this long after each animation ends
     POST_SEC_FALLBACK = 15.0    # used when VAP metadata isn't available
     MAX_TOTAL_SEC = 120.0       # cap to avoid runaway coalescing
+
+    # If the playlist shows no segments/init for this long, the playurl
+    # token likely went stale (common right at LIVE before CDN warms up).
+    # Re-resolve and keep going instead of polling a dead URL forever.
+    STALE_GRACE_SEC = 60.0
 
     async def request_clip(self, gift_id: int, effect_id: int, label: str, num: int = 1):
         """Async: register a clip trigger at the current wall time.
@@ -341,6 +348,7 @@ class RecorderSession:
             if not await self._resolve_playurl():
                 log.warning(f"[recorder] room {self.room_id} 无可用 fmp4 HLS 流")
                 return
+            self._last_data_ts = time.time()
             while self._running:
                 try:
                     await self._poll_once()
@@ -348,6 +356,13 @@ class RecorderSession:
                     raise
                 except Exception as ex:
                     log.info(f"[recorder] room {self.room_id} poll err: {ex}")
+                if time.time() - self._last_data_ts > self.STALE_GRACE_SEC:
+                    log.warning(
+                        f"[recorder] room {self.room_id} no playlist data for "
+                        f"{self.STALE_GRACE_SEC:.0f}s, re-resolving playurl"
+                    )
+                    await self._resolve_playurl()
+                    self._last_data_ts = time.time()
                 await asyncio.sleep(POLL_INTERVAL)
         except asyncio.CancelledError:
             pass
@@ -413,6 +428,20 @@ class RecorderSession:
                 pending.append((cur_seq, cur_dur or 1.0, line))
                 cur_seq += 1
                 cur_dur = None
+
+        # Liveness: if the playlist mentions either init or segments, the
+        # playurl is still live. Otherwise B站 handed us a shell (common
+        # right after LIVE before CDN warms up, or when the token expires).
+        # Log only on transitions to avoid flooding; the watchdog in _run
+        # handles recovery.
+        if init_uri or pending:
+            self._last_data_ts = time.time()
+            if self._empty_playlist:
+                log.info(f"[recorder] room {self.room_id} playlist recovered")
+                self._empty_playlist = False
+        elif not self._empty_playlist:
+            log.info(f"[recorder] room {self.room_id} empty playlist (no EXT-X-MAP, no segments)")
+            self._empty_playlist = True
 
         # Refetch init.mp4 every poll and compare bytes — B站 keeps the URI
         # stable (e.g. "h1776133486.m4s") even after the source stream
