@@ -247,6 +247,16 @@ def init_db():
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         )
     """)
+    # 注册邮箱验证码：同一 email 覆盖旧验证码（重发 = 替换）
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS email_verifications (
+            email TEXT PRIMARY KEY,
+            code TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            attempts INTEGER NOT NULL DEFAULT 0,
+            sent_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+    """)
     # OBS 叠加页 token：每房间一条，生成需登录，使用无需登录（只能拿只读的礼物聚合）
     conn.execute("""
         CREATE TABLE IF NOT EXISTS overlay_tokens (

@@ -90,6 +90,26 @@ export async function authLogout(): Promise<void> {
   await fetch('/api/logout', { method: 'POST' })
 }
 
+export async function sendRegisterCode(email: string): Promise<{ ok: boolean; error?: string }> {
+  const res = await fetch('/api/register/send-code', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
+  })
+  return res.json()
+}
+
+export async function registerWithCode(
+  email: string, code: string, password: string,
+): Promise<{ ok: boolean; role?: string; error?: string }> {
+  const res = await fetch('/api/register/verify', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, code, password }),
+  })
+  return res.json()
+}
+
 export async function changePassword(
   oldPassword: string,
   newPassword: string,

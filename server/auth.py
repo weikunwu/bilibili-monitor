@@ -1,6 +1,7 @@
 """认证中间件和 session 管理"""
 
 import json
+import re
 import secrets
 import sqlite3
 import time
@@ -9,28 +10,12 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional
 
 from fastapi import Request, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from .config import DB_PATH, log
 from .crypto import hash_password, verify_password
-
-
-LOGIN_HTML = """<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>登录 - 布布机器人</title>
-<style>body{background:#0f0f1a;color:#e0e0e0;font-family:-apple-system,sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0}
-.box{background:#1a1a2e;padding:40px;border-radius:16px;border:1px solid #2a2a4a;text-align:center;min-width:300px}
-h2{color:#fb7299;margin-bottom:20px}input{background:#0f0f1a;border:1px solid #2a2a4a;color:#ccc;padding:10px 16px;border-radius:8px;font-size:16px;width:100%;margin-bottom:16px;box-sizing:border-box}
-input:focus{border-color:#fb7299;outline:none}button{background:#fb7299;color:#fff;border:none;padding:10px 24px;border-radius:8px;font-size:16px;cursor:pointer;width:100%}
-button:hover{background:#e0607e}.err{color:#ef5350;font-size:13px;margin-bottom:12px}</style></head>
-<body><div class="box"><h2>布布机器人</h2><div class="err" id="err"></div>
-<form onsubmit="return doLogin()"><input type="email" id="em" placeholder="邮箱" autofocus>
-<input type="password" id="pw" placeholder="密码">
-<button type="submit">登录</button></form></div>
-<script>function doLogin(){const em=document.getElementById('em').value,pw=document.getElementById('pw').value;
-fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:em,password:pw})})
-.then(r=>r.json()).then(d=>{if(d.ok){location.reload()}else{document.getElementById('err').textContent=d.error||'登录失败'}});return false}</script></body></html>"""
+from .email_send import send_verification_code
 
 
 def get_session_user(token: str) -> Optional[dict]:
@@ -63,7 +48,8 @@ def get_user_allowed_rooms(user_id: int, role: str) -> Optional[list[int]]:
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         path = request.url.path
-        if path in ("/api/auth",) or path.startswith("/static/") or path.startswith("/assets/"):
+        if path in ("/api/auth", "/login", "/register") or path.startswith("/api/register/") \
+                or path.startswith("/static/") or path.startswith("/assets/"):
             return await call_next(request)
         # /overlay/* 是公开的 OBS 叠加页 (SPA + 公开 API)，不需要登录
         if path.startswith("/overlay/") or path.startswith("/api/overlay/"):
@@ -80,7 +66,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         if path.startswith("/api/") or path == "/ws":
             return HTMLResponse('{"error":"unauthorized"}', status_code=401)
-        return HTMLResponse(LOGIN_HTML)
+        return RedirectResponse("/login", status_code=302)
 
 
 def require_admin(request: Request):
@@ -205,4 +191,151 @@ async def handle_logout(request: Request):
         conn.close()
     resp = HTMLResponse('{"ok":true}')
     resp.delete_cookie("auth_token")
+    return resp
+
+
+# ── Registration (email verification code) ──
+_EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+_CODE_RESEND_COOLDOWN_SEC = 60
+_CODE_EXPIRY_SEC = 600  # 10 分钟
+_MAX_VERIFY_ATTEMPTS = 5
+# Per-IP send quota to prevent enumeration / spam. 10/hour is lenient for
+# legitimate users but blocks scripted abuse.
+_IP_SEND_WINDOW_SEC = 3600
+_IP_SEND_MAX = 10
+_ip_send_log: dict[str, list[float]] = defaultdict(list)
+
+
+def _valid_email(email: str) -> bool:
+    return bool(_EMAIL_RE.match(email)) and len(email) <= 254
+
+
+async def handle_send_register_code(request: Request):
+    ip = _client_ip(request)
+    body = await request.json()
+    email = body.get("email", "").strip().lower()
+    if not _valid_email(email):
+        return HTMLResponse('{"ok":false,"error":"邮箱格式不正确"}', status_code=400)
+
+    now = time.time()
+    hist = [t for t in _ip_send_log[ip] if now - t < _IP_SEND_WINDOW_SEC]
+    if len(hist) >= _IP_SEND_MAX:
+        return HTMLResponse('{"ok":false,"error":"请求过于频繁，请稍后再试"}', status_code=429)
+
+    conn = sqlite3.connect(str(DB_PATH))
+    row = conn.execute("SELECT 1 FROM users WHERE email=?", (email,)).fetchone()
+    if row:
+        conn.close()
+        return HTMLResponse('{"ok":false,"error":"该邮箱已被注册"}', status_code=400)
+
+    # Cooldown: same email can only trigger a new send every 60s.
+    prev = conn.execute(
+        "SELECT sent_at FROM email_verifications WHERE email=?", (email,)
+    ).fetchone()
+    if prev:
+        try:
+            sent_at = datetime.strptime(prev[0], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+            elapsed = (datetime.now(timezone.utc) - sent_at).total_seconds()
+            if elapsed < _CODE_RESEND_COOLDOWN_SEC:
+                conn.close()
+                wait = int(_CODE_RESEND_COOLDOWN_SEC - elapsed)
+                return HTMLResponse(
+                    json.dumps({"ok": False, "error": f"请 {wait} 秒后再请求"}),
+                    status_code=429,
+                )
+        except ValueError:
+            pass
+
+    code = f"{secrets.randbelow(1_000_000):06d}"
+    expires = (datetime.now(timezone.utc) + timedelta(seconds=_CODE_EXPIRY_SEC)).strftime("%Y-%m-%d %H:%M:%S")
+    conn.execute(
+        "INSERT INTO email_verifications (email, code, expires_at, attempts, sent_at) "
+        "VALUES (?,?,?,0,datetime('now')) "
+        "ON CONFLICT(email) DO UPDATE SET code=excluded.code, expires_at=excluded.expires_at, "
+        "attempts=0, sent_at=datetime('now')",
+        (email, code, expires),
+    )
+    conn.commit()
+    conn.close()
+
+    ok, err = await send_verification_code(email, code)
+    if not ok:
+        return HTMLResponse(json.dumps({"ok": False, "error": err}), status_code=500)
+
+    hist.append(now)
+    _ip_send_log[ip] = hist
+    return HTMLResponse('{"ok":true}')
+
+
+async def handle_register(request: Request):
+    body = await request.json()
+    email = body.get("email", "").strip().lower()
+    code = (body.get("code") or "").strip()
+    pw = body.get("password", "")
+    if not _valid_email(email):
+        return HTMLResponse('{"ok":false,"error":"邮箱格式不正确"}', status_code=400)
+    if len(pw) < 6:
+        return HTMLResponse('{"ok":false,"error":"密码至少6位"}', status_code=400)
+    if not code or len(code) != 6:
+        return HTMLResponse('{"ok":false,"error":"验证码格式不正确"}', status_code=400)
+
+    conn = sqlite3.connect(str(DB_PATH))
+    row = conn.execute("SELECT 1 FROM users WHERE email=?", (email,)).fetchone()
+    if row:
+        conn.close()
+        return HTMLResponse('{"ok":false,"error":"该邮箱已被注册"}', status_code=400)
+
+    ver = conn.execute(
+        "SELECT code, expires_at, attempts FROM email_verifications WHERE email=?",
+        (email,),
+    ).fetchone()
+    if not ver:
+        conn.close()
+        return HTMLResponse('{"ok":false,"error":"请先获取验证码"}', status_code=400)
+
+    stored_code, expires_at, attempts = ver
+    try:
+        exp = datetime.strptime(expires_at, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+    except ValueError:
+        exp = datetime.now(timezone.utc) - timedelta(seconds=1)
+    if datetime.now(timezone.utc) > exp:
+        conn.execute("DELETE FROM email_verifications WHERE email=?", (email,))
+        conn.commit()
+        conn.close()
+        return HTMLResponse('{"ok":false,"error":"验证码已过期，请重新获取"}', status_code=400)
+    if attempts >= _MAX_VERIFY_ATTEMPTS:
+        conn.execute("DELETE FROM email_verifications WHERE email=?", (email,))
+        conn.commit()
+        conn.close()
+        return HTMLResponse('{"ok":false,"error":"尝试次数过多，请重新获取验证码"}', status_code=429)
+    if code != stored_code:
+        conn.execute("UPDATE email_verifications SET attempts=attempts+1 WHERE email=?", (email,))
+        conn.commit()
+        conn.close()
+        return HTMLResponse('{"ok":false,"error":"验证码不正确"}', status_code=400)
+
+    conn.execute(
+        "INSERT INTO users (email, password_hash, role) VALUES (?,?,?)",
+        (email, hash_password(pw), "user"),
+    )
+    user_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute("DELETE FROM email_verifications WHERE email=?", (email,))
+
+    token = secrets.token_urlsafe(32)
+    expires = (datetime.now(timezone.utc) + timedelta(days=3)).strftime("%Y-%m-%d %H:%M:%S")
+    conn.execute(
+        "INSERT INTO sessions (token, user_id, expires_at) VALUES (?,?,?)",
+        (token, user_id, expires),
+    )
+    conn.commit()
+    conn.close()
+
+    log.info(f"新用户注册: {email}")
+    resp = HTMLResponse(json.dumps({"ok": True, "role": "user"}))
+    is_https = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
+    resp.set_cookie(
+        "auth_token", token,
+        httponly=True, max_age=86400 * 3,
+        samesite="lax", secure=is_https,
+    )
     return resp
