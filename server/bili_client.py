@@ -698,6 +698,36 @@ class BiliLiveClient:
         )
         asyncio.create_task(self.send_danmu(msg))
 
+    def _maybe_broadcast_superchat_thanks(self, event: dict):
+        """Thank SC events. One event per SC so no debouncing — emit directly."""
+        if event.get("event_type") != "superchat":
+            return
+        if not self.cookies.get("SESSDATA"):
+            return
+        master = get_command(self.real_room_id, "broadcast_thanks")
+        if not master or not master["enabled"]:
+            return
+        cmd_cfg = get_command(self.real_room_id, "broadcast_superchat")
+        if not cmd_cfg or not cmd_cfg["enabled"]:
+            return
+        extra = event.get("extra") or {}
+        uid = event.get("user_id") or 0
+        display_name = self._nickname_for(uid) or event.get("user_name", "") or "有人"
+        # extra.price 单位是电池（= 元 × 10）
+        price = int(extra.get("price") or 0)
+        tpl = self._pick_template(
+            "broadcast_superchat",
+            cmd_cfg.get("config") or {},
+            "感谢{name}的醒目留言",
+        )
+        msg = (
+            tpl.replace("{name}", display_name).replace("{昵称}", display_name)
+               .replace("{streamer}", self.streamer_name or "").replace("{主播}", self.streamer_name or "")
+               .replace("{price}", str(price)).replace("{电池}", str(price))
+               .replace("{content}", event.get("content") or "").replace("{内容}", event.get("content") or "")
+        )
+        asyncio.create_task(self.send_danmu(msg))
+
     AI_REPLY_API = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
     AI_REPLY_ROOM_COOLDOWN = 15  # 同一房间两次回复间隔（秒）
     # 硬编码 base prompt，用户无法修改；只能通过 extra_prompt 追加风格/人设。
@@ -1093,6 +1123,7 @@ class BiliLiveClient:
                                     self._maybe_broadcast_blind(event)
                                     self._maybe_broadcast_gift_thanks(event)
                                     self._maybe_broadcast_guard_thanks(event)
+                                    self._maybe_broadcast_superchat_thanks(event)
                                     self._maybe_broadcast_like_thanks(event)
                                     # 发弹幕 → 取消挂粉提醒
                                     if event.get("event_type") == "danmu":

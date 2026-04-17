@@ -18,6 +18,7 @@ const GUARD_DEFAULT_TEMPLATE = '感谢{name}{content}了{num}个月{guard}'
 const FOLLOW_DEFAULT_TEMPLATE = '感谢{name}的关注~'
 const LIKE_DEFAULT_TEMPLATE = '感谢{name}的点赞~'
 const SHARE_DEFAULT_TEMPLATE = '感谢{name}的分享~'
+const SUPERCHAT_DEFAULT_TEMPLATE = '感谢{name}的醒目留言'
 const LURKER_DEFAULT_TEMPLATE = '说点什么呀~'
 
 function LurkerEditor({
@@ -93,7 +94,7 @@ const WELCOME_DEFAULT_TEMPLATE = '欢迎{name}进入直播间'
 // 感谢弹幕分组：礼物/大航海/盲盒/关注/点赞 共用同一个总开关和保存/恢复默认按钮。
 // 总开关：任一子项开启即显示开启；关时一键全关，开时一键全开。
 function ThanksGroup({
-  roomId, master, gift, guard, blind, follow, like, share,
+  roomId, master, gift, guard, blind, follow, like, share, superchat,
   onToggleDraft, onUpdateConfig, onCommitEnabled, onRestoreEnabled,
 }: {
   roomId: number | null
@@ -104,6 +105,7 @@ function ThanksGroup({
   follow: Command
   like: Command
   share: Command
+  superchat: Command
   onToggleDraft: (cmdId: string) => void
   onUpdateConfig: (cmdId: string, config: Record<string, unknown>) => void
   onCommitEnabled: (cmdIds: string[]) => Promise<void>
@@ -120,12 +122,13 @@ function ThanksGroup({
   const [followTpls, setFollowTpls] = useState<string[]>(initTpls(follow, FOLLOW_DEFAULT_TEMPLATE))
   const [likeTpls, setLikeTpls] = useState<string[]>(initTpls(like, LIKE_DEFAULT_TEMPLATE))
   const [shareTpls, setShareTpls] = useState<string[]>(initTpls(share, SHARE_DEFAULT_TEMPLATE))
+  const [superchatTpls, setSuperchatTpls] = useState<string[]>(initTpls(superchat, SUPERCHAT_DEFAULT_TEMPLATE))
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
 
   const allIds = [
     'broadcast_thanks', 'broadcast_gift', 'broadcast_guard', 'broadcast_blind',
-    'broadcast_follow', 'broadcast_like', 'broadcast_share',
+    'broadcast_follow', 'broadcast_like', 'broadcast_share', 'broadcast_superchat',
   ]
 
   async function saveAll() {
@@ -139,6 +142,7 @@ function ThanksGroup({
     const f = clean(followTpls, FOLLOW_DEFAULT_TEMPLATE)
     const l = clean(likeTpls, LIKE_DEFAULT_TEMPLATE)
     const sh = clean(shareTpls, SHARE_DEFAULT_TEMPLATE)
+    const sc = clean(superchatTpls, SUPERCHAT_DEFAULT_TEMPLATE)
     setSaving(true)
     try {
       await onCommitEnabled(allIds)
@@ -147,12 +151,14 @@ function ThanksGroup({
       await saveCommandConfig(roomId, 'broadcast_follow', { templates: f })
       await saveCommandConfig(roomId, 'broadcast_like', { templates: l })
       await saveCommandConfig(roomId, 'broadcast_share', { templates: sh })
+      await saveCommandConfig(roomId, 'broadcast_superchat', { templates: sc })
       onUpdateConfig('broadcast_guard', { templates: g })
       onUpdateConfig('broadcast_blind', { templates: b })
       onUpdateConfig('broadcast_follow', { templates: f })
       onUpdateConfig('broadcast_like', { templates: l })
       onUpdateConfig('broadcast_share', { templates: sh })
-      setGuardTpls(g); setBlindTpls(b); setFollowTpls(f); setLikeTpls(l); setShareTpls(sh)
+      onUpdateConfig('broadcast_superchat', { templates: sc })
+      setGuardTpls(g); setBlindTpls(b); setFollowTpls(f); setLikeTpls(l); setShareTpls(sh); setSuperchatTpls(sc)
       setSaved(true); setTimeout(() => setSaved(false), 1500)
     } finally { setSaving(false) }
   }
@@ -163,6 +169,7 @@ function ThanksGroup({
     setFollowTpls([FOLLOW_DEFAULT_TEMPLATE])
     setLikeTpls([LIKE_DEFAULT_TEMPLATE])
     setShareTpls([SHARE_DEFAULT_TEMPLATE])
+    setSuperchatTpls([SUPERCHAT_DEFAULT_TEMPLATE])
     onRestoreEnabled?.()
   }
 
@@ -245,6 +252,10 @@ function ThanksGroup({
           {section(
             guard, guardTpls, setGuardTpls, GUARD_DEFAULT_TEMPLATE,
             <>占位符：<code>{'{name}'}</code> 用户昵称，<code>{'{streamer}'}</code> 主播昵称，<code>{'{content}'}</code> 开通/续费，<code>{'{num}'}</code> 月数，<code>{'{guard}'}</code> 舰长/提督/总督</>,
+          )}
+          {section(
+            superchat, superchatTpls, setSuperchatTpls, SUPERCHAT_DEFAULT_TEMPLATE,
+            <>占位符：<code>{'{name}'}</code> 用户昵称，<code>{'{streamer}'}</code> 主播昵称，<code>{'{price}'}</code> 电池数，<code>{'{content}'}</code> 留言内容</>,
           )}
           {section(
             blind, blindTpls, setBlindTpls, BLIND_DEFAULT_TEMPLATE,
@@ -744,7 +755,7 @@ export function ToolsPanel({ roomId }: Props) {
       <div style={{ padding: '0 24px 16px' }}>
       {commands.map((cmd, i) => {
         if (cmd.id === 'nickname_commands') return null
-        if (['broadcast_gift', 'broadcast_guard', 'broadcast_blind', 'broadcast_follow', 'broadcast_like', 'broadcast_share'].includes(cmd.id)) return null
+        if (['broadcast_gift', 'broadcast_guard', 'broadcast_blind', 'broadcast_follow', 'broadcast_like', 'broadcast_share', 'broadcast_superchat'].includes(cmd.id)) return null
         if (cmd.id === 'broadcast_thanks') {
           const gift = commands.find((c) => c.id === 'broadcast_gift')
           const guard = commands.find((c) => c.id === 'broadcast_guard')
@@ -752,7 +763,8 @@ export function ToolsPanel({ roomId }: Props) {
           const follow = commands.find((c) => c.id === 'broadcast_follow')
           const like = commands.find((c) => c.id === 'broadcast_like')
           const share = commands.find((c) => c.id === 'broadcast_share')
-          if (!gift || !guard || !blind || !follow || !like || !share) return null
+          const superchat = commands.find((c) => c.id === 'broadcast_superchat')
+          if (!gift || !guard || !blind || !follow || !like || !share || !superchat) return null
           return (
             <ThanksGroup
               key="thanks_group"
@@ -764,9 +776,10 @@ export function ToolsPanel({ roomId }: Props) {
               follow={follow}
               like={like}
               share={share}
+              superchat={superchat}
               onToggleDraft={toggleDraft}
               onCommitEnabled={commitEnabled}
-              onRestoreEnabled={() => setDraftEnabled(['broadcast_thanks', 'broadcast_gift', 'broadcast_guard', 'broadcast_blind', 'broadcast_follow', 'broadcast_like', 'broadcast_share'], true)}
+              onRestoreEnabled={() => setDraftEnabled(['broadcast_thanks', 'broadcast_gift', 'broadcast_guard', 'broadcast_blind', 'broadcast_follow', 'broadcast_like', 'broadcast_share', 'broadcast_superchat'], true)}
               onUpdateConfig={(cid, config) => {
                 setCommands((prev) => prev.map((c) => (
                   c.id === cid ? { ...c, config: { ...c.config, ...config } } : c

@@ -155,6 +155,16 @@ DEFAULT_COMMANDS = [
         },
     },
     {
+        "id": "broadcast_superchat",
+        "name": "醒目留言感谢",
+        "type": "auto_broadcast",
+        "description": "用户发送醒目留言后，机器人按模版自动发弹幕感谢",
+        "default_enabled": True,
+        "config": {
+            "templates": ["感谢{name}的醒目留言"],
+        },
+    },
+    {
         "id": "broadcast_blind",
         "name": "盲盒播报",
         "type": "auto_broadcast",

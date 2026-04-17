@@ -200,14 +200,14 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
             className="room-card"
             onClick={() => onSelectRoom(r.room_id)}
           >
-            {/* Header: room title + room id + status badges */}
+            {/* Header: room title + status badges on left; actions on right */}
             <div className="rc-header">
               <div className="rc-header-left">
                 <span className="rc-name">{r.room_title || `房间 ${r.room_id}`}</span>
+                {r.live_status === 1 && <span className="rc-badge rc-badge-live"><MdCircle size={8} /> 直播中</span>}
                 <span className="rc-room-id">房间 {r.room_id}</span>
               </div>
               <div className="rc-header-badges">
-                {r.live_status === 1 && <span className="rc-badge rc-badge-live"><MdCircle size={8} /> 直播中</span>}
                 {!isAdmin && (
                   <IconButton
                     size="xs"
