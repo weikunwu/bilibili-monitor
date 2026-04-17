@@ -173,14 +173,33 @@ def handle_message(msg: dict) -> Optional[dict]:
     elif base_cmd == "SUPER_CHAT_MESSAGE":
         data = msg.get("data", {})
         user_info = data.get("user_info", {})
+        uinfo = data.get("uinfo") or {}
+        # B站 按价位在 data 上直接给齐所有渲染色/装饰图，全部落库以便后续
+        # 在前端按原样复刻 SC 卡片做截图。uinfo.medal 里带新版 v2 粉丝牌颜色。
         event = {
             "timestamp": now, "event_type": "superchat",
             "user_name": user_info.get("uname", ""), "user_id": data.get("uid", 0),
             "content": data.get("message", ""),
             "extra": {
-                "price": data.get("price", 0) * 10, "duration": data.get("time", 0),
-                "background_color": data.get("background_color", ""),
+                "price": data.get("price", 0) * 10,
+                "duration": data.get("time", 0),
                 "avatar": user_info.get("face", ""),
+                "face_frame": user_info.get("face_frame", ""),
+                "name_color": user_info.get("name_color", ""),
+                "user_level": user_info.get("user_level", 0),
+                "level_color": user_info.get("level_color", ""),
+                "guard_level": user_info.get("guard_level", 0),
+                "background_color": data.get("background_color", ""),
+                "background_bottom_color": data.get("background_bottom_color", ""),
+                "background_color_start": data.get("background_color_start", ""),
+                "background_color_end": data.get("background_color_end", ""),
+                "background_price_color": data.get("background_price_color", ""),
+                "message_font_color": data.get("message_font_color", ""),
+                "background_image": data.get("background_image", ""),
+                "background_icon": data.get("background_icon", ""),
+                "color_point": data.get("color_point", 0),
+                "medal_info": data.get("medal_info") or None,
+                "medal_v2": uinfo.get("medal") or None,
             },
         }
         log.info(f"[SC|¥{data.get('price', 0)}] {user_info.get('uname', '')}: {data.get('message', '')}")
