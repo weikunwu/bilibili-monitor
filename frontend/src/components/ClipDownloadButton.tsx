@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Button } from 'rsuite'
+import { Button, Message, useToaster } from 'rsuite'
 import type { LiveEvent } from '../types'
 import { matchClip } from '../api/client'
 import { composeClipInBrowser, downloadBlob } from '../lib/clipCompose'
@@ -59,6 +59,7 @@ interface Props {
 
 export function ClipDownloadButton({ event, size = 'sm' }: Props) {
   const autoClip = useAutoClip(event.room_id)
+  const toaster = useToaster()
   const [busy, setBusy] = useState(false)
   const [missing, setMissing] = useState(false)
   const [progress, setProgress] = useState('')
@@ -84,6 +85,11 @@ export function ClipDownloadButton({ event, size = 'sm' }: Props) {
       })
       const ext = blob.type.includes('mp4') ? 'mp4' : 'webm'
       downloadBlob(blob, `${m.name}.${ext}`)
+    } catch (err) {
+      toaster.push(
+        <Message type="error" showIcon closable>{(err as Error).message || '合成失败'}</Message>,
+        { duration: 5000, placement: 'topCenter' },
+      )
     } finally {
       setBusy(false)
       setProgress('')

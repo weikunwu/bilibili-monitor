@@ -49,6 +49,10 @@ interface LoadedVap {
   tmpCtx: CanvasRenderingContext2D
   durSec: number
   url: string
+  /** 0 = not started, 1 = starting, 2 = playing, 3 = failed (skip drawing) */
+  state: 0 | 1 | 2 | 3
+  /** 已经重试了几次 play() */
+  retries: number
 }
 
 async function loadVideo(src: string): Promise<HTMLVideoElement> {
@@ -310,10 +314,24 @@ export async function composeClipInBrowser(
     bgCtx.fillRect(0, 0, OUT_W, OUT_H)
   }
 
+  // iOS Safari 同时最多几个 <video> 解码，超了 play() 就静默失败。
+  // 同一个 combo（"浪漫城堡 x3"）里 vapAssets 共享同一个 mp4Blob 但 offset 不同 ——
+  // 按 blob 复用一个 <video> 元素，combo 就压到 1 个 video；真正并发的只有
+  // 不同礼物的叠加情况。也顺便省内存（一个 URL 一份解码缓存）。
+  const videoCache = new Map<Blob, { video: HTMLVideoElement; url: string }>()
+  async function videoForBlob(blob: Blob): Promise<{ video: HTMLVideoElement; url: string }> {
+    const hit = videoCache.get(blob)
+    if (hit) return hit
+    const url = URL.createObjectURL(blob)
+    const video = await loadVideo(url)
+    const entry = { video, url }
+    videoCache.set(blob, entry)
+    return entry
+  }
+
   const vaps: LoadedVap[] = await Promise.all(
     vapAssets.map(async (a) => {
-      const url = URL.createObjectURL(a.mp4Blob)
-      const video = await loadVideo(url)
+      const { video, url } = await videoForBlob(a.mp4Blob)
       const tmp = document.createElement('canvas')
       tmp.width = a.info.w
       tmp.height = a.info.h
@@ -326,6 +344,8 @@ export async function composeClipInBrowser(
         tmpCtx,
         durSec: a.info.fps ? a.info.f / a.info.fps : 12,
         url,
+        state: 0 as const,
+        retries: 0,
       }
     }),
   )
@@ -385,7 +405,34 @@ export async function composeClipInBrowser(
 
   // Kick off each VAP at its offset. They're short, so we start them on demand
   // and let them play through; we draw whichever is within its time window.
-  const vapStarted = vaps.map(() => false)
+  // play() 在手机上可能被 iOS 拒绝（并发 <video> 解码上限、内存压力、
+  // 没有 user-gesture 链等），不处理的话 video 停在第 0 帧、drawVapFrame
+  // 每帧画冻结画面 = 用户感知的"VAP 卡住"。这里统一用状态机管理生命周期。
+  const MAX_PLAY_RETRIES = 2
+  function tryPlayVap(v: LoadedVap, seekSec: number) {
+    v.state = 1
+    v.video.currentTime = seekSec
+    v.video.play().then(() => {
+      v.state = 2
+    }).catch((e) => {
+      if (v.retries < MAX_PLAY_RETRIES) {
+        v.retries += 1
+        // 短延迟后重试：iOS 的并发上限是瞬时的，隔一帧可能就空出来
+        setTimeout(() => { if (v.state === 1) tryPlayVap(v, seekSec) }, 80)
+      } else {
+        v.state = 3
+        console.warn('VAP play() 失败，跳过该特效', e)
+      }
+    })
+  }
+
+  // 页面切出后 baseVideo 会暂停、rAF 也降到 1Hz，合成会僵住。手机上
+  // 尤其常见。直接中止并让上层提示用户保持前台。
+  let abortedByVisibility = false
+  const onVisibilityChange = () => {
+    if (document.visibilityState === 'hidden') abortedByVisibility = true
+  }
+  document.addEventListener('visibilitychange', onVisibilityChange)
 
   // Hoisted per-composition constants — don't recompute these every frame.
   const FADE = 0.4
@@ -428,6 +475,7 @@ export async function composeClipInBrowser(
 
     const draw = () => {
       if (done) return
+      if (abortedByVisibility) { finish(); return }
       if (fitMode === 'contain') ctx.drawImage(bgCanvas, 0, 0)
       ctx.drawImage(baseVideo, baseDx, baseDy, baseDw, baseDh)
       const t = baseVideo.currentTime
@@ -543,12 +591,23 @@ export async function composeClipInBrowser(
       for (let i = 0; i < vaps.length; i++) {
         const v = vaps[i]
         if (t >= v.offset && t < v.offset + v.durSec + 0.1) {
-          if (!vapStarted[i]) {
-            v.video.currentTime = Math.max(0, t - v.offset)
-            v.video.play().catch(() => { /* ignore */ })
-            vapStarted[i] = true
+          if (v.state === 0) {
+            // 同一 combo 里多份 VAP 共享一个 <video>；前一份还在 playing 时
+            // 别打断它（0.1s 的时间窗重叠容忍度导致）。等它自然结束再启动。
+            // 只看窗口还没结束的 sibling。超过 offset+durSec 的已经自然播完了，
+            // state 虽还停在 2 但 video 已到 ended，不会再占用。
+            const siblingBusy = vaps.some((w) => (
+              w !== v && w.video === v.video
+              && (w.state === 1 || w.state === 2)
+              && t < w.offset + w.durSec
+            ))
+            if (!siblingBusy) tryPlayVap(v, Math.max(0, t - v.offset))
           }
-          drawVapFrame(ctx, v)
+          // 只有 play() 真正进入 playing 状态（state=2）才画 —— state=1 期间
+          // video 还是暂停的，画出来是冻结帧；state=3 是放弃，跳过。
+          if (v.state === 2 && !v.video.paused) {
+            drawVapFrame(ctx, v)
+          }
         }
       }
 
@@ -577,9 +636,14 @@ export async function composeClipInBrowser(
   await stopped
 
   // Cleanup.
+  document.removeEventListener('visibilitychange', onVisibilityChange)
   URL.revokeObjectURL(baseUrl)
-  vaps.forEach((v) => URL.revokeObjectURL(v.url))
+  // videoCache 里每个 blob 对应一个 url；vaps 里的 url 是去重前的副本。
+  for (const { url } of videoCache.values()) URL.revokeObjectURL(url)
 
+  if (abortedByVisibility) {
+    throw new Error('页面切到后台导致合成中断，请保持前台再试一次')
+  }
   return new Blob(chunks, { type: recorder.mimeType || 'video/webm' })
 }
 
