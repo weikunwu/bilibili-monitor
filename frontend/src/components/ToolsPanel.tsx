@@ -57,7 +57,7 @@ function LurkerEditor({
         占位符：<code>{'{name}'}</code> 用户昵称，<code>{'{streamer}'}</code> 主播昵称
       </div>
       <Input size="sm" value={tpl} onChange={setTpl} placeholder={LURKER_DEFAULT_TEMPLATE} />
-      <InputGroup size="sm" style={{ width: 240 }}>
+      <InputGroup size="sm" style={{ maxWidth: 260, width: '100%' }}>
         <InputGroup.Addon>等待</InputGroup.Addon>
         <Input
           type="number"
@@ -322,7 +322,7 @@ function ScheduledDanmuEditor({
 
   return (
     <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <InputGroup size="sm" style={{ width: 240 }}>
+      <InputGroup size="sm" style={{ maxWidth: 260, width: '100%' }}>
         <InputGroup.Addon>间隔</InputGroup.Addon>
         <Input
           type="number"
@@ -557,7 +557,7 @@ function AiReplyEditor({
 
   return (
     <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <InputGroup size="sm" style={{ width: 240 }}>
+      <InputGroup size="sm" style={{ maxWidth: 260, width: '100%' }}>
         <InputGroup.Addon>回复概率</InputGroup.Addon>
         <Input
           type="number"
@@ -574,7 +574,7 @@ function AiReplyEditor({
         />
         <InputGroup.Addon>% (0–50)</InputGroup.Addon>
       </InputGroup>
-      <InputGroup size="sm" style={{ width: 320 }}>
+      <InputGroup size="sm" style={{ maxWidth: 340, width: '100%' }}>
         <InputGroup.Addon>机器人名称</InputGroup.Addon>
         <Input
           value={botName}
@@ -752,7 +752,7 @@ export function ToolsPanel({ roomId }: Props) {
   return (
     <div>
       <div className="panel-title">主播工具</div>
-      <div style={{ padding: '0 24px 16px' }}>
+      <div className="tools-panel-body">
       {commands.map((cmd, i) => {
         if (cmd.id === 'nickname_commands') return null
         if (['broadcast_gift', 'broadcast_guard', 'broadcast_blind', 'broadcast_follow', 'broadcast_like', 'broadcast_share', 'broadcast_superchat'].includes(cmd.id)) return null
@@ -892,7 +892,7 @@ export function ToolsPanel({ roomId }: Props) {
                   value={cmd.config?.gift_id ?? null}
                   onChange={(v) => handleAutoGiftChange(i, v as number | null)}
                   placeholder="选择礼物"
-                  style={{ width: 240 }}
+                  style={{ maxWidth: 260, width: '100%' }}
                 />
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
                   <Button

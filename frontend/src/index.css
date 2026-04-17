@@ -97,6 +97,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 .cmd-item .cmd-name { font-size: 16px; font-weight: 600; color: #e0e0e0; }
 .cmd-item .cmd-desc { font-size: 13px; color: #888; margin-top: 2px; }
 .cmd-section-title { font-size: 16px; font-weight: 600; color: #d0d0d0; margin: 24px 0 12px; padding-bottom: 8px; border-bottom: 1px solid #2a2a4a; }
+.tools-panel-body { padding: 0 24px 16px; }
 .panel-title { font-size: 20px; line-height: 28px; font-weight: 600; color: #e8e8e8; padding: 16px 24px 8px; margin: 0; }
 
 /* ── Room list ── */
@@ -171,6 +172,21 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 
 .gift-actions { display: flex; gap: 4px; }
 
+/* ── Event cards (mobile list view for gift/guard/SC) ── */
+.event-cards-header { padding: 4px 0; }
+.event-cards { display: flex; flex-direction: column; gap: 8px; padding: 4px 0; }
+.event-card { background: #1a1a2e; border: 1px solid #2a2a4a; border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.event-card-checked { border-color: #fb7299; background: rgba(251, 114, 153, 0.06); }
+.event-card-head { display: flex; align-items: center; gap: 8px; }
+.event-card-avatar { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+.event-card-user { flex: 1; min-width: 0; }
+.event-card-name { color: #fb7299; font-weight: 500; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.event-card-time { color: #666; font-size: 12px; margin-top: 2px; }
+.event-card-value { color: #ffb74d; font-weight: 600; font-size: 14px; white-space: nowrap; flex-shrink: 0; }
+.event-card-main { font-size: 13px; color: #ccc; word-break: break-word; }
+.event-card-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.event-card-actions .rs-btn { flex: 1; min-width: 90px; }
+
 .guard-level { font-weight: 600; }
 .guard-level-1 { color: #e23d3d; }
 .guard-level-2 { color: #a852e0; }
@@ -224,4 +240,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 
   .gift-table-wrap { padding: 0 12px 12px; }
   .gift-actions { flex-direction: column; }
+
+  .tools-panel-body { padding: 0 12px 12px; }
+  .cmd-item { padding: 12px; gap: 12px; }
+  .cmd-section-title { margin: 16px 0 8px; font-size: 15px; }
 }

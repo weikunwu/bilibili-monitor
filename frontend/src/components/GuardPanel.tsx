@@ -7,6 +7,7 @@ import { fetchEventsByType } from '../api/client'
 import { formatTime, formatBattery, fixUrl, fmtDateTime, localToUTC } from '../lib/formatters'
 import { GenerateImageButton } from './GenerateImageButton'
 import { ClipDownloadButton, isClippable } from './ClipDownloadButton'
+import { EventCard } from './EventCard'
 import { PREDEFINED_RANGES } from '../lib/dateRanges'
 import { generateGiftCard } from '../lib/giftCard'
 import { stackCanvasesVertically } from '../lib/canvasUtils'
@@ -226,6 +227,79 @@ export function GuardPanel({
 
       {filtered.length === 0 ? (
         <div className="empty">暂无大航海数据</div>
+      ) : isMobile ? (
+        <div className="gift-table-wrap">
+          <div className="event-cards-header">
+            <Checkbox
+              checked={checkedKeys.size > 0 && checkedKeys.size === filtered.length}
+              indeterminate={checkedKeys.size > 0 && checkedKeys.size < filtered.length}
+              onChange={toggleAll}
+            >
+              全选
+            </Checkbox>
+          </div>
+          <div className="event-cards">
+            {paged.map((ev) => {
+              const extra = ev.extra || {}
+              const level = extra.guard_level || 3
+              const name = GUARD_NAMES[level] || extra.guard_name || '舰长'
+              const num = extra.num || 1
+              return (
+                <EventCard
+                  key={ev._key}
+                  checked={checkedKeys.has(ev._key)}
+                  onCheckChange={() => toggleKey(ev._key)}
+                  avatarUrl={extra.avatar}
+                  userName={ev.user_name || ''}
+                  timestamp={formatTime(ev.timestamp)}
+                  value={extra.price ? `¥${(extra.price / 10).toFixed(1).replace(/\.0$/, '')}` : null}
+                  mainContent={
+                    <span className="gift-item">
+                      {extra.gift_img && <img className="gift-item-img" src={fixUrl(extra.gift_img)} alt="" />}
+                      {name} x{num}
+                      {extra.price ? (
+                        <span className="gift-item-coin">{formatBattery(extra.price * num)}</span>
+                      ) : null}
+                    </span>
+                  }
+                  actions={ev.user_name ? (
+                    <>
+                      <GenerateImageButton size="sm" onClick={() => handleGenerateUserCard(ev.user_name!)}>
+                        今日大航海
+                      </GenerateImageButton>
+                      {onGenerateGiftGif && extra.gift_gif && (
+                        <GenerateImageButton size="sm" onClick={() => handleGenerateRowGif(ev)}>
+                          动态图
+                        </GenerateImageButton>
+                      )}
+                      {isClippable(ev) && <ClipDownloadButton event={ev} size="sm" />}
+                    </>
+                  ) : null}
+                />
+              )
+            })}
+          </div>
+
+          <div className="gift-table-footer">
+            <span>共 {filtered.length} 条</span>
+            <Pagination
+              size="xs"
+              prev
+              next
+              ellipsis
+              boundaryLinks
+              maxButtons={1}
+              total={filtered.length}
+              limit={pageSize}
+              activePage={page}
+              onChangePage={setPage}
+              onChangeLimit={(v) => { setPageSize(v); setPage(1) }}
+              limitOptions={[20, 50, 100]}
+              layout={['limit', '|', 'pager']}
+              locale={{ limit: '{0} 条/页' }}
+            />
+          </div>
+        </div>
       ) : (
         <div className="gift-table-wrap">
           <Table

@@ -9,6 +9,7 @@ import { PREDEFINED_RANGES } from '../lib/dateRanges'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 import { GenerateImageButton } from './GenerateImageButton'
+import { EventCard } from './EventCard'
 
 const { Column, HeaderCell, Cell } = Table
 
@@ -96,6 +97,49 @@ export function SuperChatPanel({ roomId, dateRange, onQueryRange, onGenerateSupe
 
       {filtered.length === 0 ? (
         <div className="empty">暂无SC数据</div>
+      ) : isMobile ? (
+        <div className="gift-table-wrap">
+          <div className="event-cards">
+            {paged.map((ev) => {
+              const extra = ev.extra || {}
+              return (
+                <EventCard
+                  key={ev._key}
+                  avatarUrl={extra.avatar}
+                  userName={ev.user_name || ''}
+                  timestamp={formatTime(ev.timestamp)}
+                  value={extra.price ? formatBattery(extra.price) : null}
+                  mainContent={<span style={{ color: '#ccc' }}>{ev.content}</span>}
+                  actions={onGenerateSuperChatImage ? (
+                    <GenerateImageButton size="sm" onClick={() => onGenerateSuperChatImage(ev, { showPrice })}>
+                      截图
+                    </GenerateImageButton>
+                  ) : null}
+                />
+              )
+            })}
+          </div>
+
+          <div className="gift-table-footer">
+            <span>共 {filtered.length} 条，合计: <span className="gift-total">{formatBattery(totalPrice)}</span></span>
+            <Pagination
+              size="xs"
+              prev
+              next
+              ellipsis
+              boundaryLinks
+              maxButtons={1}
+              total={filtered.length}
+              limit={pageSize}
+              activePage={page}
+              onChangePage={setPage}
+              onChangeLimit={(v) => { setPageSize(v); setPage(1) }}
+              limitOptions={[20, 50, 100]}
+              layout={['limit', '|', 'pager']}
+              locale={{ limit: '{0} 条/页' }}
+            />
+          </div>
+        </div>
       ) : (
         <div className="gift-table-wrap">
           <Table

@@ -7,6 +7,7 @@ import { fetchEventsByType } from '../api/client'
 import { formatTime, formatBattery, fixUrl, fmtDateTime, localToUTC } from '../lib/formatters'
 import { GenerateImageButton } from './GenerateImageButton'
 import { ClipDownloadButton, isClippable } from './ClipDownloadButton'
+import { EventCard } from './EventCard'
 import { PREDEFINED_RANGES } from '../lib/dateRanges'
 import { generateGiftCard } from '../lib/giftCard'
 import { stackCanvasesVertically } from '../lib/canvasUtils'
@@ -251,6 +252,78 @@ export function GiftPanel({
 
       {filtered.length === 0 ? (
         <div className="empty">暂无礼物数据</div>
+      ) : isMobile ? (
+        <div className="gift-table-wrap">
+          <div className="event-cards-header">
+            <Checkbox
+              checked={checkedKeys.size > 0 && checkedKeys.size === filtered.length}
+              indeterminate={checkedKeys.size > 0 && checkedKeys.size < filtered.length}
+              onChange={toggleAll}
+            >
+              全选
+            </Checkbox>
+          </div>
+          <div className="event-cards">
+            {paged.map((ev) => {
+              const extra = ev.extra || {}
+              return (
+                <EventCard
+                  key={ev._key}
+                  checked={checkedKeys.has(ev._key)}
+                  onCheckChange={() => toggleKey(ev._key)}
+                  avatarUrl={extra.avatar}
+                  userName={ev.user_name || ''}
+                  timestamp={formatTime(ev.timestamp)}
+                  value={extra.total_coin ? formatBattery(extra.total_coin) : null}
+                  mainContent={
+                    <span className="gift-item">
+                      {extra.gift_img && <img className="gift-item-img" src={fixUrl(extra.gift_img)} alt="" />}
+                      {extra.gift_name || ev.content} x{extra.num || 1}
+                    </span>
+                  }
+                  actions={ev.user_name ? (
+                    <>
+                      <GenerateImageButton size="sm" onClick={() => onGenerateGiftImage(ev.user_name!)}>
+                        今日礼物
+                      </GenerateImageButton>
+                      {onGenerateBlindBoxImage && (
+                        <GenerateImageButton size="sm" onClick={() => onGenerateBlindBoxImage(ev.user_name!)}>
+                          今日盲盒
+                        </GenerateImageButton>
+                      )}
+                      {onGenerateGiftGif && extra.gift_gif && extra.gift_name && (
+                        <GenerateImageButton size="sm" onClick={() => handleGenerateRowGif(ev)}>
+                          动态图
+                        </GenerateImageButton>
+                      )}
+                      {isClippable(ev) && <ClipDownloadButton event={ev} size="sm" />}
+                    </>
+                  ) : null}
+                />
+              )
+            })}
+          </div>
+
+          <div className="gift-table-footer">
+            <span>共 {filtered.length} 条，合计: <span className="gift-total">{formatBattery(totalGold)}</span></span>
+            <Pagination
+              size="xs"
+              prev
+              next
+              ellipsis
+              boundaryLinks
+              maxButtons={1}
+              total={filtered.length}
+              limit={pageSize}
+              activePage={page}
+              onChangePage={setPage}
+              onChangeLimit={(v) => { setPageSize(v); setPage(1) }}
+              limitOptions={[20, 50, 100]}
+              layout={['limit', '|', 'pager']}
+              locale={{ limit: '{0} 条/页' }}
+            />
+          </div>
+        </div>
       ) : (
         <div className="gift-table-wrap">
           <Table
