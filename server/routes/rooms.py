@@ -122,7 +122,7 @@ _ROOM_MUTATION_LIMIT = {
     "bind": (10, 60.0),
     "unbind": (30, 60.0),
 }
-_MAX_ROOMS_PER_USER = 20
+_MAX_ROOMS_PER_USER = 1
 _user_mutation_buckets: dict[str, dict[int, deque[float]]] = defaultdict(lambda: defaultdict(deque))
 
 
@@ -176,6 +176,8 @@ async def bind_room_self(room_id: int, request: Request):
     if not is_admin:
         _check_user_mutation_rate(user_id, "bind")
         if count_user_rooms(user_id) >= _MAX_ROOMS_PER_USER:
+            if _MAX_ROOMS_PER_USER == 1:
+                raise HTTPException(400, "一个账号只能绑定一个房间，请先解绑当前房间")
             raise HTTPException(400, f"单账号最多绑定 {_MAX_ROOMS_PER_USER} 个房间")
 
     existing = {r[0] for r in get_all_rooms()}
