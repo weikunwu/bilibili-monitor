@@ -8,6 +8,7 @@ import {
   fetchCommands, toggleCommand,
   type Nickname,
 } from '../api/client'
+import { useIsMobile } from '../hooks/useIsMobile'
 
 const { Column, HeaderCell, Cell } = Table
 
@@ -16,6 +17,7 @@ interface Props {
 }
 
 export function NicknamesPanel({ roomId }: Props) {
+  const isMobile = useIsMobile()
   const [rows, setRows] = useState<Nickname[]>([])
   const [loading, setLoading] = useState(false)
   const [editing, setEditing] = useState<Nickname | null>(null)
@@ -69,35 +71,60 @@ export function NicknamesPanel({ roomId }: Props) {
         </span>
       </div>
 
-      <Table data={rows} autoHeight loading={loading} rowKey="user_id">
-        <Column flexGrow={2}>
-          <HeaderCell>用户名</HeaderCell>
-          <Cell dataKey="user_name" />
-        </Column>
-        <Column flexGrow={2}>
-          <HeaderCell>昵称</HeaderCell>
-          <Cell dataKey="nickname" />
-        </Column>
-        <Column flexGrow={2}>
-          <HeaderCell>UID</HeaderCell>
-          <Cell dataKey="user_id" />
-        </Column>
-        <Column flexGrow={2}>
-          <HeaderCell>更新时间</HeaderCell>
-          <Cell dataKey="updated_at" />
-        </Column>
-        <Column width={120}>
-          <HeaderCell>操作</HeaderCell>
-          <Cell>
-            {(rowData: Nickname) => (
-              <div style={{ display: 'flex', gap: 6 }}>
-                <IconButton size="xs" icon={<EditIcon />} onClick={() => setEditing(rowData)} />
-                <IconButton size="xs" icon={<TrashIcon />} onClick={() => handleDelete(rowData)} />
+      {isMobile ? (
+        <div className="nickname-cards">
+          {rows.length === 0 ? (
+            <div className="empty">{loading ? '加载中...' : '暂无昵称记录'}</div>
+          ) : rows.map((n) => (
+            <div className="nickname-card" key={n.user_id}>
+              <div className="nickname-card-head">
+                <div className="nickname-card-user">
+                  <div className="nickname-card-name">{n.user_name}</div>
+                  <div className="nickname-card-uid">UID {n.user_id}</div>
+                </div>
+                <div className="nickname-card-nick">{n.nickname}</div>
               </div>
-            )}
-          </Cell>
-        </Column>
-      </Table>
+              <div className="nickname-card-foot">
+                <span className="nickname-card-time">{n.updated_at}</span>
+                <div className="nickname-card-actions">
+                  <IconButton size="sm" icon={<EditIcon />} onClick={() => setEditing(n)} />
+                  <IconButton size="sm" icon={<TrashIcon />} onClick={() => handleDelete(n)} />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <Table data={rows} autoHeight loading={loading} rowKey="user_id">
+          <Column flexGrow={2}>
+            <HeaderCell>用户名</HeaderCell>
+            <Cell dataKey="user_name" />
+          </Column>
+          <Column flexGrow={2}>
+            <HeaderCell>昵称</HeaderCell>
+            <Cell dataKey="nickname" />
+          </Column>
+          <Column flexGrow={2}>
+            <HeaderCell>UID</HeaderCell>
+            <Cell dataKey="user_id" />
+          </Column>
+          <Column flexGrow={2}>
+            <HeaderCell>更新时间</HeaderCell>
+            <Cell dataKey="updated_at" />
+          </Column>
+          <Column width={120}>
+            <HeaderCell>操作</HeaderCell>
+            <Cell>
+              {(rowData: Nickname) => (
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <IconButton size="xs" icon={<EditIcon />} onClick={() => setEditing(rowData)} />
+                  <IconButton size="xs" icon={<TrashIcon />} onClick={() => handleDelete(rowData)} />
+                </div>
+              )}
+            </Cell>
+          </Column>
+        </Table>
+      )}
 
       {editing && (
         <EditModal
