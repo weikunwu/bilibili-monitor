@@ -4,7 +4,7 @@ import asyncio
 
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from .config import BASE_DIR, log
@@ -24,6 +24,17 @@ if FRONTEND_DIST.exists():
 
 # ── Auth middleware ──
 app.add_middleware(AuthMiddleware)
+
+
+@app.middleware("http")
+async def redirect_to_canonical(request: Request, call_next):
+    host = request.headers.get("host", "").split(":")[0].lower()
+    if host in ("bilibili-monitor.fly.dev", "www.blackbubu.us"):
+        target = f"https://blackbubu.us{request.url.path}"
+        if request.url.query:
+            target += f"?{request.url.query}"
+        return RedirectResponse(target, status_code=301)
+    return await call_next(request)
 
 # ── Routes ──
 app.include_router(events.router)
