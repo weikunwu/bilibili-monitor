@@ -1226,14 +1226,18 @@ class BiliLiveClient:
         await self.send_danmu(f"{user_name}，已清除昵称")
 
     async def handle_blind_box_query(self, user_name, period: str = "today", user_id: int = 0):
-        """Query blind box stats and reply via danmu. user_name=None for all users (streamer)."""
+        """Query blind box stats and reply via danmu. user_id falsy = all users (streamer)."""
         utc_start, utc_end, range_label = beijing_time_range(period)
         conn = sqlite3.connect(str(DB_PATH))
-        sql = "SELECT extra_json FROM events WHERE event_type='gift' AND room_id=? AND timestamp >= ? AND timestamp < ? AND extra_json LIKE '%blind_name%' AND extra_json NOT LIKE '%\"blind_name\": \"\"%'"
+        sql = (
+            "SELECT extra_json FROM events WHERE event_type='gift' AND room_id=? "
+            "AND timestamp >= ? AND timestamp < ? "
+            "AND COALESCE(json_extract(extra_json, '$.blind_name'), '') != ''"
+        )
         params: list = [self.real_room_id, utc_start, utc_end]
-        if user_name:
-            sql += " AND user_name=?"
-            params.append(user_name)
+        if user_id:
+            sql += " AND user_id=?"
+            params.append(user_id)
         rows = conn.execute(sql, params).fetchall()
         conn.close()
 
