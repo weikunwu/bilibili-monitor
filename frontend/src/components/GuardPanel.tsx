@@ -342,7 +342,7 @@ export function GuardPanel({
               <Cell>
                 {(rowData: LiveEvent) => (
                   <div className="gift-user-cell">
-                    {!isMobile && rowData.extra?.avatar && <img className="gift-user-avatar" src={fixUrl(rowData.extra.avatar)} alt="" />}
+                    {!isMobile && rowData.extra?.avatar && <img className="gift-user-avatar" src={fixUrl(rowData.extra.avatar)} referrerPolicy="no-referrer" alt="" />}
                     <span className="gift-user-name">{rowData.user_name}</span>
                   </div>
                 )}

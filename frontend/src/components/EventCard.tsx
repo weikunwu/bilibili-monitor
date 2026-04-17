@@ -23,7 +23,7 @@ export function EventCard({
         {onCheckChange != null && (
           <Checkbox checked={checked} onChange={onCheckChange} />
         )}
-        {avatarUrl && <img className="event-card-avatar" src={fixUrl(avatarUrl)} alt="" />}
+        {avatarUrl && <img className="event-card-avatar" src={fixUrl(avatarUrl)} referrerPolicy="no-referrer" alt="" />}
         <div className="event-card-user">
           <div className="event-card-name">{userName}</div>
           {timestamp && <div className="event-card-time">{timestamp}</div>}
