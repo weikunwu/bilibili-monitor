@@ -203,8 +203,10 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
             {/* Header: room title + status badges on left; actions on right */}
             <div className="rc-header">
               <div className="rc-header-left">
-                <span className="rc-name">{r.room_title || `房间 ${r.room_id}`}</span>
-                {r.live_status === 1 && <span className="rc-badge rc-badge-live"><MdCircle size={8} /> 直播中</span>}
+                <div className="rc-title-row">
+                  <span className="rc-name">{r.room_title || `房间 ${r.room_id}`}</span>
+                  {r.live_status === 1 && <span className="rc-badge rc-badge-live"><MdCircle size={8} /> 直播中</span>}
+                </div>
                 <span className="rc-room-id">房间 {r.room_id}</span>
               </div>
               <div className="rc-header-badges">
