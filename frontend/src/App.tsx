@@ -20,6 +20,7 @@ import { AdminPanel } from './components/AdminPanel'
 import { OverlayGiftsPage } from './pages/OverlayGiftsPage'
 import { RegisterPage } from './pages/RegisterPage'
 import { LoginPage } from './pages/LoginPage'
+import { ForgotPasswordPage } from './pages/ForgotPasswordPage'
 import { QrLoginModal } from './components/QrLoginModal'
 import { GiftImageModal, type GiftImageModalRef } from './components/GiftImageModal'
 import { RoomList } from './components/RoomList'
@@ -45,9 +46,10 @@ export default function App() {
     // 公开的 OBS 叠加页：没有登录 cookie，跳过初始用户/房间拉取，
     // 否则 fetchRooms 401 会把观众强跳到登录页。
     if (window.location.pathname.startsWith('/overlay/')) return
-    // 登录/注册页同理：尚未登录，别去拉保护接口
+    // 登录/注册/忘记密码页同理：尚未登录，别去拉保护接口
     if (window.location.pathname.startsWith('/register')) return
     if (window.location.pathname.startsWith('/login')) return
+    if (window.location.pathname.startsWith('/forgot-password')) return
     fetchMe().then(setCurrentUser)
     fetchRooms().then(setRooms)
   }, [])
@@ -79,6 +81,7 @@ export default function App() {
       <Route path="/overlay/:roomId/gifts" element={<OverlayGiftsPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )

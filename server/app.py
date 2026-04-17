@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import BASE_DIR, log
 from .db import init_db, cleanup_old_events
-from .auth import AuthMiddleware, get_session_user, get_user_allowed_rooms, handle_login, handle_logout, handle_change_password, handle_send_register_code, handle_register
+from .auth import AuthMiddleware, get_session_user, get_user_allowed_rooms, handle_login, handle_logout, handle_change_password, handle_send_register_code, handle_register, handle_send_reset_code, handle_reset_password
 from .manager import manager
 from . import recorder, effect_catalog
 from .routes import events, rooms, bot, admin, clips, overlay
@@ -70,6 +70,16 @@ async def auth_register(request: Request):
     return await handle_register(request)
 
 
+@app.post("/api/password-reset/send-code")
+async def auth_send_reset_code(request: Request):
+    return await handle_send_reset_code(request)
+
+
+@app.post("/api/password-reset/verify")
+async def auth_reset_password(request: Request):
+    return await handle_reset_password(request)
+
+
 @app.get("/api/me")
 async def get_me(request: Request):
     return {
@@ -101,6 +111,11 @@ async def spa_register_fallback():
 
 @app.get("/login")
 async def spa_login_fallback():
+    return FileResponse(BASE_DIR / "frontend" / "dist" / "index.html")
+
+
+@app.get("/forgot-password")
+async def spa_forgot_password_fallback():
     return FileResponse(BASE_DIR / "frontend" / "dist" / "index.html")
 
 

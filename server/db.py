@@ -257,6 +257,16 @@ def init_db():
             sent_at TEXT NOT NULL DEFAULT (datetime('now'))
         )
     """)
+    # 忘记密码验证码：结构同 email_verifications，单独存避免和注册流互串
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS password_resets (
+            email TEXT PRIMARY KEY,
+            code TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            attempts INTEGER NOT NULL DEFAULT 0,
+            sent_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+    """)
     # OBS 叠加页 token：每房间一条，生成需登录，使用无需登录（只能拿只读的礼物聚合）
     conn.execute("""
         CREATE TABLE IF NOT EXISTS overlay_tokens (

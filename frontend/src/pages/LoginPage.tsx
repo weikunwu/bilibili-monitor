@@ -35,11 +35,10 @@ export function LoginPage() {
         background: '#1a1a2e', padding: 36, borderRadius: 16,
         border: '1px solid #2a2a4a', width: '100%', maxWidth: 360,
       }}>
-        <h2 style={{ color: '#fb7299', textAlign: 'center', marginTop: 0 }}>布布机器人</h2>
-        <p style={{ color: '#888', textAlign: 'center', fontSize: 13, marginTop: -8 }}>登录</p>
+        <h2 style={{ color: '#fb7299', textAlign: 'center', marginTop: 0, marginBottom: 20 }}>布布机器人</h2>
 
         <form onSubmit={(e) => { e.preventDefault(); handleLogin() }}
-              style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 20 }}>
+              style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <Input type="email" placeholder="邮箱" value={email} onChange={setEmail} autoFocus />
           <Input type="password" placeholder="密码" value={password} onChange={setPassword} />
           <Button
@@ -53,7 +52,11 @@ export function LoginPage() {
           </Button>
         </form>
 
-        <div style={{ textAlign: 'center', marginTop: 16, fontSize: 13 }}>
+        <div style={{
+          display: 'flex', justifyContent: 'space-between',
+          marginTop: 16, fontSize: 13,
+        }}>
+          <a href="/forgot-password" style={{ color: '#888' }}>忘记密码？</a>
           <a href="/register" style={{ color: '#fb7299' }}>没有账号？注册</a>
         </div>
       </div>
