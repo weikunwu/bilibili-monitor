@@ -1097,45 +1097,53 @@ class BiliLiveClient:
                                     # 发弹幕 → 取消挂粉提醒
                                     if event.get("event_type") == "danmu":
                                         self._lurkers.pop(event.get("user_id") or 0, None)
-                                    # 指令系统
+                                    # 指令系统。任何指令命中后 is_command=True，
+                                    # 最终只有 not is_command 时才走 AI 回复。
                                     if event.get("event_type") == "danmu":
                                         uid = event.get("user_id")
                                         uname = event.get("user_name", "")
                                         content = (event.get("content") or "").strip()
-                                        # 主播指令
+                                        is_command = False
+
+                                        # 主播"打个有效"指令
                                         if uid == self.streamer_uid:
                                             cmd_cfg = get_command(self.real_room_id, "auto_gift")
                                             if cmd_cfg and cmd_cfg["enabled"] and content == cmd_cfg["config"]["trigger"]:
                                                 asyncio.create_task(self.send_gift(cmd_cfg["config"]))
-                                        # 设置/清除昵称 (nickname_commands 指令可关)
+                                                is_command = True
+
+                                        # 昵称指令
                                         if self.bot_uid and uid:
                                             nick_cmd = get_command(self.real_room_id, "nickname_commands")
                                             if nick_cmd and nick_cmd["enabled"]:
                                                 if content == "清除昵称":
                                                     asyncio.create_task(self.handle_clear_nickname(uid, uname))
+                                                    is_command = True
                                                 elif content.startswith("叫我"):
                                                     asyncio.create_task(self.handle_set_nickname(uid, uname, content[2:].strip()))
-                                        # 盲盒查询指令 (skip when no bot bound — we can't reply anyway)
-                                        # 主播查全员 / 观众查自己，对所有别名一致（"我的盲盒"不再特殊处理）。
+                                                    is_command = True
+
+                                        # 盲盒查询：主播查全员 / 观众查自己，所有别名一致
                                         period = None
                                         if content in DANMU_PERIOD_MAP:
                                             period = DANMU_PERIOD_MAP[content]
                                         else:
-                                            # "N月盲盒" → month:N of current year.
                                             mm = re.fullmatch(r"(\d{1,2})月盲盒", content)
                                             if mm and 1 <= int(mm.group(1)) <= 12:
                                                 period = f"month:{int(mm.group(1))}"
-                                        if period and self.bot_uid:
-                                            is_streamer = (uid == self.streamer_uid)
-                                            asyncio.create_task(self.handle_blind_box_query(
-                                                None if is_streamer else uname,
-                                                period,
-                                                user_id=None if is_streamer else uid,
-                                            ))
-                                        # AI 回复（跳过机器人自己，主播可触发；指令类消息不走 AI）
-                                        elif uid and (not self.bot_uid or uid != self.bot_uid) and content:
-                                            if not (content == "清除昵称" or content.startswith("叫我")):
-                                                asyncio.create_task(self._maybe_ai_reply(uid, uname, content, event.get("extra") or {}))
+                                        if period:
+                                            is_command = True
+                                            if self.bot_uid:
+                                                is_streamer = (uid == self.streamer_uid)
+                                                asyncio.create_task(self.handle_blind_box_query(
+                                                    None if is_streamer else uname,
+                                                    period,
+                                                    user_id=None if is_streamer else uid,
+                                                ))
+
+                                        # AI 回复：排除机器人自己 + 任何命中过的指令
+                                        if not is_command and uid and (not self.bot_uid or uid != self.bot_uid) and content:
+                                            asyncio.create_task(self._maybe_ai_reply(uid, uname, content, event.get("extra") or {}))
                         elif raw_msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
                             break
                 finally:

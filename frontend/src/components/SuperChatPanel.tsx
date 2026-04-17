@@ -1,6 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
-import { CheckPicker, DateRangePicker, Table, Pagination, IconButton } from 'rsuite'
-import ImageIcon from '@rsuite/icons/Image'
+import { CheckPicker, DateRangePicker, Table, Pagination, Checkbox } from 'rsuite'
 import type { DateRange } from 'rsuite/DateRangePicker'
 
 import type { LiveEvent } from '../types'
@@ -8,14 +7,20 @@ import { fetchEventsByType } from '../api/client'
 import { formatTime, formatBattery, fixUrl, fmtDateTime, localToUTC } from '../lib/formatters'
 import { PREDEFINED_RANGES } from '../lib/dateRanges'
 import { useIsMobile } from '../hooks/useIsMobile'
+import { useLocalStorage } from '../hooks/useLocalStorage'
+import { GenerateImageButton } from './GenerateImageButton'
 
 const { Column, HeaderCell, Cell } = Table
+
+export interface SuperChatImageOptions {
+  showPrice: boolean
+}
 
 interface Props {
   roomId: number
   dateRange: DateRange
   onQueryRange: (from: string, to: string, range: DateRange) => void
-  onGenerateSuperChatImage?: (event: LiveEvent) => void
+  onGenerateSuperChatImage?: (event: LiveEvent, options: SuperChatImageOptions) => void
 }
 
 export function SuperChatPanel({ roomId, dateRange, onQueryRange, onGenerateSuperChatImage }: Props) {
@@ -24,6 +29,7 @@ export function SuperChatPanel({ roomId, dateRange, onQueryRange, onGenerateSupe
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
   const [scEvents, setScEvents] = useState<LiveEvent[]>([])
+  const [showPrice, setShowPrice] = useLocalStorage('sc:showPrice', true)
 
   useEffect(() => {
     if (!dateRange) return
@@ -67,6 +73,9 @@ export function SuperChatPanel({ roomId, dateRange, onQueryRange, onGenerateSupe
             w={200}
           />
         )}
+        <Checkbox checked={showPrice} onChange={(_, c) => setShowPrice(c)}>
+          截图显示电池数
+        </Checkbox>
         <span style={{ flex: 1 }} />
         <DateRangePicker
           format="yyyy-MM-dd HH:mm:ss"
@@ -138,16 +147,15 @@ export function SuperChatPanel({ roomId, dateRange, onQueryRange, onGenerateSupe
             </Column>
 
             {onGenerateSuperChatImage && (
-              <Column width={60} align="center">
-                <HeaderCell>截图</HeaderCell>
-                <Cell style={{ padding: 4 }}>
+              <Column flexGrow={1}>
+                <HeaderCell>操作</HeaderCell>
+                <Cell>
                   {(rowData: LiveEvent) => (
-                    <IconButton
-                      size="xs"
-                      appearance="subtle"
-                      icon={<ImageIcon />}
-                      onClick={() => onGenerateSuperChatImage(rowData)}
-                    />
+                    <div className="gift-actions">
+                      <GenerateImageButton size="sm" onClick={() => onGenerateSuperChatImage(rowData, { showPrice })}>
+                        截图
+                      </GenerateImageButton>
+                    </div>
                   )}
                 </Cell>
               </Column>

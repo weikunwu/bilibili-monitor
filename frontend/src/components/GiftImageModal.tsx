@@ -6,11 +6,15 @@ import { generateGiftGif, type GiftGifItem } from '../lib/giftGif'
 import { generateSuperChatCard } from '../lib/superchatCard'
 import type { LiveEvent } from '../types'
 
+export interface SuperChatImageOptions {
+  showPrice?: boolean
+}
+
 export interface GiftImageModalRef {
   showGiftImage: (roomId: number, userName: string, blindOnly?: boolean) => void
   showPreview: (imgUrl: string, ext?: 'png' | 'gif') => void
   showGiftGif: (items: GiftGifItem[]) => void
-  showSuperChatImage: (event: LiveEvent) => void
+  showSuperChatImage: (event: LiveEvent, options?: SuperChatImageOptions) => void
 }
 
 export const GiftImageModal = forwardRef<GiftImageModalRef>(function GiftImageModal(_, ref) {
@@ -43,9 +47,9 @@ export const GiftImageModal = forwardRef<GiftImageModalRef>(function GiftImageMo
       setExt('gif')
       setIsOpen(true)
     },
-    async showSuperChatImage(event: LiveEvent) {
+    async showSuperChatImage(event: LiveEvent, options?: SuperChatImageOptions) {
       const offscreen = document.createElement('canvas')
-      await generateSuperChatCard(offscreen, event)
+      await generateSuperChatCard(offscreen, event, { showPrice: options?.showPrice })
       setImgUrl(offscreen.toDataURL('image/png'))
       setExt('png')
       setIsOpen(true)

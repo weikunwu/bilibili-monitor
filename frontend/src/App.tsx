@@ -198,7 +198,7 @@ function RoomPage({ rooms, currentUser, onRoomsChanged }: {
           roomId={roomId}
           dateRange={dateRange}
           onQueryRange={handleQueryRange}
-          onGenerateSuperChatImage={(event) => giftModalRef.current?.showSuperChatImage(event)}
+          onGenerateSuperChatImage={(event, options) => giftModalRef.current?.showSuperChatImage(event, options)}
         />
       )
     }

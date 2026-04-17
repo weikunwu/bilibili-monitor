@@ -60,9 +60,10 @@ function roundRect(
 export async function generateSuperChatCard(
   canvas: HTMLCanvasElement,
   event: LiveEvent,
-  opts?: { proxyUrl?: ProxyUrlFn },
+  opts?: { proxyUrl?: ProxyUrlFn; showPrice?: boolean },
 ): Promise<void> {
   const proxyFn = opts?.proxyUrl || getProxyImageUrl
+  const showPrice = opts?.showPrice ?? true
   const ctx = canvas.getContext('2d')!
   const e = event.extra || {}
 
@@ -147,16 +148,21 @@ export async function generateSuperChatCard(
     ctx.drawImage(guardFrame, acx - frameSize / 2, acy - frameSize / 2, frameSize, frameSize)
   }
 
-  // ── 用户名 + "N 电池" ──
+  // ── 用户名（+ 电池数，可选）──
   const textX = acx + ar + 16
   ctx.textBaseline = 'alphabetic'
   ctx.fillStyle = nameColor
   ctx.font = '600 18px -apple-system, "PingFang SC", sans-serif'
-  ctx.fillText(event.user_name || '', textX, acy - 3)
-
-  ctx.fillStyle = priceColor
-  ctx.font = '500 15px -apple-system, "PingFang SC", sans-serif'
-  ctx.fillText(`${e.price || 0} 电池`, textX, acy + 18)
+  if (showPrice) {
+    ctx.fillText(event.user_name || '', textX, acy - 3)
+    ctx.fillStyle = priceColor
+    ctx.font = '500 15px -apple-system, "PingFang SC", sans-serif'
+    ctx.fillText(`${e.price || 0} 电池`, textX, acy + 18)
+  } else {
+    // 不显示电池时用户名垂直居中
+    ctx.textBaseline = 'middle'
+    ctx.fillText(event.user_name || '', textX, acy)
+  }
 
   // ── 底部留言条（background_color_start → end 横向渐变）──
   const msgGrad = ctx.createLinearGradient(0, MAIN_H, W, MAIN_H)
