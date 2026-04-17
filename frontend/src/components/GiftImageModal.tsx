@@ -3,11 +3,14 @@ import { Modal, Button, ButtonGroup } from 'rsuite'
 import { fetchGiftSummary } from '../api/client'
 import { generateGiftCard } from '../lib/giftCard'
 import { generateGiftGif, type GiftGifItem } from '../lib/giftGif'
+import { generateSuperChatCard } from '../lib/superchatCard'
+import type { LiveEvent } from '../types'
 
 export interface GiftImageModalRef {
   showGiftImage: (roomId: number, userName: string, blindOnly?: boolean) => void
   showPreview: (imgUrl: string, ext?: 'png' | 'gif') => void
   showGiftGif: (items: GiftGifItem[]) => void
+  showSuperChatImage: (event: LiveEvent) => void
 }
 
 export const GiftImageModal = forwardRef<GiftImageModalRef>(function GiftImageModal(_, ref) {
@@ -38,6 +41,13 @@ export const GiftImageModal = forwardRef<GiftImageModalRef>(function GiftImageMo
       if (!blob) { alert('所选礼物均无动态图'); return }
       setImgUrl(URL.createObjectURL(blob))
       setExt('gif')
+      setIsOpen(true)
+    },
+    async showSuperChatImage(event: LiveEvent) {
+      const offscreen = document.createElement('canvas')
+      await generateSuperChatCard(offscreen, event)
+      setImgUrl(offscreen.toDataURL('image/png'))
+      setExt('png')
       setIsOpen(true)
     },
   }))

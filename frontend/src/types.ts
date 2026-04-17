@@ -9,6 +9,33 @@ export interface LiveEvent {
   extra_json?: string
 }
 
+export interface MedalInfo {
+  medal_name: string
+  medal_level: number
+  medal_color?: number
+  medal_color_start?: number
+  medal_color_end?: number
+  medal_color_border?: number
+  guard_level?: number
+  anchor_uname?: string
+  is_lighted?: number
+}
+
+// uinfo.medal — 新版粉丝牌（v2 带 alpha 的 RGBA hex 字符串）
+export interface MedalV2 {
+  name: string
+  level: number
+  is_light?: number
+  guard_level?: number
+  guard_icon?: string
+  honor_icon?: string
+  v2_medal_color_start?: string
+  v2_medal_color_end?: string
+  v2_medal_color_border?: string
+  v2_medal_color_level?: string
+  v2_medal_color_text?: string
+}
+
 export interface EventExtra {
   avatar?: string
   total_coin?: number
@@ -28,6 +55,24 @@ export interface EventExtra {
   emoticon?: { url: string; width?: number; height?: number }
   emots?: Record<string, { url: string }>
   msg_type?: number
+
+  // Superchat render fields (all optional; B站 returns per price tier)
+  duration?: number
+  face_frame?: string
+  name_color?: string
+  user_level?: number
+  level_color?: string
+  background_color?: string
+  background_bottom_color?: string
+  background_color_start?: string
+  background_color_end?: string
+  background_price_color?: string
+  message_font_color?: string
+  background_image?: string
+  background_icon?: string
+  color_point?: number
+  medal_info?: MedalInfo | null
+  medal_v2?: MedalV2 | null
 }
 
 export interface Room {

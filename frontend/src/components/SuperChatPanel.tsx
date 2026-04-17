@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from 'react'
-import { CheckPicker, DateRangePicker, Table, Pagination } from 'rsuite'
+import { CheckPicker, DateRangePicker, Table, Pagination, IconButton } from 'rsuite'
+import ImageIcon from '@rsuite/icons/Image'
 import type { DateRange } from 'rsuite/DateRangePicker'
 
 import type { LiveEvent } from '../types'
@@ -14,9 +15,10 @@ interface Props {
   roomId: number
   dateRange: DateRange
   onQueryRange: (from: string, to: string, range: DateRange) => void
+  onGenerateSuperChatImage?: (event: LiveEvent) => void
 }
 
-export function SuperChatPanel({ roomId, dateRange, onQueryRange }: Props) {
+export function SuperChatPanel({ roomId, dateRange, onQueryRange, onGenerateSuperChatImage }: Props) {
   const isMobile = useIsMobile()
   const [selectedUsers, setSelectedUsers] = useState<string[]>([])
   const [page, setPage] = useState(1)
@@ -134,6 +136,22 @@ export function SuperChatPanel({ roomId, dateRange, onQueryRange }: Props) {
                 )}
               </Cell>
             </Column>
+
+            {onGenerateSuperChatImage && (
+              <Column width={60} align="center">
+                <HeaderCell>截图</HeaderCell>
+                <Cell style={{ padding: 4 }}>
+                  {(rowData: LiveEvent) => (
+                    <IconButton
+                      size="xs"
+                      appearance="subtle"
+                      icon={<ImageIcon />}
+                      onClick={() => onGenerateSuperChatImage(rowData)}
+                    />
+                  )}
+                </Cell>
+              </Column>
+            )}
           </Table>
 
           <div className="gift-table-footer">
