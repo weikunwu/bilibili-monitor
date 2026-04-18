@@ -11,6 +11,7 @@ from ..db import (
     list_users, create_user, delete_user, assign_user_rooms,
     add_room as db_add_room, remove_room as db_remove_room, get_all_rooms,
     save_event,
+    create_renewal_token, list_renewal_tokens,
 )
 from ..manager import manager
 from .. import recorder
@@ -74,6 +75,25 @@ async def remove_room(room_id: int):
         manager.remove_room(room_id)
     db_remove_room(room_id)
     return {"ok": True, "room_id": room_id}
+
+
+# ── Renewal tokens ──
+
+@router.post("/api/admin/renewal-tokens")
+async def new_renewal_token(request: Request):
+    body = await request.json() if request.headers.get("content-length") else {}
+    months = int(body.get("months", 1))
+    count = int(body.get("count", 1))
+    if months < 1 or months > 12:
+        raise HTTPException(400, "months 必须在 1~12")
+    if count < 1 or count > 100:
+        raise HTTPException(400, "count 必须在 1~100")
+    return {"tokens": [create_renewal_token(months) for _ in range(count)]}
+
+
+@router.get("/api/admin/renewal-tokens")
+async def get_renewal_tokens():
+    return list_renewal_tokens()
 
 
 # ── Debug / manual clip trigger ──

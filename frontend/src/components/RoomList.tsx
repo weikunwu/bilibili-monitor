@@ -5,7 +5,7 @@ import PlayOutlineIcon from '@rsuite/icons/PlayOutline'
 import CloseOutlineIcon from '@rsuite/icons/CloseOutline'
 import ChangeListIcon from '@rsuite/icons/ChangeList'
 import TrashIcon from '@rsuite/icons/Trash'
-import { botLogout, bindRoomSelf, unbindRoomSelf } from '../api/client'
+import { botLogout, bindRoomSelf, unbindRoomSelf, redeemRoomToken } from '../api/client'
 import { confirmDialog } from '../lib/confirm'
 import type { Room } from '../types'
 
@@ -130,6 +130,32 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
   const [bindError, setBindError] = useState('')
   const [binding, setBinding] = useState(false)
 
+  const [redeemTarget, setRedeemTarget] = useState<Room | null>(null)
+  const [redeemToken, setRedeemToken] = useState('')
+  const [redeemErr, setRedeemErr] = useState('')
+  const [redeeming, setRedeeming] = useState(false)
+
+  const openRedeem = (r: Room) => {
+    setRedeemTarget(r)
+    setRedeemToken('')
+    setRedeemErr('')
+  }
+  const closeRedeem = () => { setRedeemTarget(null); setRedeemToken(''); setRedeemErr('') }
+  const handleRedeem = async () => {
+    if (!redeemTarget) return
+    const t = redeemToken.trim()
+    if (!t) { setRedeemErr('请输入续费码'); return }
+    setRedeeming(true); setRedeemErr('')
+    try {
+      await redeemRoomToken(redeemTarget.room_id, t)
+      toaster.push(<Message type="success" showIcon closable>续费成功</Message>, { duration: 2500 })
+      closeRedeem()
+      onRoomsChanged?.()
+    } catch (err) {
+      setRedeemErr((err as Error).message)
+    } finally { setRedeeming(false) }
+  }
+
   const openBind = () => {
     setNewRoomId('')
     setBindError('')
@@ -211,6 +237,28 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
         <Modal.Footer>
           <Button onClick={() => setBindOpen(false)} appearance="subtle" disabled={binding}>取消</Button>
           <Button onClick={handleBindRoom} appearance="primary" loading={binding}>绑定</Button>
+        </Modal.Footer>
+      </Modal>
+      <Modal open={redeemTarget !== null} onClose={() => !redeeming && closeRedeem()} size="xs">
+        <Modal.Header>
+          <Modal.Title>续费机器人</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <div style={{ fontSize: 13, color: '#888', marginBottom: 8 }}>
+            房间 <b>{redeemTarget?.streamer_name || redeemTarget?.room_id}</b>（每个续费码延长 30 天）
+          </div>
+          <Input
+            placeholder="粘贴续费码"
+            value={redeemToken}
+            onChange={setRedeemToken}
+            onPressEnter={handleRedeem}
+            autoFocus
+          />
+          {redeemErr && <Message type="error" style={{ marginTop: 8 }}>{redeemErr}</Message>}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button onClick={closeRedeem} appearance="subtle" disabled={redeeming}>取消</Button>
+          <Button onClick={handleRedeem} color="yellow" appearance="primary" loading={redeeming}>续费</Button>
         </Modal.Footer>
       </Modal>
       <Modal open={unbindTarget !== null} onClose={() => !unbinding && setUnbindTarget(null)} size="xs">
@@ -303,10 +351,7 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
                   )}
                   <Button
                     size="sm" color="yellow" appearance="ghost" style={{ width: 132 }}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      toaster.push(<Message type="info" showIcon closable>试运行期间暂时不用续费哦</Message>, { duration: 3000 })
-                    }}
+                    onClick={(e) => { e.stopPropagation(); openRedeem(r) }}
                   >续费机器人</Button>
                   <Button size="sm" appearance="ghost" startIcon={<ChangeListIcon />} style={{ width: 132 }} onClick={(e) => { e.stopPropagation(); onBindBot?.(r.room_id) }}>
                     {r.bot_uid ? '更换机器人' : '绑定机器人'}

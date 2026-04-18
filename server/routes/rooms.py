@@ -17,7 +17,7 @@ from ..db import (
     add_room as db_add_room, add_user_room, remove_user_room, is_room_claimed,
     count_user_rooms,
     get_overlay_settings, update_overlay_settings, clear_overlay_history,
-    get_room_expires_at,
+    get_room_expires_at, redeem_renewal_token,
 )
 from ..auth import require_room_access
 from ..config import ROOM_INFO_API, H5_ROOM_INFO_API, MASTER_INFO_API, HEADERS
@@ -126,7 +126,7 @@ _ROOM_MUTATION_LIMIT = {
     "bind": (10, 60.0),
     "unbind": (30, 60.0),
 }
-_MAX_ROOMS_PER_USER = 1
+_MAX_ROOMS_PER_USER = 20
 _user_mutation_buckets: dict[str, dict[int, deque[float]]] = defaultdict(lambda: defaultdict(deque))
 
 
@@ -253,6 +253,19 @@ async def start_room(room_id: int, request: Request, _=Depends(require_room_acce
             raise HTTPException(400, "房间已到期，请续费后再启动")
     await manager.start_room(room_id)
     return {"ok": True, "room_id": room_id}
+
+
+@router.post("/api/rooms/{room_id}/redeem")
+async def redeem_room_token(room_id: int, request: Request, _=Depends(require_room_access)):
+    body = await request.json()
+    token = str(body.get("token", "")).strip()
+    if not token:
+        raise HTTPException(400, "请输入续费码")
+    user_id = getattr(request.state, "user_id", 0) or 0
+    ok, info = redeem_renewal_token(token, user_id, room_id)
+    if not ok:
+        raise HTTPException(400, info)
+    return {"ok": True, "expires_at": info}
 
 
 @router.post("/api/rooms/{room_id}/save-danmu")

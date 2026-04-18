@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Input, Button, SelectPicker, Modal, Checkbox, Stack, Divider, Message } from 'rsuite'
 import type { Room } from '../types'
-import { fetchUsers, createUser, deleteUser, assignUserRooms, addRoom, removeRoom, type UserInfo } from '../api/client'
+import { fetchUsers, createUser, deleteUser, assignUserRooms, addRoom, removeRoom, createRenewalTokens, type UserInfo } from '../api/client'
 import { confirmDialog } from '../lib/confirm'
 
 interface Props {
@@ -20,6 +20,29 @@ export function AdminPanel({ rooms, onRoomsChanged }: Props) {
   const [newRoomId, setNewRoomId] = useState('')
   const [roomError, setRoomError] = useState('')
   const [roomLoading, setRoomLoading] = useState(false)
+
+  const [tokenCount, setTokenCount] = useState('1')
+  const [tokenMonths, setTokenMonths] = useState('1')
+  const [generatedTokens, setGeneratedTokens] = useState<string[]>([])
+  const [tokenGenLoading, setTokenGenLoading] = useState(false)
+  const [tokenGenError, setTokenGenError] = useState('')
+
+  async function handleGenerateTokens() {
+    setTokenGenError('')
+    const c = Math.max(1, Math.min(100, parseInt(tokenCount, 10) || 1))
+    const m = Math.max(1, Math.min(12, parseInt(tokenMonths, 10) || 1))
+    setTokenGenLoading(true)
+    try {
+      const tokens = await createRenewalTokens(c, m)
+      setGeneratedTokens(tokens)
+    } catch (err) {
+      setTokenGenError((err as Error).message)
+    } finally { setTokenGenLoading(false) }
+  }
+
+  async function copyToken(t: string) {
+    try { await navigator.clipboard.writeText(t) } catch { /* ignore */ }
+  }
 
   useEffect(() => { loadUsers() }, [])
 
@@ -104,6 +127,29 @@ export function AdminPanel({ rooms, onRoomsChanged }: Props) {
 
   return (
     <div style={{ padding: '16px 24px' }}>
+      {/* ── Renewal tokens ── */}
+      <h3 style={{ color: '#fb7299', marginBottom: 16, fontSize: 16 }}>续费码</h3>
+      <Stack spacing={8} wrap style={{ marginBottom: 12 }}>
+        <Input placeholder="数量" value={tokenCount} onChange={setTokenCount} size="sm" style={{ width: 80 }} />
+        <Input placeholder="月数" value={tokenMonths} onChange={setTokenMonths} size="sm" style={{ width: 80 }} />
+        <Button appearance="primary" size="sm" loading={tokenGenLoading} onClick={handleGenerateTokens}>
+          生成续费码
+        </Button>
+      </Stack>
+      {tokenGenError && <Message type="error" showIcon style={{ marginBottom: 12 }}>{tokenGenError}</Message>}
+      {generatedTokens.length > 0 && (
+        <div style={{ marginBottom: 16, padding: 12, background: '#14141f', border: '1px solid #2a2a4a', borderRadius: 6 }}>
+          <div style={{ fontSize: 12, color: '#888', marginBottom: 6 }}>新生成的续费码（一码一用，各自延长 {tokenMonths || 1} 个月）：</div>
+          {generatedTokens.map((t) => (
+            <div key={t} style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 4 }}>
+              <code style={{ flex: 1, fontSize: 13, color: '#ffd54f', wordBreak: 'break-all' }}>{t}</code>
+              <Button size="xs" appearance="subtle" onClick={() => copyToken(t)}>复制</Button>
+            </div>
+          ))}
+        </div>
+      )}
+      <Divider />
+
       {/* ── Room management ── */}
       <h3 style={{ color: '#fb7299', marginBottom: 16, fontSize: 16 }}>房间管理</h3>
       <form onSubmit={handleAddRoom}>

@@ -324,6 +324,18 @@ def init_db():
     if "expired_reminder_count" not in room_cols:
         conn.execute("ALTER TABLE rooms ADD COLUMN expired_reminder_count INTEGER NOT NULL DEFAULT 0")
 
+    # 管理员手动生成的续费码。每条一码一用，成功兑换后写入 used_* 字段。
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS renewal_tokens (
+            token TEXT PRIMARY KEY,
+            months INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            used_at TEXT,
+            used_by_user_id INTEGER,
+            used_for_room_id INTEGER
+        )
+    """)
+
     admin_email = os.environ.get("ADMIN_EMAIL", "")
     admin_password = os.environ.get("ADMIN_PASSWORD", "")
     if admin_password:
@@ -454,6 +466,86 @@ def incr_expired_reminder_count(room_id: int) -> int:
     conn.commit()
     conn.close()
     return int(row[0] if row else 0)
+
+
+def create_renewal_token(months: int = 1) -> str:
+    """生成一条续费码，返回字符串。"""
+    import secrets
+    token = secrets.token_urlsafe(16)
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.execute(
+        "INSERT INTO renewal_tokens (token, months) VALUES (?, ?)",
+        (token, months),
+    )
+    conn.commit()
+    conn.close()
+    return token
+
+
+def list_renewal_tokens(limit: int = 100) -> list[dict]:
+    conn = sqlite3.connect(str(DB_PATH))
+    rows = conn.execute(
+        "SELECT token, months, created_at, used_at, used_by_user_id, used_for_room_id "
+        "FROM renewal_tokens ORDER BY created_at DESC LIMIT ?",
+        (limit,),
+    ).fetchall()
+    conn.close()
+    return [{
+        "token": r[0], "months": r[1], "created_at": r[2],
+        "used_at": r[3], "used_by_user_id": r[4], "used_for_room_id": r[5],
+    } for r in rows]
+
+
+def redeem_renewal_token(token: str, user_id: int, room_id: int) -> tuple[bool, str]:
+    """成功返回 (True, new_expires_at_utc)；失败返回 (False, reason)。
+    原子性：token 必须是 unused 才能扣；同时更新 room 的到期时间。"""
+    from datetime import datetime, timezone, timedelta
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        row = conn.execute(
+            "SELECT months, used_at FROM renewal_tokens WHERE token=?", (token,)
+        ).fetchone()
+        if not row:
+            conn.execute("ROLLBACK")
+            return False, "续费码不存在"
+        months, used_at = int(row[0]), row[1]
+        if used_at:
+            conn.execute("ROLLBACK")
+            return False, "续费码已被使用"
+        # 续期基准 = max(当前 expires_at, now)，避免已过期房间续费 N 天后还是过去
+        exp_row = conn.execute(
+            "SELECT expires_at FROM rooms WHERE room_id=?", (room_id,)
+        ).fetchone()
+        if not exp_row:
+            conn.execute("ROLLBACK")
+            return False, "房间不存在"
+        now_utc = datetime.now(timezone.utc)
+        base = now_utc
+        if exp_row[0]:
+            try:
+                cur = datetime.strptime(exp_row[0], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+                if cur > base:
+                    base = cur
+            except ValueError:
+                pass
+        new_exp = base + timedelta(days=30 * months)
+        new_exp_str = new_exp.strftime("%Y-%m-%d %H:%M:%S")
+        conn.execute(
+            "UPDATE rooms SET expires_at=?, expired_reminder_count=0 WHERE room_id=?",
+            (new_exp_str, room_id),
+        )
+        conn.execute(
+            "UPDATE renewal_tokens SET used_at=?, used_by_user_id=?, used_for_room_id=? WHERE token=?",
+            (now_utc.strftime("%Y-%m-%d %H:%M:%S"), user_id, room_id, token),
+        )
+        conn.execute("COMMIT")
+        return True, new_exp_str
+    except Exception as e:
+        conn.execute("ROLLBACK")
+        return False, f"兑换失败: {e}"
+    finally:
+        conn.close()
 
 
 def list_users() -> list[dict]:

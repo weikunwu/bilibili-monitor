@@ -228,6 +228,33 @@ export async function removeRoom(roomId: number): Promise<void> {
   }
 }
 
+export async function createRenewalTokens(count = 1, months = 1): Promise<string[]> {
+  const res = await fetch('/api/admin/renewal-tokens', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ count, months }),
+  })
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({}))
+    throw new Error(d.detail || '生成续费码失败')
+  }
+  const data = await res.json()
+  return data.tokens || []
+}
+
+export async function redeemRoomToken(roomId: number, token: string): Promise<{ expires_at: string }> {
+  const res = await fetch(`/api/rooms/${roomId}/redeem`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token }),
+  })
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({}))
+    throw new Error(d.detail || '兑换失败')
+  }
+  return await res.json()
+}
+
 export async function toggleSaveDanmu(roomId: number, enabled: boolean): Promise<void> {
   await fetch(`/api/rooms/${roomId}/save-danmu`, {
     method: 'POST',
