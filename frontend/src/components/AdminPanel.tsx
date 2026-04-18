@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Input, Button, SelectPicker, Modal, Checkbox, Stack, Divider, Message } from 'rsuite'
+import { Input, InputGroup, Button, SelectPicker, Modal, Checkbox, Stack, Divider, Message } from 'rsuite'
 import type { Room } from '../types'
 import { fetchUsers, createUser, deleteUser, assignUserRooms, addRoom, removeRoom, createRenewalTokens, type UserInfo } from '../api/client'
 import { confirmDialog } from '../lib/confirm'
@@ -128,10 +128,20 @@ export function AdminPanel({ rooms, onRoomsChanged }: Props) {
   return (
     <div style={{ padding: '16px 24px' }}>
       {/* ── Renewal tokens ── */}
-      <h3 style={{ color: '#fb7299', marginBottom: 16, fontSize: 16 }}>续费码</h3>
+      <h3 style={{ color: '#fb7299', marginBottom: 8, fontSize: 16 }}>续费码</h3>
+      <div style={{ fontSize: 13, color: '#888', marginBottom: 12, lineHeight: 1.6 }}>
+        一码一用，用户在「续费机器人」里填进去就能给房间延长到期时间。<br />
+        <b>数量</b>：这次生成几条码（1–100）；<b>月数</b>：每条码能把房间延长几个月（1–12，每月按 30 天算）。
+      </div>
       <Stack spacing={8} wrap style={{ marginBottom: 12 }}>
-        <Input placeholder="数量" value={tokenCount} onChange={setTokenCount} size="sm" style={{ width: 80 }} />
-        <Input placeholder="月数" value={tokenMonths} onChange={setTokenMonths} size="sm" style={{ width: 80 }} />
+        <InputGroup size="sm" style={{ width: 120 }}>
+          <InputGroup.Addon>数量</InputGroup.Addon>
+          <Input value={tokenCount} onChange={setTokenCount} />
+        </InputGroup>
+        <InputGroup size="sm" style={{ width: 120 }}>
+          <InputGroup.Addon>月数</InputGroup.Addon>
+          <Input value={tokenMonths} onChange={setTokenMonths} />
+        </InputGroup>
         <Button appearance="primary" size="sm" loading={tokenGenLoading} onClick={handleGenerateTokens}>
           生成续费码
         </Button>
