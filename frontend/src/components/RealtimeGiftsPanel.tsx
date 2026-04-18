@@ -25,6 +25,8 @@ const DEFAULTS: OverlaySettings = {
   show_gift: true,
   show_blind: true,
   show_guard: true,
+  show_superchat: true,
+  time_range: 'today',
   cleared_at: '',
 }
 
@@ -124,6 +126,8 @@ export function RealtimeGiftsPanel({ roomId }: Props) {
         show_gift: draft.show_gift,
         show_blind: draft.show_blind,
         show_guard: draft.show_guard,
+        show_superchat: draft.show_superchat,
+        time_range: draft.time_range,
       })
       setCommitted(s)
       setDraft(s)
@@ -158,16 +162,19 @@ export function RealtimeGiftsPanel({ roomId }: Props) {
     || draft.show_gift !== committed.show_gift
     || draft.show_blind !== committed.show_blind
     || draft.show_guard !== committed.show_guard
+    || draft.show_superchat !== committed.show_superchat
+    || draft.time_range !== committed.time_range
   )
 
   const shownTypes: string[] = []
   if (draft.show_gift) shownTypes.push('gift')
   if (draft.show_blind) shownTypes.push('blind')
   if (draft.show_guard) shownTypes.push('guard')
+  if (draft.show_superchat) shownTypes.push('superchat')
 
   return (
     <div>
-      <div className="panel-title">实时礼物</div>
+      <div className="panel-title">实时礼物流</div>
       <div style={{ padding: '0 24px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
         <Section
@@ -202,6 +209,23 @@ export function RealtimeGiftsPanel({ roomId }: Props) {
         </Section>
 
         <Section title="展示设置">
+          <Row label="时间范围">
+            <RadioGroup
+              inline
+              value={draft.time_range}
+              onChange={(v) => setDraft({ ...draft, time_range: (v as OverlaySettings['time_range']) })}
+            >
+              <Radio value="today">今日聚合</Radio>
+              <Radio value="week">本周聚合</Radio>
+              <Radio value="live">本次直播</Radio>
+            </RadioGroup>
+            <span style={{ color: '#888', fontSize: 12 }}>
+              {draft.time_range === 'today' && '北京时间 00:00 起'}
+              {draft.time_range === 'week' && '本周一 00:00 起'}
+              {draft.time_range === 'live' && '本次开播时间起'}
+            </span>
+          </Row>
+
           <Row label="最多展示">
             <Input
               type="number" size="sm"
@@ -226,12 +250,14 @@ export function RealtimeGiftsPanel({ roomId }: Props) {
                   show_gift: arr.includes('gift'),
                   show_blind: arr.includes('blind'),
                   show_guard: arr.includes('guard'),
+                  show_superchat: arr.includes('superchat'),
                 })
               }}
             >
               <Checkbox value="gift">礼物</Checkbox>
               <Checkbox value="blind">盲盒</Checkbox>
               <Checkbox value="guard">大航海</Checkbox>
+              <Checkbox value="superchat">醒目留言</Checkbox>
             </CheckboxGroup>
           </Row>
 

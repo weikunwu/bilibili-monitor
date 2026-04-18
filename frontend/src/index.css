@@ -21,6 +21,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 .room-sidebar { flex-shrink: 0; border-right: 1px solid #2a2a4a; width: 200px; }
 .room-sidebar .rs-sidenav { background: transparent; }
 .room-sidebar .rs-nav-item { font-size: 15px; }
+.room-sidebar-group-label { font-size: 11px; color: #555; font-weight: 600; letter-spacing: 1px; padding: 12px 20px 4px; text-transform: uppercase; }
+.room-sidebar-group-sep { border-top: 1px solid #1f1f33; margin-top: 6px; }
 .room-content { flex: 1; overflow: auto; min-width: 0; display: flex; flex-direction: column; }
 
 
@@ -45,6 +47,12 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 .event.gift .price-tag { color: #ffb74d; font-size: 13px; margin-left: 6px; }
 .event.superchat .price-tag { color: #ef5350; font-weight: 700; font-size: 14px; margin-left: 6px; }
 
+.events-nav { padding: 8px 24px 0; border-bottom: 1px solid #2a2a4a; }
+.events-nav .rs-nav-item { color: #bbb; }
+.events-nav .rs-nav-item-active, .events-nav .rs-nav-item-active:hover { color: #fb7299; background: transparent; }
+@media (max-width: 768px) {
+  .events-nav { padding: 8px 12px 0; }
+}
 .event-filter { padding: 8px 24px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .event-checkbox { flex-shrink: 0; align-self: center; }
 .empty { text-align: center; padding: 60px; color: #555; font-size: 16px; }

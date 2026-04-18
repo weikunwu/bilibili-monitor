@@ -1,20 +1,47 @@
 import { Sidenav, Nav } from 'rsuite'
-import { LayoutList, MessageSquareText, Gift, Anchor, Megaphone, Box, Wrench, Tag, Radio } from 'lucide-react'
+import { Radio, BarChart3, Search, Box, MessageCircle, Clock, Tag } from 'lucide-react'
 import type { TabType } from '../types'
-import { TAB_ALL, EVENT_DANMU, EVENT_GIFT, EVENT_SUPERCHAT, EVENT_GUARD, TAB_BLINDBOX, TAB_TOOLS, TAB_NICKNAMES, TAB_REALTIME_GIFTS } from '../lib/constants'
+import {
+  TAB_LIVE, TAB_REALTIME, TAB_EVENTS, TAB_BLINDBOX,
+  TAB_REACTIVE, TAB_AUTOMATION, TAB_NICKNAMES,
+} from '../lib/constants'
 import { useIsMobile } from '../hooks/useIsMobile'
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const TAB_LIST: { type: TabType; label: string; icon: any }[] = [
-  { type: TAB_ALL, label: '全部', icon: <LayoutList size={16} /> },
-  { type: EVENT_DANMU, label: '弹幕', icon: <MessageSquareText size={16} /> },
-  { type: EVENT_GIFT, label: '礼物', icon: <Gift size={16} /> },
-  { type: EVENT_GUARD, label: '大航海', icon: <Anchor size={16} /> },
-  { type: EVENT_SUPERCHAT, label: '醒目留言', icon: <Megaphone size={16} /> },
-  { type: TAB_BLINDBOX, label: '盲盒统计', icon: <Box size={16} /> },
-  { type: TAB_NICKNAMES, label: '昵称管理', icon: <Tag size={16} /> },
-  { type: TAB_REALTIME_GIFTS, label: '实时礼物', icon: <Radio size={16} /> },
-  { type: TAB_TOOLS, label: '主播工具', icon: <Wrench size={16} /> },
+interface TabSpec {
+  type: TabType
+  label: string
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  icon: any
+}
+
+interface Group {
+  label: string
+  items: TabSpec[]
+}
+
+const GROUPS: Group[] = [
+  {
+    label: '实时',
+    items: [
+      { type: TAB_LIVE, label: '直播流', icon: <Radio size={16} /> },
+      { type: TAB_REALTIME, label: '实时礼物流', icon: <BarChart3 size={16} /> },
+    ],
+  },
+  {
+    label: '数据',
+    items: [
+      { type: TAB_EVENTS, label: '事件查询', icon: <Search size={16} /> },
+      { type: TAB_BLINDBOX, label: '盲盒统计', icon: <Box size={16} /> },
+    ],
+  },
+  {
+    label: '配置',
+    items: [
+      { type: TAB_REACTIVE, label: '互动回复', icon: <MessageCircle size={16} /> },
+      { type: TAB_AUTOMATION, label: '主动 & 高级', icon: <Clock size={16} /> },
+      { type: TAB_NICKNAMES, label: '昵称管理', icon: <Tag size={16} /> },
+    ],
+  },
 ]
 
 interface Props {
@@ -27,13 +54,18 @@ export function TabSidebar({ active, onChange }: Props) {
   return (
     <Sidenav appearance="subtle" expanded={!isMobile} className="room-sidebar">
       <Sidenav.Body>
-        <Nav activeKey={active} onSelect={(key) => key && onChange(key as TabType)}>
-          {TAB_LIST.map((t) => (
-            <Nav.Item key={t.type} eventKey={t.type} icon={t.icon}>
-              {t.label}
-            </Nav.Item>
-          ))}
-        </Nav>
+        {GROUPS.map((g, gi) => (
+          <div key={g.label} className={`room-sidebar-group${gi > 0 ? ' room-sidebar-group-sep' : ''}`}>
+            {!isMobile && <div className="room-sidebar-group-label">{g.label}</div>}
+            <Nav activeKey={active} onSelect={(key) => key && onChange(key as TabType)}>
+              {g.items.map((t) => (
+                <Nav.Item key={t.type} eventKey={t.type} icon={t.icon}>
+                  {t.label}
+                </Nav.Item>
+              ))}
+            </Nav>
+          </div>
+        ))}
       </Sidenav.Body>
     </Sidenav>
   )

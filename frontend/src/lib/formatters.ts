@@ -8,6 +8,13 @@ export function formatTime(ts: string): string {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 }
 
+/** 事件查询页展示用：MM-DD HH:mm:ss，跨天场景才看得清。 */
+export function formatShortDateTime(ts: string): string {
+  if (!ts) return ''
+  const d = new Date(ts + 'Z')
+  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+}
+
 export function formatBattery(battery: number): string {
   if (battery == null) return ''
   const sign = battery < 0 ? '-' : ''

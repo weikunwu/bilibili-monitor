@@ -4,7 +4,7 @@ import type { DateRange } from 'rsuite/DateRangePicker'
 
 import type { LiveEvent, GiftUser, GiftGifItem } from '../types'
 import { fetchEventsByType } from '../api/client'
-import { formatTime, formatBattery, fixUrl, fmtDateTime, localToUTC } from '../lib/formatters'
+import { formatShortDateTime, formatBattery, fixUrl, fmtDateTime, localToUTC } from '../lib/formatters'
 import { GenerateImageButton } from './GenerateImageButton'
 import { ClipDownloadButton, isClippable } from './ClipDownloadButton'
 import { EventCard } from './EventCard'
@@ -186,42 +186,35 @@ export function GiftPanel({
 
   return (
     <div className="gift-panel">
-      <div className="panel-title">礼物</div>
       <div className="event-filter">
-        {userOptions.length > 0 && (
-          <CheckPicker
-            data={userOptions}
-            value={selectedUsers}
-            onChange={setSelectedUsers}
-            placeholder="筛选用户"
-            size="sm"
-            searchable
-            countable
-            w={200}
-          />
-        )}
-        {giftNameOptions.length > 0 && (
-          <CheckPicker
-            data={giftNameOptions}
-            value={selectedGifts}
-            onChange={setSelectedGifts}
-            placeholder="筛选礼物"
-            size="sm"
-            searchable
-            countable
-            w={200}
-          />
-        )}
-        {giftEvents.some((ev) => (ev.extra?.total_coin || 0) > 0) && (
-          <Input
-            type="number"
-            value={minTotal}
-            onChange={setMinTotal}
-            placeholder="最低总价(元)"
-            size="sm"
-            style={{ width: 120 }}
-          />
-        )}
+        <CheckPicker
+          data={userOptions}
+          value={selectedUsers}
+          onChange={setSelectedUsers}
+          placeholder="筛选用户"
+          size="sm"
+          searchable
+          countable
+          w={200}
+        />
+        <CheckPicker
+          data={giftNameOptions}
+          value={selectedGifts}
+          onChange={setSelectedGifts}
+          placeholder="筛选礼物"
+          size="sm"
+          searchable
+          countable
+          w={200}
+        />
+        <Input
+          type="number"
+          value={minTotal}
+          onChange={setMinTotal}
+          placeholder="最低总价(元)"
+          size="sm"
+          style={{ width: 120 }}
+        />
         {checkedKeys.size > 0 && (
           <>
             <GenerateImageButton size="sm" appearance="primary" onClick={handleGenerateCard}>
@@ -273,7 +266,7 @@ export function GiftPanel({
                   onCheckChange={() => toggleKey(ev._key)}
                   avatarUrl={extra.avatar}
                   userName={ev.user_name || ''}
-                  timestamp={formatTime(ev.timestamp)}
+                  timestamp={formatShortDateTime(ev.timestamp)}
                   value={extra.total_coin ? formatBattery(extra.total_coin) : null}
                   mainContent={
                     <span className="gift-item">
@@ -355,7 +348,7 @@ export function GiftPanel({
                 <HeaderCell>时间</HeaderCell>
                 <Cell>
                   {(rowData: LiveEvent) => (
-                    <span className="time">{formatTime(rowData.timestamp)}</span>
+                    <span className="time">{formatShortDateTime(rowData.timestamp)}</span>
                   )}
                 </Cell>
               </Column>

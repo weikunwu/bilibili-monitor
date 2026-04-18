@@ -9,9 +9,25 @@ import {
 } from '../api/client'
 import { useIsMobile } from '../hooks/useIsMobile'
 
+export type ToolsCategory = 'reactive' | 'automation'
+
 interface Props {
   roomId: number | null
+  /**
+   * reactive = 观众触发 → 机器人回（AI/欢迎/感谢/潜水）
+   * automation = 主播口令/定时/实验功能（打个有效/定时弹幕/自动剪辑）
+   */
+  category: ToolsCategory
 }
+
+// 按 category 归属每个 cmd.id。broadcast_thanks 的子项在 render 里被 ThanksGroup 吃掉，
+// 这里只列出"会在顶层 map 里判断是否保留"的 id。
+const REACTIVE_IDS = new Set([
+  'ai_reply', 'broadcast_welcome', 'broadcast_thanks', 'lurker_mention', 'scheduled_danmu',
+])
+const AUTOMATION_IDS = new Set([
+  'auto_gift',
+])
 
 const BLIND_DEFAULT_TEMPLATE = '感谢{name}的{count}个盲盒，{verdict}'
 const GUARD_DEFAULT_TEMPLATE = '感谢{name}{content}了{num}个月{guard}'
@@ -53,10 +69,6 @@ function LurkerEditor({
 
   return (
     <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <div style={{ fontSize: 12, color: '#888' }}>
-        占位符：<code>{'{name}'}</code> 用户昵称，<code>{'{streamer}'}</code> 主播昵称
-      </div>
-      <Input size="sm" value={tpl} onChange={setTpl} placeholder={LURKER_DEFAULT_TEMPLATE} />
       <InputGroup size="sm" style={{ maxWidth: 260, width: '100%' }}>
         <InputGroup.Addon>等待</InputGroup.Addon>
         <Input
@@ -73,6 +85,10 @@ function LurkerEditor({
         />
         <InputGroup.Addon>秒 (300–900)</InputGroup.Addon>
       </InputGroup>
+      <div style={{ fontSize: 12, color: '#888' }}>
+        占位符：<code>{'{name}'}</code> 用户昵称，<code>{'{streamer}'}</code> 主播昵称
+      </div>
+      <Input size="sm" value={tpl} onChange={setTpl} placeholder={LURKER_DEFAULT_TEMPLATE} />
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
         <Button
           appearance="subtle" size="sm" style={{ width: 88 }}
@@ -614,7 +630,7 @@ function AiReplyEditor({
   )
 }
 
-export function ToolsPanel({ roomId }: Props) {
+export function ToolsPanel({ roomId, category }: Props) {
   const [commands, setCommands] = useState<Command[]>([])
   const [autoClip, setAutoClip] = useState(false)
   const [committedAutoClip, setCommittedAutoClip] = useState(false)
@@ -749,13 +765,17 @@ export function ToolsPanel({ roomId }: Props) {
     } finally { setAutoClipSaving(false) }
   }
 
+  const allowedIds = category === 'reactive' ? REACTIVE_IDS : AUTOMATION_IDS
+  const title = category === 'reactive' ? '互动回复' : '主动 & 高级'
+
   return (
     <div>
-      <div className="panel-title">主播工具</div>
+      <div className="panel-title">{title}</div>
       <div className="tools-panel-body">
       {commands.map((cmd, i) => {
         if (cmd.id === 'nickname_commands') return null
         if (['broadcast_gift', 'broadcast_guard', 'broadcast_blind', 'broadcast_follow', 'broadcast_like', 'broadcast_share', 'broadcast_superchat'].includes(cmd.id)) return null
+        if (!allowedIds.has(cmd.id)) return null
         if (cmd.id === 'broadcast_thanks') {
           const gift = commands.find((c) => c.id === 'broadcast_gift')
           const guard = commands.find((c) => c.id === 'broadcast_guard')
@@ -910,6 +930,8 @@ export function ToolsPanel({ roomId }: Props) {
         </div>
         )
       })}
+      {category === 'automation' && (
+        <>
       <div className="cmd-section-title">实验功能</div>
       <div className="cmd-item">
         <div className="cmd-info">
@@ -935,7 +957,17 @@ export function ToolsPanel({ roomId }: Props) {
           </div>
         </div>
       </div>
+        </>
+      )}
     </div>
     </div>
   )
+}
+
+// 便捷命名导出：避免每个调用点都记得传 category。
+export function ReactiveToolsPanel(props: { roomId: number | null }) {
+  return <ToolsPanel {...props} category="reactive" />
+}
+export function AutomationToolsPanel(props: { roomId: number | null }) {
+  return <ToolsPanel {...props} category="automation" />
 }

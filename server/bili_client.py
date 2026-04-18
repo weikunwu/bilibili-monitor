@@ -8,6 +8,7 @@ import random
 import re
 import sqlite3
 import time
+from datetime import datetime, timezone, timedelta
 from typing import Optional
 
 import aiohttp
@@ -23,6 +24,7 @@ from . import recorder
 from .db import (
     save_event, get_command, get_room_save_danmu, get_room_auto_clip,
     get_nickname, upsert_nickname, delete_nickname,
+    set_live_started_at,
 )
 from .time_utils import beijing_time_range
 
@@ -184,6 +186,33 @@ class BiliLiveClient:
                     self.streamer_uid = info.get("uid", 0)
                     self.room_title = info.get("title", "")
                     self.live_status = info.get("live_status", 0)
+                    # bot 启动/重连时如果房间正在直播，而 DB 里 live_started_at 还没填，
+                    # 用 B 站返回的 live_time（北京时间字符串）回填；拿不到就用 now。
+                    if self.live_status == 1:
+                        try:
+                            from .db import get_live_started_at as _glsa
+                            if not _glsa(self.room_id):
+                                live_time = info.get("live_time") or ""
+                                iso = None
+                                if isinstance(live_time, str) and len(live_time) >= 19:
+                                    try:
+                                        # 北京时间 → UTC ISO
+                                        bj = datetime.strptime(live_time, "%Y-%m-%d %H:%M:%S")
+                                        bj = bj.replace(tzinfo=timezone(timedelta(hours=8)))
+                                        iso = bj.astimezone(timezone.utc).isoformat()
+                                    except ValueError:
+                                        iso = None
+                                if not iso:
+                                    iso = datetime.now(timezone.utc).isoformat()
+                                set_live_started_at(self.room_id, iso)
+                        except Exception:
+                            pass
+                    elif self.live_status == 0:
+                        # 启动时房间未开播：确保 live_started_at 空
+                        try:
+                            set_live_started_at(self.room_id, None)
+                        except Exception:
+                            pass
                     self.area_name = info.get("area_name", "")
                     self.parent_area_name = info.get("parent_area_name", "")
                     self.announcement = info.get("description", "")
@@ -1020,11 +1049,22 @@ class BiliLiveClient:
                                 base_cmd = cmd.split(":")[0]
                                 if base_cmd == "LIVE":
                                     self.live_status = 1
+                                    # overlay "本次直播" 时间窗取这个 ts 作 floor。
+                                    # 仅在 0→1 转换时更新，避免同一场播中反复写。
+                                    try:
+                                        set_live_started_at(self.room_id, datetime.now(timezone.utc).isoformat())
+                                    except Exception:
+                                        pass
                                     if get_room_auto_clip(self.room_id):
                                         asyncio.create_task(recorder.start_for(self.real_room_id, self.cookies))
                                     continue
                                 if base_cmd == "PREPARING":
                                     self.live_status = 0
+                                    # 下播后清空 live_started_at，overlay "本次直播" 会返空
+                                    try:
+                                        set_live_started_at(self.room_id, None)
+                                    except Exception:
+                                        pass
                                     asyncio.create_task(recorder.stop_for(self.real_room_id))
                                     continue
                                 if base_cmd == "INTERACT_WORD_V2":

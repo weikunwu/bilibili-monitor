@@ -4,7 +4,7 @@ import type { DateRange } from 'rsuite/DateRangePicker'
 
 import type { LiveEvent, GiftUser, GiftGifItem } from '../types'
 import { fetchEventsByType } from '../api/client'
-import { formatTime, formatBattery, fixUrl, fmtDateTime, localToUTC } from '../lib/formatters'
+import { formatShortDateTime, formatBattery, fixUrl, fmtDateTime, localToUTC } from '../lib/formatters'
 import { GenerateImageButton } from './GenerateImageButton'
 import { ClipDownloadButton, isClippable } from './ClipDownloadButton'
 import { EventCard } from './EventCard'
@@ -181,20 +181,17 @@ export function GuardPanel({
 
   return (
     <div className="gift-panel">
-      <div className="panel-title">大航海</div>
       <div className="event-filter">
-        {userOptions.length > 0 && (
-          <CheckPicker
-            data={userOptions}
-            value={selectedUsers}
-            onChange={setSelectedUsers}
-            placeholder="筛选用户"
-            size="sm"
-            searchable
-            countable
-            w={200}
-          />
-        )}
+        <CheckPicker
+          data={userOptions}
+          value={selectedUsers}
+          onChange={setSelectedUsers}
+          placeholder="筛选用户"
+          size="sm"
+          searchable
+          countable
+          w={200}
+        />
         {checkedKeys.size > 0 && (
           <>
             <GenerateImageButton size="sm" appearance="primary" onClick={handleGenerateCard}>
@@ -251,7 +248,7 @@ export function GuardPanel({
                   onCheckChange={() => toggleKey(ev._key)}
                   avatarUrl={extra.avatar}
                   userName={ev.user_name || ''}
-                  timestamp={formatTime(ev.timestamp)}
+                  timestamp={formatShortDateTime(ev.timestamp)}
                   value={extra.price ? `¥${(extra.price / 10).toFixed(1).replace(/\.0$/, '')}` : null}
                   mainContent={
                     <span className="gift-item">
@@ -331,7 +328,7 @@ export function GuardPanel({
                 <HeaderCell>时间</HeaderCell>
                 <Cell>
                   {(rowData: LiveEvent) => (
-                    <span className="time">{formatTime(rowData.timestamp)}</span>
+                    <span className="time">{formatShortDateTime(rowData.timestamp)}</span>
                   )}
                 </Cell>
               </Column>

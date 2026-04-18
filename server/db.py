@@ -50,6 +50,8 @@ OVERLAY_DEFAULTS: dict = {
     "show_gift": 1,
     "show_blind": 1,
     "show_guard": 1,
+    "show_superchat": 1,
+    "time_range": "today",  # today / week / live
     "cleared_at": "",
 }
 
@@ -60,7 +62,7 @@ def get_overlay_settings(room_id: int) -> dict:
     conn.row_factory = sqlite3.Row
     row = conn.execute(
         "SELECT max_events, min_price, max_price, price_mode, "
-        "show_gift, show_blind, show_guard, cleared_at "
+        "show_gift, show_blind, show_guard, show_superchat, time_range, cleared_at "
         "FROM overlay_settings WHERE room_id=?",
         (room_id,),
     ).fetchone()
@@ -68,8 +70,10 @@ def get_overlay_settings(room_id: int) -> dict:
     if not row:
         return dict(OVERLAY_DEFAULTS)
     d = dict(row)
-    for k in ("show_gift", "show_blind", "show_guard"):
+    for k in ("show_gift", "show_blind", "show_guard", "show_superchat"):
         d[k] = bool(d[k])
+    if d.get("time_range") not in ("today", "week", "live"):
+        d["time_range"] = "today"
     return d
 
 
@@ -77,7 +81,8 @@ def update_overlay_settings(room_id: int, patch: dict) -> dict:
     """Upsert overlay settings for a room. Only whitelisted keys are applied."""
     allowed = {
         "max_events", "min_price", "max_price", "price_mode",
-        "show_gift", "show_blind", "show_guard",
+        "show_gift", "show_blind", "show_guard", "show_superchat",
+        "time_range",
     }
     current = get_overlay_settings(room_id)
     for k in allowed:
@@ -87,21 +92,26 @@ def update_overlay_settings(room_id: int, patch: dict) -> dict:
     show_gift = int(bool(current["show_gift"]))
     show_blind = int(bool(current["show_blind"]))
     show_guard = int(bool(current["show_guard"]))
+    show_superchat = int(bool(current["show_superchat"]))
+    tr = current.get("time_range") or "today"
+    if tr not in ("today", "week", "live"):
+        tr = "today"
     conn = sqlite3.connect(str(DB_PATH))
     conn.execute(
         "INSERT INTO overlay_settings "
         "(room_id, max_events, min_price, max_price, price_mode, "
-        "show_gift, show_blind, show_guard, cleared_at) "
-        "VALUES (?,?,?,?,?,?,?,?,?) "
+        "show_gift, show_blind, show_guard, show_superchat, time_range, cleared_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?) "
         "ON CONFLICT(room_id) DO UPDATE SET "
         "max_events=excluded.max_events, min_price=excluded.min_price, "
         "max_price=excluded.max_price, price_mode=excluded.price_mode, "
         "show_gift=excluded.show_gift, show_blind=excluded.show_blind, "
-        "show_guard=excluded.show_guard",
+        "show_guard=excluded.show_guard, show_superchat=excluded.show_superchat, "
+        "time_range=excluded.time_range",
         (
             room_id, int(current["max_events"]), int(current["min_price"]),
             int(current["max_price"]), str(current["price_mode"]),
-            show_gift, show_blind, show_guard, current.get("cleared_at") or "",
+            show_gift, show_blind, show_guard, show_superchat, tr, current.get("cleared_at") or "",
         ),
     )
     conn.commit()
@@ -287,9 +297,21 @@ def init_db():
             show_gift INTEGER NOT NULL DEFAULT 1,
             show_blind INTEGER NOT NULL DEFAULT 1,
             show_guard INTEGER NOT NULL DEFAULT 1,
+            show_superchat INTEGER NOT NULL DEFAULT 1,
+            time_range TEXT NOT NULL DEFAULT 'today',
             cleared_at TEXT NOT NULL DEFAULT ''
         )
     """)
+    # 老库补列
+    ov_cols = {r[1] for r in conn.execute("PRAGMA table_info(overlay_settings)").fetchall()}
+    if "show_superchat" not in ov_cols:
+        conn.execute("ALTER TABLE overlay_settings ADD COLUMN show_superchat INTEGER NOT NULL DEFAULT 1")
+    if "time_range" not in ov_cols:
+        conn.execute("ALTER TABLE overlay_settings ADD COLUMN time_range TEXT NOT NULL DEFAULT 'today'")
+    # rooms 表加 live_started_at（bili_client 收到 LIVE 时写 UTC ISO；供 overlay 查"本次直播"）
+    room_cols = {r[1] for r in conn.execute("PRAGMA table_info(rooms)").fetchall()}
+    if "live_started_at" not in room_cols:
+        conn.execute("ALTER TABLE rooms ADD COLUMN live_started_at TEXT")
 
     admin_email = os.environ.get("ADMIN_EMAIL", "")
     admin_password = os.environ.get("ADMIN_PASSWORD", "")
@@ -342,6 +364,22 @@ def set_room_active(room_id: int, active: bool):
     conn.execute("UPDATE rooms SET active=? WHERE room_id=?", (int(active), room_id))
     conn.commit()
     conn.close()
+
+
+def set_live_started_at(room_id: int, iso_utc: Optional[str]):
+    """直播开播时由 bili_client 调用，overlay "本次直播" 时间窗拿这个作 floor。
+    传 None 表示当前不在直播中（下播/房间空闲），overlay 会据此返空。"""
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.execute("UPDATE rooms SET live_started_at=? WHERE room_id=?", (iso_utc, room_id))
+    conn.commit()
+    conn.close()
+
+
+def get_live_started_at(room_id: int) -> Optional[str]:
+    conn = sqlite3.connect(str(DB_PATH))
+    row = conn.execute("SELECT live_started_at FROM rooms WHERE room_id=?", (room_id,)).fetchone()
+    conn.close()
+    return row[0] if row and row[0] else None
 
 
 def list_users() -> list[dict]:

@@ -4,13 +4,13 @@ import type { DateRange } from 'rsuite/DateRangePicker'
 
 import type { LiveEvent, TabType } from '../types'
 import { EventItem } from './EventItem'
-import { TAB_ALL, EVENT_DANMU } from '../lib/constants'
 import { PREDEFINED_RANGES } from '../lib/dateRanges'
 import { fmtDateTime } from '../lib/formatters'
 
 interface Props {
   events: LiveEvent[]
-  activeTab: TabType
+  /** 保留参数是为了以后再加子类型过滤时不破坏调用方。当前 EventList 固定展示 TAB_LIVE 全类型。 */
+  activeTab?: TabType
   autoScroll: boolean
   dateRange: DateRange
   showAutoScroll?: boolean
@@ -38,7 +38,7 @@ function formatDateLabel(dateStr: string): string {
 }
 
 export function EventList({
-  events, activeTab, autoScroll, dateRange, showAutoScroll = true,
+  events, autoScroll, dateRange, showAutoScroll = true,
   saveDanmu, onToggleSaveDanmu, onAutoScrollChange, onQueryRange,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -49,22 +49,19 @@ export function EventList({
     return Array.from(names).map((n) => ({ label: n, value: n }))
   }, [events])
 
-  const filtered = events.filter((ev) => {
-    if (activeTab !== TAB_ALL && ev.event_type !== activeTab) return false
-    if (selectedUsers.length > 0 && !selectedUsers.includes(ev.user_name || '')) return false
-    return true
-  })
+  const filtered = selectedUsers.length > 0
+    ? events.filter((ev) => selectedUsers.includes(ev.user_name || ''))
+    : events
 
   useEffect(() => {
-    if (autoScroll && (activeTab === TAB_ALL || activeTab === EVENT_DANMU) && containerRef.current) {
+    if (autoScroll && containerRef.current) {
       containerRef.current.scrollTop = containerRef.current.scrollHeight
     }
   }, [filtered.length, autoScroll])
 
-  const title = activeTab === EVENT_DANMU ? '弹幕' : '全部事件'
   return (
     <>
-      <div className="panel-title">{title}</div>
+      <div className="panel-title">直播流</div>
       <div className="event-filter">
         {onToggleSaveDanmu && (
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>

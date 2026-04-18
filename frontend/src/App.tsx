@@ -5,14 +5,12 @@ import { fetchRooms, fetchEvents, fetchMe, toggleSaveDanmu, type CurrentUser } f
 import { useWebSocket } from './hooks/useWebSocket'
 import { useLocalStorage } from './hooks/useLocalStorage'
 import { localToUTC, fmtDate } from './lib/formatters'
-import { MAX_EVENTS, TAB_ALL, TAB_BLINDBOX, TAB_TOOLS, TAB_NICKNAMES, TAB_REALTIME_GIFTS, EVENT_DANMU, EVENT_GIFT, EVENT_SUPERCHAT, EVENT_GUARD } from './lib/constants'
+import { MAX_EVENTS, TAB_LIVE, TAB_REALTIME, TAB_EVENTS, TAB_BLINDBOX, TAB_REACTIVE, TAB_AUTOMATION, TAB_NICKNAMES } from './lib/constants'
 import { TabSidebar } from './components/TabBar'
 
 import { EventList } from './components/EventList'
-import { GiftPanel } from './components/GiftPanel'
-import { GuardPanel } from './components/GuardPanel'
-import { SuperChatPanel } from './components/SuperChatPanel'
-import { ToolsPanel } from './components/ToolsPanel'
+import { EventsPanel } from './components/EventsPanel'
+import { ReactiveToolsPanel, AutomationToolsPanel } from './components/ToolsPanel'
 import { BlindBoxPanel } from './components/BlindBoxPanel'
 import { NicknamesPanel } from './components/NicknamesPanel'
 import { RealtimeGiftsPanel } from './components/RealtimeGiftsPanel'
@@ -36,7 +34,7 @@ function todayRange(): DateRange {
   ]
 }
 
-const VALID_TABS: TabType[] = [TAB_ALL, EVENT_DANMU, EVENT_GIFT, EVENT_SUPERCHAT, EVENT_GUARD, TAB_BLINDBOX, TAB_NICKNAMES, TAB_REALTIME_GIFTS, TAB_TOOLS]
+const VALID_TABS: TabType[] = [TAB_LIVE, TAB_REALTIME, TAB_EVENTS, TAB_BLINDBOX, TAB_REACTIVE, TAB_AUTOMATION, TAB_NICKNAMES]
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null)
@@ -50,7 +48,15 @@ export default function App() {
     if (window.location.pathname.startsWith('/register')) return
     if (window.location.pathname.startsWith('/login')) return
     if (window.location.pathname.startsWith('/forgot-password')) return
-    fetchMe().then(setCurrentUser)
+    // fetchMe 是判定登录的真相源：null 直接跳登录，避免靠 fetchRooms 的 401 兜底
+    // （fetchRooms 已有 redirect，但如果调用顺序/竞态变化就不保险，这里加一道）。
+    fetchMe().then((user) => {
+      if (!user) {
+        window.location.href = '/login'
+        return
+      }
+      setCurrentUser(user)
+    })
     fetchRooms().then(setRooms)
   }, [])
 
@@ -64,7 +70,7 @@ export default function App() {
         />
       } />
       <Route path="/room/:roomId" element={
-        <Navigate to="all" replace />
+        <Navigate to="live" replace />
       } />
       <Route path="/room/:roomId/:tab" element={
         <RoomPage
@@ -144,7 +150,7 @@ function RoomPage({ rooms, currentUser, onRoomsChanged }: {
   const { roomId: roomIdStr, tab: tabStr } = useParams()
   const navigate = useNavigate()
   const roomId = Number(roomIdStr)
-  const activeTab = (VALID_TABS.includes(tabStr as TabType) ? tabStr : TAB_ALL) as TabType
+  const activeTab = (VALID_TABS.includes(tabStr as TabType) ? tabStr : TAB_LIVE) as TabType
 
   const [events, setEvents] = useState<LiveEvent[]>([])
   const [autoScroll, setAutoScroll] = useLocalStorage('autoScroll', true)
@@ -190,63 +196,45 @@ function RoomPage({ rooms, currentUser, onRoomsChanged }: {
   }
 
   function renderContent() {
-    if (activeTab === 'blindbox') {
+    if (activeTab === TAB_BLINDBOX) {
       return <BlindBoxPanel roomId={roomId} />
     }
-    if (activeTab === 'tools') {
-      return <ToolsPanel roomId={roomId} />
+    if (activeTab === TAB_REACTIVE) {
+      return <ReactiveToolsPanel roomId={roomId} />
     }
-    if (activeTab === 'nicknames') {
+    if (activeTab === TAB_AUTOMATION) {
+      return <AutomationToolsPanel roomId={roomId} />
+    }
+    if (activeTab === TAB_NICKNAMES) {
       return <NicknamesPanel roomId={roomId} />
     }
-    if (activeTab === TAB_REALTIME_GIFTS) {
+    if (activeTab === TAB_REALTIME) {
       return <RealtimeGiftsPanel roomId={roomId} />
     }
-    if (activeTab === EVENT_SUPERCHAT) {
+    if (activeTab === TAB_EVENTS) {
       return (
-        <SuperChatPanel
+        <EventsPanel
           roomId={roomId}
-          dateRange={dateRange}
-          onQueryRange={handleQueryRange}
-          onGenerateSuperChatImage={(event, options) => giftModalRef.current?.showSuperChatImage(event, options)}
-        />
-      )
-    }
-    if (activeTab === EVENT_GUARD) {
-      return (
-        <GuardPanel
-          roomId={roomId}
-          dateRange={dateRange}
-          onQueryRange={handleQueryRange}
-          onShowCardPreview={(url) => giftModalRef.current?.showPreview(url)}
-          onGenerateGiftGif={(items) => giftModalRef.current?.showGiftGif(items)}
-        />
-      )
-    }
-    if (activeTab === EVENT_GIFT) {
-      return (
-        <GiftPanel
-          roomId={roomId}
-          dateRange={dateRange}
-          onQueryRange={handleQueryRange}
           onGenerateGiftImage={(userName) => giftModalRef.current?.showGiftImage(roomId, userName)}
           onGenerateBlindBoxImage={(userName) => giftModalRef.current?.showGiftImage(roomId, userName, true)}
           onGenerateGiftGif={(items) => giftModalRef.current?.showGiftGif(items)}
           onShowCardPreview={(url, ext) => giftModalRef.current?.showPreview(url, ext)}
+          onGenerateSuperChatImage={(event, options) => giftModalRef.current?.showSuperChatImage(event, options)}
         />
       )
     }
+    // TAB_LIVE: 直播实时流（含所有事件类型 + 记录弹幕开关）
     return (
       <EventList
         events={events}
-        activeTab={activeTab}
+        activeTab={TAB_LIVE}
         autoScroll={autoScroll}
-        showAutoScroll={activeTab === TAB_ALL || activeTab === EVENT_DANMU}
+        showAutoScroll={true}
         saveDanmu={currentRoom?.save_danmu}
-        onToggleSaveDanmu={activeTab === EVENT_DANMU ? async (checked) => {
+        onToggleSaveDanmu={async (checked) => {
           await toggleSaveDanmu(roomId, checked)
           onRoomsChanged()
-        } : undefined}
+        }}
         onAutoScrollChange={setAutoScroll}
         dateRange={dateRange}
         onQueryRange={handleQueryRange}

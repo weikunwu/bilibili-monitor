@@ -19,7 +19,8 @@ interface Props {
 }
 
 export function BlindBoxPanel({ roomId }: Props) {
-  const [dateRange, setDateRange] = useState<DateRange | null>(() => BLIND_RANGES[0].value())
+  // 默认"今月"（BLIND_RANGES 里 index 2）：和事件查询保持一致。
+  const [dateRange, setDateRange] = useState<DateRange | null>(() => BLIND_RANGES[2].value())
   const [selectedUsers, setSelectedUsers] = useState<string[]>([])
   const [selectedBoxes, setSelectedBoxes] = useState<string[]>([])
   const [allUsers, setAllUsers] = useState<BlindBoxUser[]>([])
@@ -79,30 +80,26 @@ export function BlindBoxPanel({ roomId }: Props) {
     <div className="blind-box-panel">
       <div className="panel-title">盲盒统计</div>
       <div className="event-filter">
-        {userOptions.length > 0 && (
-          <CheckPicker
-            data={userOptions}
-            value={selectedUsers}
-            onChange={setSelectedUsers}
-            placeholder="筛选用户"
-            size="sm"
-            searchable
-            countable
-            w={200}
-          />
-        )}
-        {boxOptions.length > 0 && (
-          <CheckPicker
-            data={boxOptions}
-            value={selectedBoxes}
-            onChange={setSelectedBoxes}
-            placeholder="筛选盲盒"
-            size="sm"
-            searchable
-            countable
-            w={200}
-          />
-        )}
+        <CheckPicker
+          data={userOptions}
+          value={selectedUsers}
+          onChange={setSelectedUsers}
+          placeholder="筛选用户"
+          size="sm"
+          searchable
+          countable
+          w={200}
+        />
+        <CheckPicker
+          data={boxOptions}
+          value={selectedBoxes}
+          onChange={setSelectedBoxes}
+          placeholder="筛选盲盒"
+          size="sm"
+          searchable
+          countable
+          w={200}
+        />
         <span style={{ flex: 1 }} />
         <DateRangePicker
           format="yyyy-MM-dd HH:mm:ss"

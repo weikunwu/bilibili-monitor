@@ -1,9 +1,18 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
-import type { GiftUser } from '../types'
+import type { GiftUser, LiveEvent } from '../types'
 import { generateGiftCard } from '../lib/giftCard'
+import { generateSuperChatCard } from '../lib/superchatCard'
 
-type OverlayItem = GiftUser & { event_id: number }
+type GiftOverlayItem = GiftUser & { event_id: number; type: 'gift' | 'guard' }
+type SuperChatOverlayItem = {
+  event_id: number
+  type: 'superchat'
+  user_name: string
+  content: string
+  extra: LiveEvent['extra']
+}
+type OverlayItem = GiftOverlayItem | SuperChatOverlayItem
 
 const POLL_MS = 5000
 
@@ -65,13 +74,23 @@ export function OverlayGiftsPage() {
           再加 marginTop=-6 抵消首张卡上方的多余空白。 */}
       <div style={{ display: 'flex', flexDirection: 'column', padding: 8 }}>
         {users.map((u, i) => (
-          <GiftCardCanvas
-            key={u.event_id}
-            user={u}
-            first={i === 0}
-            roomId={roomId!}
-            token={token}
-          />
+          u.type === 'superchat' ? (
+            <SuperChatCardCanvas
+              key={u.event_id}
+              item={u}
+              first={i === 0}
+              roomId={roomId!}
+              token={token}
+            />
+          ) : (
+            <GiftCardCanvas
+              key={u.event_id}
+              user={u}
+              first={i === 0}
+              roomId={roomId!}
+              token={token}
+            />
+          )
         ))}
       </div>
       {error && (
@@ -104,6 +123,35 @@ function GiftCardCanvas({
     <canvas
       ref={canvasRef}
       style={{ display: 'block', marginTop: first ? -6 : 0 }}
+    />
+  )
+}
+
+function SuperChatCardCanvas({
+  item, first, roomId, token,
+}: { item: SuperChatOverlayItem; first: boolean; roomId: string; token: string }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+
+  useEffect(() => {
+    if (!canvasRef.current) return
+    const proxyUrl = (src: string) =>
+      `/api/overlay/proxy-image/${roomId}?token=${encodeURIComponent(token)}&url=${encodeURIComponent(src)}`
+    // generateSuperChatCard 期待的是 LiveEvent shape：拼一个最小的过去
+    const pseudoEvent: LiveEvent = {
+      id: item.event_id,
+      timestamp: '',
+      event_type: 'superchat',
+      user_name: item.user_name,
+      content: item.content,
+      extra: item.extra,
+    } as LiveEvent
+    generateSuperChatCard(canvasRef.current, pseudoEvent, { proxyUrl }).catch(() => {})
+  }, [item, roomId, token])
+
+  return (
+    <canvas
+      ref={canvasRef}
+      style={{ display: 'block', marginTop: first ? 0 : 8 }}
     />
   )
 }

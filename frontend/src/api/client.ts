@@ -21,10 +21,12 @@ export async function fetchStats(roomId: number): Promise<Stats> {
   return res.json()
 }
 
-async function _fetchEventsUrl(url: string): Promise<LiveEvent[]> {
+/** 后端 ORDER BY id DESC；reverse=true 转成老→新（直播流需要按时间追加），false 保持新→老（历史查询默认）。 */
+async function _fetchEventsUrl(url: string, reverse: boolean): Promise<LiveEvent[]> {
   const res = await fetch(url)
   const data: LiveEvent[] = await res.json()
-  return data.reverse().map((e) => {
+  const arr = reverse ? data.reverse() : data
+  return arr.map((e) => {
     if (typeof e.extra_json === 'string') {
       try { e.extra = JSON.parse(e.extra_json) } catch { e.extra = {} as never }
     }
@@ -43,7 +45,7 @@ export async function fetchEvents(
   if (timeTo) url += `&time_to=${encodeURIComponent(timeTo)}`
   if (type) url += `&type=${encodeURIComponent(type)}`
   if (userName) url += `&user_name=${encodeURIComponent(userName)}`
-  return _fetchEventsUrl(url)
+  return _fetchEventsUrl(url, true)
 }
 
 export async function fetchEventsByType(
@@ -55,7 +57,7 @@ export async function fetchEventsByType(
   let url = `/api/events/${type}?limit=${limit}&room_id=${roomId}`
   if (timeFrom) url += `&time_from=${encodeURIComponent(timeFrom)}`
   if (timeTo) url += `&time_to=${encodeURIComponent(timeTo)}`
-  return _fetchEventsUrl(url)
+  return _fetchEventsUrl(url, false)
 }
 
 export async function fetchBotStatus(roomId: number): Promise<{ logged_in: boolean; uid: number }> {
@@ -268,6 +270,8 @@ export interface OverlaySettings {
   show_gift: boolean
   show_blind: boolean
   show_guard: boolean
+  show_superchat: boolean
+  time_range: 'today' | 'week' | 'live'
   cleared_at: string
 }
 

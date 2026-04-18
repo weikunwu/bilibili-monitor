@@ -1,13 +1,15 @@
 import { type ReactNode, memo } from 'react'
 import { Tag, Checkbox } from 'rsuite'
 import type { LiveEvent } from '../types'
-import { formatTime, formatBattery, fixUrl } from '../lib/formatters'
+import { formatTime, formatShortDateTime, formatBattery, fixUrl } from '../lib/formatters'
 import { BADGE_NAMES, EVENT_GIFT, EVENT_SUPERCHAT, EVENT_GUARD } from '../lib/constants'
 
 interface Props {
   event: LiveEvent
   checked?: boolean
   onCheck?: () => void
+  /** 事件查询页跨天展示时加日期，直播流默认只展示 HH:mm:ss */
+  showDate?: boolean
 }
 
 const TAG_COLORS: Record<string, 'red' | 'orange' | 'yellow' | 'green' | 'blue' | 'violet' | 'cyan'> = {
@@ -66,7 +68,7 @@ function renderContent(ev: LiveEvent): ReactNode {
   return <>{ev.content || ''}</>
 }
 
-export const EventItem = memo(function EventItem({ event: ev, checked, onCheck }: Props) {
+export const EventItem = memo(function EventItem({ event: ev, checked, onCheck, showDate }: Props) {
   const extra = ev.extra || {}
   const face = extra.avatar || ''
 
@@ -91,7 +93,7 @@ export const EventItem = memo(function EventItem({ event: ev, checked, onCheck }
       {onCheck !== undefined && (
         <Checkbox checked={checked} onChange={onCheck} className="event-checkbox" />
       )}
-      <span className="time">{formatTime(ev.timestamp)}</span>
+      <span className="time">{showDate ? formatShortDateTime(ev.timestamp) : formatTime(ev.timestamp)}</span>
       <Tag size="sm" color={TAG_COLORS[ev.event_type]}>
         {BADGE_NAMES[ev.event_type] || ev.event_type}
       </Tag>

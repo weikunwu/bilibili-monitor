@@ -112,7 +112,9 @@ export interface Command {
   config: Record<string, unknown>
 }
 
-export type TabType = 'all' | 'danmu' | 'gift' | 'superchat' | 'guard' | 'blindbox' | 'tools' | 'nicknames' | 'realtime_gifts' | 'admin'
+export type TabType = 'live' | 'realtime' | 'events' | 'blindbox' | 'reactive' | 'automation' | 'nicknames' | 'admin'
+/** 事件查询内的类型切换 chip（不走路由，不是 TabType） */
+export type EventsKind = 'danmu' | 'gift' | 'guard' | 'superchat'
 
 export type ConnectionStatus = 'connected' | 'disconnected' | 'connecting'
 
