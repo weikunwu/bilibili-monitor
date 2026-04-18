@@ -368,9 +368,14 @@ async def put_overlay_settings_route(room_id: int, request: Request, _=Depends(r
         if mode not in ("total", "unit"):
             raise HTTPException(400, "price_mode 必须是 total 或 unit")
         patch["price_mode"] = mode
-    for k in ("show_gift", "show_blind", "show_guard"):
+    for k in ("show_gift", "show_blind", "show_guard", "show_superchat"):
         if k in body:
             patch[k] = bool(body[k])
+    if "time_range" in body:
+        tr = str(body["time_range"])
+        if tr not in ("today", "week", "live"):
+            raise HTTPException(400, "time_range 必须是 today / week / live")
+        patch["time_range"] = tr
     # 合理性：max_price > 0 时必须 >= min_price
     merged = {**get_overlay_settings(room_id), **patch}
     if merged["max_price"] and merged["max_price"] < merged["min_price"]:

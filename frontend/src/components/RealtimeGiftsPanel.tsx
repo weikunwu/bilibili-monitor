@@ -12,6 +12,7 @@ import {
   fetchOverlaySettings, updateOverlaySettings, clearOverlayHistory,
   type OverlaySettings,
 } from '../api/client'
+import { useIsMobile } from '../hooks/useIsMobile'
 
 interface Props {
   roomId: number
@@ -33,13 +34,13 @@ const DEFAULTS: OverlaySettings = {
 const LABEL_WIDTH = 84
 
 function Section({
-  title, description, children,
-}: { title: string; description?: string; children: React.ReactNode }) {
+  title, description, children, isMobile,
+}: { title: string; description?: string; children: React.ReactNode; isMobile: boolean }) {
   return (
     <div
       style={{
         background: '#1a1a2e', border: '1px solid #2a2a4a', borderRadius: 10,
-        padding: '16px 20px',
+        padding: isMobile ? '14px 14px' : '16px 20px',
       }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, marginBottom: description ? 4 : 12 }}>
@@ -54,8 +55,18 @@ function Section({
 }
 
 function Row({
-  label, children,
-}: { label: string; children: React.ReactNode }) {
+  label, children, isMobile,
+}: { label: string; children: React.ReactNode; isMobile: boolean }) {
+  if (isMobile) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={{ fontSize: 13, color: '#bbb' }}>{label}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          {children}
+        </div>
+      </div>
+    )
+  }
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
       <div style={{ width: LABEL_WIDTH, flexShrink: 0, fontSize: 13, color: '#bbb' }}>{label}</div>
@@ -77,6 +88,7 @@ function formatClearedAt(utc: string): string {
 
 export function RealtimeGiftsPanel({ roomId }: Props) {
   const toaster = useToaster()
+  const isMobile = useIsMobile()
   const [token, setToken] = useState('')
   const [copied, setCopied] = useState(false)
   const [rotating, setRotating] = useState(false)
@@ -175,9 +187,10 @@ export function RealtimeGiftsPanel({ roomId }: Props) {
   return (
     <div>
       <div className="panel-title">实时礼物流</div>
-      <div style={{ padding: '0 24px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ padding: isMobile ? '0 12px 20px' : '0 24px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
         <Section
+          isMobile={isMobile}
           title="OBS 浏览器源链接"
           description="链接带 token 鉴权，任何人知道 URL 都能看到该房间的礼物聚合。Token 外泄后点「重新生成」让旧链接失效。"
         >
@@ -208,8 +221,8 @@ export function RealtimeGiftsPanel({ roomId }: Props) {
           </div>
         </Section>
 
-        <Section title="展示设置">
-          <Row label="时间范围">
+        <Section title="展示设置" isMobile={isMobile}>
+          <Row label="时间范围" isMobile={isMobile}>
             <RadioGroup
               inline
               value={draft.time_range}
@@ -226,7 +239,7 @@ export function RealtimeGiftsPanel({ roomId }: Props) {
             </span>
           </Row>
 
-          <Row label="最多展示">
+          <Row label="最多展示" isMobile={isMobile}>
             <Input
               type="number" size="sm"
               value={String(draft.max_events)}
@@ -239,7 +252,7 @@ export function RealtimeGiftsPanel({ roomId }: Props) {
             <span style={{ color: '#888', fontSize: 12 }}>条事件（1–20）</span>
           </Row>
 
-          <Row label="展示类型">
+          <Row label="展示类型" isMobile={isMobile}>
             <CheckboxGroup
               inline
               value={shownTypes}
@@ -261,7 +274,7 @@ export function RealtimeGiftsPanel({ roomId }: Props) {
             </CheckboxGroup>
           </Row>
 
-          <Row label="价格基准">
+          <Row label="价格基准" isMobile={isMobile}>
             <RadioGroup
               inline
               value={draft.price_mode}
@@ -275,7 +288,7 @@ export function RealtimeGiftsPanel({ roomId }: Props) {
             </span>
           </Row>
 
-          <Row label="价格区间">
+          <Row label="价格区间" isMobile={isMobile}>
             <InputGroup size="sm" style={{ width: 150 }}>
               <Input
                 type="number"

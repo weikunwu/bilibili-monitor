@@ -265,6 +265,13 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
                       启动监听
                     </Button>
                   )}
+                  <Button
+                    size="sm" appearance="ghost" style={{ width: 132 }}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      toaster.push(<Message type="info" showIcon closable>试运行期间暂时不用续费哦</Message>, { duration: 3000 })
+                    }}
+                  >续费机器人</Button>
                   <Button size="sm" appearance="ghost" startIcon={<ChangeListIcon />} style={{ width: 132 }} onClick={(e) => { e.stopPropagation(); onBindBot?.(r.room_id) }}>
                     {r.bot_uid ? '更换机器人' : '绑定机器人'}
                   </Button>
