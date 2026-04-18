@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { MdCircle } from 'react-icons/md'
-import { Button, ButtonToolbar, IconButton, Input, Modal, useToaster, Message } from 'rsuite'
+import { Button, ButtonToolbar, IconButton, Input, Modal, Tag, useToaster, Message } from 'rsuite'
 import PlayOutlineIcon from '@rsuite/icons/PlayOutline'
 import CloseOutlineIcon from '@rsuite/icons/CloseOutline'
 import ChangeListIcon from '@rsuite/icons/ChangeList'
@@ -38,22 +38,35 @@ function formatFans(n: number): string {
   return n.toLocaleString()
 }
 
-/** 到期时间：DB 存 UTC 'YYYY-MM-DD HH:MM:SS'，渲染成北京时间。
- *  已过期显示红色"已到期"徽章。 */
-function ExpiresBadge({ expiresAt }: { expiresAt: string | null }) {
+/** 到期时间：DB 存 UTC 'YYYY-MM-DD HH:MM:SS'，渲染成本地时间。
+ *  未到期附带"剩余 N 天"，不足 1 天显示小时；已到期显示红色"已到期"。 */
+function ExpiresRow({ expiresAt }: { expiresAt: string | null }) {
   if (!expiresAt) return null
   const d = new Date(expiresAt.replace(' ', 'T') + 'Z')
   if (isNaN(d.getTime())) return null
   const pad = (n: number) => n.toString().padStart(2, '0')
   const text = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
-  const expired = d.getTime() <= Date.now()
+  const diffMs = d.getTime() - Date.now()
+  const expired = diffMs <= 0
+  let tagText: string
+  let tagColor: 'red' | 'orange' | 'cyan'
+  if (expired) {
+    tagText = '已到期'
+    tagColor = 'red'
+  } else if (diffMs >= 86400000) {
+    const days = Math.ceil(diffMs / 86400000)
+    tagText = `剩余 ${days} 天`
+    tagColor = days <= 3 ? 'orange' : 'cyan'
+  } else {
+    tagText = `剩余 ${Math.max(1, Math.ceil(diffMs / 3600000))} 小时`
+    tagColor = 'orange'
+  }
   return (
-    <>
-      <span className="rc-detail-label" style={{ marginLeft: 16 }}>到期</span>
-      <span className={expired ? 'rc-expired' : 'rc-expires'}>
-        {text}{expired ? '（已到期）' : ''}
-      </span>
-    </>
+    <div className="rc-detail-row">
+      <span className="rc-detail-label">到期</span>
+      <span className={expired ? 'rc-expired' : 'rc-expires'}>{text}</span>
+      <Tag size="sm" color={tagColor}>{tagText}</Tag>
+    </div>
   )
 }
 
@@ -267,13 +280,15 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
             {/* Footer: bot + monitor status */}
             <div className="rc-footer">
               <div className="rc-footer-info">
-                <span className="rc-detail-label">机器人</span>
-                {r.bot_uid ? (
-                  <span className="rc-bot-status active">{r.bot_name || 'Unknown'} (UID: {r.bot_uid})</span>
-                ) : (
-                  <span className="rc-bot-status">未绑定</span>
-                )}
-                <ExpiresBadge expiresAt={r.expires_at} />
+                <div className="rc-detail-row">
+                  <span className="rc-detail-label">机器人</span>
+                  {r.bot_uid ? (
+                    <span className="rc-bot-status active">{r.bot_name || 'Unknown'} (UID: {r.bot_uid})</span>
+                  ) : (
+                    <span className="rc-bot-status">未绑定</span>
+                  )}
+                </div>
+                <ExpiresRow expiresAt={r.expires_at} />
               </div>
               <div className="rc-footer-actions">
                 <ButtonToolbar>

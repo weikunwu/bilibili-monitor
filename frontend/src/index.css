@@ -185,7 +185,14 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 .rc-detail-text { font-size: 13px; color: #888; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .rc-footer { display: flex; flex-direction: column; align-items: stretch; gap: 10px; padding-top: 12px; border-top: 1px solid #222240; }
-.rc-footer-info { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* 桌面：机器人 / 到期 左右各一半；手机屏（≤768）堆两行。
+   每个 row 自身 min-width:0 避免长内容撑过 50%。 */
+.rc-footer-info { display: flex; gap: 16px; }
+.rc-footer-info > .rc-detail-row { flex: 1 1 0; min-width: 0; margin-bottom: 0; }
+.rc-footer-info .rc-detail-label { min-width: 44px; }
+@media (max-width: 768px) {
+  .rc-footer-info { flex-direction: column; gap: 4px; }
+}
 .rc-expires { color: #ccc; font-size: 13px; }
 .rc-expired { color: #ef5350; font-size: 13px; font-weight: 500; }
 /* rsuite ButtonToolbar 里 Button 是 inline-block，text-align:center 就居中；
