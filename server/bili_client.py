@@ -20,7 +20,7 @@ from .config import (
 )
 from .protocol import make_packet, parse_packets, handle_message, build_guard_event
 from .bili_api import get_wbi_key, wbi_sign, fetch_user_avatar
-from . import recorder
+from . import recorder, gift_catalog
 from .db import (
     save_event, get_command, get_room_save_danmu, get_room_auto_clip,
     get_nickname, upsert_nickname, delete_nickname,
@@ -1421,6 +1421,10 @@ class BiliLiveClient:
     async def handle_rare_blind_by_gift(self, gift_name: str, user_name: str | None = None, user_id: int = 0):
         """本月盲盒里爆出 gift_name 的次数（单次价值 > RARE_BLIND_MIN_PRICE）。
         user_id 非 0 → 只统计该观众自己的；user_id=0（主播触发）→ 全房间汇总。"""
+        # 防"鹦鹉学舌"：正则 (?:本月|今月)(.+) 会把观众复制粘贴的机器人输出
+        # 当成 gift_name。只允许 gift_name 落在 B站 礼物库里，其它静默忽略。
+        if not gift_catalog.is_gift(gift_name):
+            return
         utc_start, utc_end, _ = beijing_time_range("this_month")
         sql = (
             "SELECT COALESCE(SUM(CAST(COALESCE(json_extract(extra_json, '$.num'), 1) AS INTEGER)), 0) "

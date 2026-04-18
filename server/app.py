@@ -17,7 +17,7 @@ from .db import (
 from .auth import AuthMiddleware, get_session_user, get_user_allowed_rooms, handle_login, handle_logout, handle_change_password, handle_send_register_code, handle_register, handle_send_reset_code, handle_reset_password
 from . import turnstile
 from .manager import manager
-from . import recorder, effect_catalog
+from . import recorder, effect_catalog, gift_catalog
 from .routes import events, rooms, bot, admin, clips, overlay
 
 app = FastAPI(title="布布机器人")
@@ -163,6 +163,7 @@ async def websocket_endpoint(ws: WebSocket):
 async def main(port: int):
     init_db()
     cleanup_old_events()
+    gift_catalog.load_from_db()
     manager.load_all()
 
     config = uvicorn.Config(app, host="0.0.0.0", port=port, log_level="info")

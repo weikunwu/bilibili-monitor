@@ -9,6 +9,7 @@ from typing import Optional
 
 from .config import DB_PATH, DEFAULT_COMMANDS, log
 from .crypto import hash_password
+from . import gift_catalog
 
 
 def get_or_create_overlay_token(room_id: int, user_id: Optional[int] = None) -> str:
@@ -636,6 +637,10 @@ def save_event(event: dict):
     )
     conn.commit()
     conn.close()
+    # 增量补进盲盒礼物名缓存（用于 rare_blind_query 校验）
+    extra = event.get("extra") or {}
+    if event.get("event_type") == "gift" and extra.get("blind_name"):
+        gift_catalog.add(extra.get("gift_name") or "")
 
 
 # ── Room settings & commands ──
