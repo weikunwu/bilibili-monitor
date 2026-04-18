@@ -295,26 +295,24 @@ export function AdminPanel({ rooms, onRoomsChanged, role: currentRole }: Props) 
                   : ` | 房间: ${u.rooms.length > 0 ? u.rooms.join(', ') : '无'}`}
               </div>
             </div>
-            <div className="admin-user-controls">
-              <SelectPicker
-                data={roleData}
-                value={u.role}
-                onChange={(v) => v && v !== u.role && handleChangeRole(u.id, v)}
-                size="sm"
-                searchable={false}
-                cleanable={false}
-                className="admin-user-role"
-              />
-              <div className="admin-user-actions">
-                {u.role !== 'admin' && (
-                  <Button appearance="ghost" size="xs" onClick={() => startEditRooms(u)}>
-                    分配房间
-                  </Button>
-                )}
-                <Button color="red" appearance="ghost" size="xs" onClick={() => handleDelete(u.id)}>
-                  删除
+            <SelectPicker
+              data={roleData}
+              value={u.role}
+              onChange={(v) => v && v !== u.role && handleChangeRole(u.id, v)}
+              size="sm"
+              searchable={false}
+              cleanable={false}
+              className="admin-user-role"
+            />
+            <div className="admin-user-actions">
+              {u.role !== 'admin' && (
+                <Button appearance="ghost" size="xs" onClick={() => startEditRooms(u)}>
+                  分配房间
                 </Button>
-              </div>
+              )}
+              <Button color="red" appearance="ghost" size="xs" onClick={() => handleDelete(u.id)}>
+                删除
+              </Button>
             </div>
           </div>
         ))}
