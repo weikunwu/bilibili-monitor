@@ -226,10 +226,29 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             email TEXT UNIQUE NOT NULL,
             password_hash TEXT NOT NULL,
-            role TEXT NOT NULL DEFAULT 'user' CHECK(role IN ('admin','user')),
+            role TEXT NOT NULL DEFAULT 'user' CHECK(role IN ('admin','staff','user')),
             created_at TEXT NOT NULL DEFAULT (datetime('now'))
         )
     """)
+    # 新增 staff 角色：老库的 CHECK 只允许 ('admin','user')，SQLite 不能 ALTER CHECK，
+    # 只能重建表。已有数据原样迁移。
+    cur = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'").fetchone()
+    if cur and "'staff'" not in (cur[0] or ""):
+        conn.execute("""
+            CREATE TABLE users_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'user' CHECK(role IN ('admin','staff','user')),
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+        """)
+        conn.execute(
+            "INSERT INTO users_new (id, email, password_hash, role, created_at) "
+            "SELECT id, email, password_hash, role, created_at FROM users"
+        )
+        conn.execute("DROP TABLE users")
+        conn.execute("ALTER TABLE users_new RENAME TO users")
     conn.execute("""
         CREATE TABLE IF NOT EXISTS user_rooms (
             user_id INTEGER NOT NULL,
@@ -572,6 +591,15 @@ def create_user(email: str, password: str, role: str = "user") -> dict:
     user_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
     conn.close()
     return {"id": user_id, "email": email, "role": role}
+
+
+def update_user_role(user_id: int, role: str) -> None:
+    if role not in ("admin", "staff", "user"):
+        raise ValueError("invalid role")
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.execute("UPDATE users SET role=? WHERE id=?", (role, user_id))
+    conn.commit()
+    conn.close()
 
 
 def delete_user(user_id: int):

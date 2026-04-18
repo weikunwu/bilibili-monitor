@@ -154,7 +154,7 @@ export interface BlindBoxUser {
 export interface CurrentUser {
   user_id: number
   email: string
-  role: 'admin' | 'user'
+  role: 'admin' | 'staff' | 'user'
 }
 
 export interface UserInfo {

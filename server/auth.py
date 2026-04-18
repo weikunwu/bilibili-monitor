@@ -76,6 +76,11 @@ def require_admin(request: Request):
         raise HTTPException(status_code=403, detail="需要管理员权限")
 
 
+def require_admin_or_staff(request: Request):
+    if getattr(request.state, "user_role", None) not in ("admin", "staff"):
+        raise HTTPException(status_code=403, detail="需要管理员或员工权限")
+
+
 def require_room_access(request: Request, room_id: int = None):
     """FastAPI Depends: 检查当前用户是否有该房间的权限"""
     allowed = getattr(request.state, "allowed_rooms", None)

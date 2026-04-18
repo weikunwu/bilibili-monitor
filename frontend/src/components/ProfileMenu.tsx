@@ -67,12 +67,12 @@ export function ProfileMenu({ user }: Props) {
         <div className="profile-info">
           <div className="profile-email">{user.email}</div>
           <span className={`profile-role-badge ${user.role}`}>
-            {user.role === 'admin' ? '管理员' : '用户'}
+            {user.role === 'admin' ? '管理员' : user.role === 'staff' ? '员工' : '用户'}
           </span>
         </div>
       </div>
       <Divider style={{ margin: '8px 0' }} />
-      {user.role === 'admin' && (
+      {(user.role === 'admin' || user.role === 'staff') && (
         <Button
           appearance="subtle"
           block

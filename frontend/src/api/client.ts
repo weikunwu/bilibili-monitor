@@ -182,6 +182,18 @@ export async function deleteUser(userId: number): Promise<void> {
   await fetch(`/api/admin/users/${userId}`, { method: 'DELETE' })
 }
 
+export async function updateUserRole(userId: number, role: string): Promise<void> {
+  const res = await fetch(`/api/admin/users/${userId}/role`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ role }),
+  })
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({}))
+    throw new Error(d.detail || '修改角色失败')
+  }
+}
+
 export async function assignUserRooms(userId: number, roomIds: number[]): Promise<void> {
   await fetch(`/api/admin/users/${userId}/rooms`, {
     method: 'POST',

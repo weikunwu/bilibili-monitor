@@ -81,7 +81,7 @@ export default function App() {
         />
       } />
       <Route path="/admin" element={
-        currentUser?.role === 'admin'
+        (currentUser?.role === 'admin' || currentUser?.role === 'staff')
           ? <AdminPage rooms={rooms} currentUser={currentUser} onRoomsChanged={() => fetchRooms().then(setRooms)} />
           : <Navigate to="/" replace />
       } />
@@ -137,7 +137,7 @@ function AdminPage({ rooms, currentUser, onRoomsChanged }: { rooms: Room[]; curr
         {currentUser && <ProfileMenu user={currentUser} />}
       </div>
       <div className="page-scroll">
-        <AdminPanel rooms={rooms} onRoomsChanged={onRoomsChanged} />
+        <AdminPanel rooms={rooms} onRoomsChanged={onRoomsChanged} role={currentUser?.role || 'user'} />
       </div>
     </>
   )
