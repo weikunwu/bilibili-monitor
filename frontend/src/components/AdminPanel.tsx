@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react'
 import { Input, InputGroup, Button, SelectPicker, Modal, Checkbox, Stack, Divider, Message } from 'rsuite'
 import type { Room } from '../types'
-import { fetchUsers, createUser, deleteUser, assignUserRooms, addRoom, removeRoom, createRenewalTokens, type UserInfo } from '../api/client'
+import {
+  fetchUsers, createUser, deleteUser, assignUserRooms, addRoom, removeRoom,
+  createRenewalTokens, listRenewalTokens, type UserInfo, type RenewalToken,
+} from '../api/client'
 import { confirmDialog } from '../lib/confirm'
 
 interface Props {
@@ -26,6 +29,14 @@ export function AdminPanel({ rooms, onRoomsChanged }: Props) {
   const [generatedTokens, setGeneratedTokens] = useState<string[]>([])
   const [tokenGenLoading, setTokenGenLoading] = useState(false)
   const [tokenGenError, setTokenGenError] = useState('')
+  const [allTokens, setAllTokens] = useState<RenewalToken[]>([])
+  const [showUsedTokens, setShowUsedTokens] = useState(false)
+
+  useEffect(() => { loadTokens() }, [])
+
+  async function loadTokens() {
+    try { setAllTokens(await listRenewalTokens()) } catch { /* ignore */ }
+  }
 
   async function handleGenerateTokens() {
     setTokenGenError('')
@@ -35,6 +46,7 @@ export function AdminPanel({ rooms, onRoomsChanged }: Props) {
     try {
       const tokens = await createRenewalTokens(c, m)
       setGeneratedTokens(tokens)
+      await loadTokens()
     } catch (err) {
       setTokenGenError((err as Error).message)
     } finally { setTokenGenLoading(false) }
@@ -43,6 +55,9 @@ export function AdminPanel({ rooms, onRoomsChanged }: Props) {
   async function copyToken(t: string) {
     try { await navigator.clipboard.writeText(t) } catch { /* ignore */ }
   }
+
+  const unusedTokens = allTokens.filter((t) => !t.used_at)
+  const usedTokens = allTokens.filter((t) => t.used_at)
 
   useEffect(() => { loadUsers() }, [])
 
@@ -158,6 +173,32 @@ export function AdminPanel({ rooms, onRoomsChanged }: Props) {
           ))}
         </div>
       )}
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+        <span style={{ fontSize: 14, color: '#ccc' }}>未使用 {unusedTokens.length} 张</span>
+        <span style={{ fontSize: 12, color: '#666' }}>已使用 {usedTokens.length} 张</span>
+        <Button appearance="subtle" size="xs" onClick={() => setShowUsedTokens((v) => !v)}>
+          {showUsedTokens ? '只看未使用' : '显示已使用'}
+        </Button>
+      </div>
+      <div style={{ marginBottom: 16, maxHeight: 260, overflowY: 'auto', padding: 8, background: '#14141f', border: '1px solid #2a2a4a', borderRadius: 6 }}>
+        {(showUsedTokens ? allTokens : unusedTokens).length === 0 ? (
+          <div style={{ fontSize: 12, color: '#666', padding: 4 }}>暂无{showUsedTokens ? '续费码' : '未使用的续费码'}</div>
+        ) : (
+          (showUsedTokens ? allTokens : unusedTokens).map((t) => (
+            <div key={t.token} style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 4, fontSize: 12 }}>
+              <code style={{ flex: 1, color: t.used_at ? '#666' : '#ffd54f', wordBreak: 'break-all', textDecoration: t.used_at ? 'line-through' : 'none' }}>{t.token}</code>
+              <span style={{ color: '#888', whiteSpace: 'nowrap' }}>
+                {t.months} 月
+                {t.used_at
+                  ? ` · 已用于房间 ${t.used_for_room_id}`
+                  : ` · ${(t.created_at || '').slice(0, 10)} 生成`}
+              </span>
+              {!t.used_at && <Button size="xs" appearance="subtle" onClick={() => copyToken(t.token)}>复制</Button>}
+            </div>
+          ))
+        )}
+      </div>
       <Divider />
 
       {/* ── Room management ── */}

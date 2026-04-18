@@ -242,6 +242,21 @@ export async function createRenewalTokens(count = 1, months = 1): Promise<string
   return data.tokens || []
 }
 
+export interface RenewalToken {
+  token: string
+  months: number
+  created_at: string
+  used_at: string | null
+  used_by_user_id: number | null
+  used_for_room_id: number | null
+}
+
+export async function listRenewalTokens(): Promise<RenewalToken[]> {
+  const res = await fetch('/api/admin/renewal-tokens')
+  if (!res.ok) return []
+  return await res.json()
+}
+
 export async function redeemRoomToken(roomId: number, token: string): Promise<{ expires_at: string }> {
   const res = await fetch(`/api/rooms/${roomId}/redeem`, {
     method: 'POST',
