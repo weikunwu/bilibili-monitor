@@ -69,12 +69,13 @@ export function SuperChatPanel({ roomId, dateRange, onQueryRange, onGenerateSupe
           size="sm"
           searchable
           countable
-          w={200}
+          block={isMobile}
+          style={isMobile ? undefined : { width: 200 }}
         />
         <Checkbox checked={showPrice} onChange={(_, c) => setShowPrice(c)}>
           截图显示电池数
         </Checkbox>
-        <span style={{ flex: 1 }} />
+        {!isMobile && <span style={{ flex: 1 }} />}
         <DateRangePicker
           format="yyyy-MM-dd HH:mm:ss"
           character=" ~ "
@@ -88,7 +89,8 @@ export function SuperChatPanel({ roomId, dateRange, onQueryRange, onGenerateSupe
             onQueryRange(fmtDateTime(range[0]), fmtDateTime(range[1]), range)
           }}
           placement="bottomEnd"
-          style={{ width: 340 }}
+          block={isMobile}
+          style={isMobile ? undefined : { width: 340 }}
         />
       </div>
 

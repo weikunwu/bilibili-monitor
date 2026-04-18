@@ -195,7 +195,8 @@ export function GiftPanel({
           size="sm"
           searchable
           countable
-          w={200}
+          block={isMobile}
+          style={isMobile ? undefined : { width: 200 }}
         />
         <CheckPicker
           data={giftNameOptions}
@@ -205,7 +206,8 @@ export function GiftPanel({
           size="sm"
           searchable
           countable
-          w={200}
+          block={isMobile}
+          style={isMobile ? undefined : { width: 200 }}
         />
         <Input
           type="number"
@@ -213,7 +215,7 @@ export function GiftPanel({
           onChange={setMinTotal}
           placeholder="最低总价(元)"
           size="sm"
-          style={{ width: 120 }}
+          style={{ width: isMobile ? '100%' : 120 }}
         />
         {checkedKeys.size > 0 && (
           <>
@@ -225,7 +227,7 @@ export function GiftPanel({
             </GenerateImageButton>
           </>
         )}
-        <span style={{ flex: 1 }} />
+        {!isMobile && <span style={{ flex: 1 }} />}
         <DateRangePicker
           format="yyyy-MM-dd HH:mm:ss"
           character=" ~ "
@@ -239,7 +241,8 @@ export function GiftPanel({
             onQueryRange(fmtDateTime(range[0]), fmtDateTime(range[1]), range)
           }}
           placement="bottomEnd"
-          style={{ width: 340 }}
+          block={isMobile}
+          style={isMobile ? undefined : { width: 340 }}
         />
       </div>
 

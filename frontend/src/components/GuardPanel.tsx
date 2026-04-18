@@ -56,6 +56,7 @@ export function GuardPanel({
     ? indexed.filter((ev) => selectedUsers.includes(ev.user_name || ''))
     : indexed
 
+  const totalPrice = filtered.reduce((s, ev) => s + (ev.extra?.price || 0), 0)
   const paged = filtered.slice((page - 1) * pageSize, page * pageSize)
 
   const toggleKey = useCallback((key: string) => {
@@ -190,7 +191,8 @@ export function GuardPanel({
           size="sm"
           searchable
           countable
-          w={200}
+          block={isMobile}
+          style={isMobile ? undefined : { width: 200 }}
         />
         {checkedKeys.size > 0 && (
           <>
@@ -204,7 +206,7 @@ export function GuardPanel({
             )}
           </>
         )}
-        <span style={{ flex: 1 }} />
+        {!isMobile && <span style={{ flex: 1 }} />}
         <DateRangePicker
           format="yyyy-MM-dd HH:mm:ss"
           character=" ~ "
@@ -218,7 +220,8 @@ export function GuardPanel({
             onQueryRange(fmtDateTime(range[0]), fmtDateTime(range[1]), range)
           }}
           placement="bottomEnd"
-          style={{ width: 340 }}
+          block={isMobile}
+          style={isMobile ? undefined : { width: 340 }}
         />
       </div>
 
@@ -278,7 +281,7 @@ export function GuardPanel({
           </div>
 
           <div className="gift-table-footer">
-            <span>共 {filtered.length} 条</span>
+            <span>共 {filtered.length} 条，合计: <span className="gift-total">{formatBattery(totalPrice)}</span></span>
             <Pagination
               size="xs"
               prev
@@ -403,7 +406,7 @@ export function GuardPanel({
           </Table>
 
           <div className="gift-table-footer">
-            <span>共 {filtered.length} 条</span>
+            <span>共 {filtered.length} 条，合计: <span className="gift-total">{formatBattery(totalPrice)}</span></span>
             <Pagination
               size="xs"
               prev

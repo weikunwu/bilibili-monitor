@@ -50,6 +50,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 .events-nav { padding: 8px 24px 0; border-bottom: 1px solid #2a2a4a; }
 .events-nav .rs-nav-item { color: #bbb; }
 .events-nav .rs-nav-item-active, .events-nav .rs-nav-item-active:hover { color: #fb7299; background: transparent; }
+/* rsuite 默认把 rs-nav-bar 横向偏移成 left:padding right:-padding，
+   导致透明装饰条整体右移、向右溢出一个 padding 宽度。手机端 12px 的溢出
+   会让整页可左右滑。把它收回 padding-box 内，不影响视觉（背景透明）。 */
+.events-nav .rs-nav-bar { left: 0; right: 0; }
 @media (max-width: 768px) {
   .events-nav { padding: 8px 12px 0; }
 }
@@ -224,7 +228,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 
 
   .event-filter { padding: 6px 12px; gap: 8px; flex-wrap: wrap; }
-  .event-filter .rs-picker-daterange { width: 100% !important; }
 
   .gift-table-wrap { padding: 0 8px 8px; }
   .gift-table-footer { flex-wrap: wrap; gap: 8px; padding: 8px; font-size: 13px; }

@@ -11,6 +11,7 @@ import { GuardPanel } from './GuardPanel'
 import { SuperChatPanel } from './SuperChatPanel'
 import { EventItem } from './EventItem'
 import type { SuperChatImageOptions } from './SuperChatPanel'
+import { useIsMobile } from '../hooks/useIsMobile'
 
 interface Props {
   roomId: number
@@ -129,6 +130,7 @@ function DanmuHistoryPanel({
   dateRange: DateRange
   onQueryRange: (from: string, to: string, range: DateRange) => void
 }) {
+  const isMobile = useIsMobile()
   const [events, setEvents] = useState<LiveEvent[]>([])
   const [selectedUsers, setSelectedUsers] = useState<string[]>([])
   const [page, setPage] = useState(1)
@@ -166,9 +168,10 @@ function DanmuHistoryPanel({
           size="sm"
           searchable
           countable
-          w={200}
+          block={isMobile}
+          style={isMobile ? undefined : { width: 200 }}
         />
-        <span style={{ flex: 1 }} />
+        {!isMobile && <span style={{ flex: 1 }} />}
         <DateRangePicker
           format="yyyy-MM-dd HH:mm:ss"
           character=" ~ "
@@ -182,7 +185,8 @@ function DanmuHistoryPanel({
             onQueryRange(fmtDateTime(range[0]), fmtDateTime(range[1]), range)
           }}
           placement="bottomEnd"
-          style={{ width: 340 }}
+          block={isMobile}
+          style={isMobile ? undefined : { width: 340 }}
         />
       </div>
       <div className="events-container" ref={containerRef}>
