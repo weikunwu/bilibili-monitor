@@ -10,7 +10,10 @@ from fastapi.staticfiles import StaticFiles
 from datetime import datetime, timezone
 
 from .config import BASE_DIR, log
-from .db import init_db, cleanup_old_events, get_expired_active_rooms
+from .db import (
+    init_db, cleanup_old_events,
+    get_expired_active_rooms, get_expired_rooms_for_reminder, incr_expired_reminder_count,
+)
 from .auth import AuthMiddleware, get_session_user, get_user_allowed_rooms, handle_login, handle_logout, handle_change_password, handle_send_register_code, handle_register, handle_send_reset_code, handle_reset_password
 from . import turnstile
 from .manager import manager
@@ -188,14 +191,37 @@ async def _periodic_clip_cleanup():
 
 
 async def _periodic_expiration_check():
-    """每分钟扫一次，把到期且还在监听的房间停掉。
-    expires_at 存 UTC 字符串，直接和 UTC now 字典序比较即可。"""
+    """每分钟扫一次：
+    1) 到期且还在监听 → 停止监听
+    2) 到期后发"续费提醒"弹幕：立刻 1 条 + 之后每天 1 条，最多 5 条。
+       续费（set_room_expires_at）时计数会被重置回 0。
+    expires_at 是 UTC 字符串，字典序 = 时间序。"""
     while True:
         try:
-            now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+            now = datetime.now(timezone.utc)
+            now_utc = now.strftime("%Y-%m-%d %H:%M:%S")
             for rid in get_expired_active_rooms(now_utc):
                 log.info(f"房间 {rid} 到期，自动停止监听")
                 manager.stop_room(rid)
+            for rid, exp_str, sent in get_expired_rooms_for_reminder(now_utc):
+                try:
+                    exp_dt = datetime.strptime(exp_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+                except ValueError:
+                    continue
+                hours = (now - exp_dt).total_seconds() / 3600
+                # 第 k 条期望时间：到期 + (k-1)*24h。想发几条 = min(5, floor(hours/24) + 1)。
+                expected = min(5, int(hours // 24) + 1)
+                if sent >= expected:
+                    continue
+                client = manager.get(rid)
+                if not client or not client.cookies.get("SESSDATA"):
+                    continue  # 没 cookie 发不了，等用户下次重新绑定再补
+                try:
+                    await client.send_danmu("布布机器人已到期")
+                    new_count = incr_expired_reminder_count(rid)
+                    log.info(f"房间 {rid} 到期提醒 {new_count}/5 已发送")
+                except Exception as e:
+                    log.warning(f"[expiration reminder] room={rid} {e}")
         except Exception as e:
             log.warning(f"[expiration check] {e}")
         await asyncio.sleep(60)

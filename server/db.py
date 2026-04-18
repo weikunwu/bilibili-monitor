@@ -320,6 +320,9 @@ def init_db():
             "UPDATE rooms SET expires_at=? WHERE expires_at IS NULL",
             ("2026-05-31 15:59:59",),
         )
+    # 到期后提醒弹幕计数：马上发 1 条 + 之后每天 1 条，共 5 条。续费时重置为 0。
+    if "expired_reminder_count" not in room_cols:
+        conn.execute("ALTER TABLE rooms ADD COLUMN expired_reminder_count INTEGER NOT NULL DEFAULT 0")
 
     admin_email = os.environ.get("ADMIN_EMAIL", "")
     admin_password = os.environ.get("ADMIN_PASSWORD", "")
@@ -404,8 +407,12 @@ def get_room_expires_at(room_id: int) -> Optional[str]:
 
 
 def set_room_expires_at(room_id: int, iso_utc: Optional[str]):
+    """写入到期时间，同时把到期提醒计数重置为 0（续费场景）。"""
     conn = sqlite3.connect(str(DB_PATH))
-    conn.execute("UPDATE rooms SET expires_at=? WHERE room_id=?", (iso_utc, room_id))
+    conn.execute(
+        "UPDATE rooms SET expires_at=?, expired_reminder_count=0 WHERE room_id=?",
+        (iso_utc, room_id),
+    )
     conn.commit()
     conn.close()
 
@@ -419,6 +426,34 @@ def get_expired_active_rooms(now_utc: str) -> list[int]:
     ).fetchall()
     conn.close()
     return [r[0] for r in rows]
+
+
+def get_expired_rooms_for_reminder(now_utc: str) -> list[tuple[int, str, int]]:
+    """返回所有 expired_at <= now_utc 且 expired_reminder_count < 5 的房间。
+    -> [(room_id, expires_at, reminder_count), ...]"""
+    conn = sqlite3.connect(str(DB_PATH))
+    rows = conn.execute(
+        "SELECT room_id, expires_at, expired_reminder_count FROM rooms "
+        "WHERE expires_at IS NOT NULL AND expires_at <= ? AND expired_reminder_count < 5",
+        (now_utc,),
+    ).fetchall()
+    conn.close()
+    return [(r[0], r[1], r[2]) for r in rows]
+
+
+def incr_expired_reminder_count(room_id: int) -> int:
+    """Reminder 发送后调用，+1 并返回新值。"""
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.execute(
+        "UPDATE rooms SET expired_reminder_count=expired_reminder_count+1 WHERE room_id=?",
+        (room_id,),
+    )
+    row = conn.execute(
+        "SELECT expired_reminder_count FROM rooms WHERE room_id=?", (room_id,)
+    ).fetchone()
+    conn.commit()
+    conn.close()
+    return int(row[0] if row else 0)
 
 
 def list_users() -> list[dict]:
