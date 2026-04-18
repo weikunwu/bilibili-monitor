@@ -139,7 +139,7 @@ export function AdminPanel({ rooms, onRoomsChanged, role: currentRole }: Props) 
 
   const roleData = [
     { label: '普通用户', value: 'user' },
-    { label: '员工（发续费码）', value: 'staff' },
+    { label: '员工', value: 'staff' },
     { label: '管理员', value: 'admin' },
   ]
 
@@ -295,16 +295,16 @@ export function AdminPanel({ rooms, onRoomsChanged, role: currentRole }: Props) 
                   : ` | 房间: ${u.rooms.length > 0 ? u.rooms.join(', ') : '无'}`}
               </div>
             </div>
-            <Stack spacing={6}>
-              <SelectPicker
-                data={roleData}
-                value={u.role}
-                onChange={(v) => v && v !== u.role && handleChangeRole(u.id, v)}
-                size="xs"
-                searchable={false}
-                cleanable={false}
-                style={{ width: 140 }}
-              />
+            <SelectPicker
+              data={roleData}
+              value={u.role}
+              onChange={(v) => v && v !== u.role && handleChangeRole(u.id, v)}
+              size="sm"
+              searchable={false}
+              cleanable={false}
+              style={{ width: 120, flexShrink: 0 }}
+            />
+            <div style={{ width: 140, display: 'flex', justifyContent: 'flex-end', gap: 6, flexShrink: 0 }}>
               {u.role !== 'admin' && (
                 <Button appearance="ghost" size="xs" onClick={() => startEditRooms(u)}>
                   分配房间
@@ -313,7 +313,7 @@ export function AdminPanel({ rooms, onRoomsChanged, role: currentRole }: Props) 
               <Button color="red" appearance="ghost" size="xs" onClick={() => handleDelete(u.id)}>
                 删除
               </Button>
-            </Stack>
+            </div>
           </div>
         ))}
       </>}
