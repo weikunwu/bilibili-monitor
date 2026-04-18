@@ -140,9 +140,11 @@ DEFAULT_COMMANDS = [
         "id": "broadcast_gift",
         "name": "礼物感谢",
         "type": "auto_broadcast",
-        "description": "用户送出付费礼物（盲盒除外）后，机器人自动发弹幕感谢",
+        "description": "用户送出付费礼物（盲盒除外）后，机器人按模版自动发弹幕感谢。同种礼物连送会合并数量，不同礼物各自独立计时。",
         "default_enabled": True,
-        "config": {},
+        "config": {
+            "templates": ["感谢{name}的 {gift_count}"],
+        },
     },
     {
         "id": "broadcast_guard",

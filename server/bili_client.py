@@ -130,9 +130,11 @@ class BiliLiveClient:
         # Per-user blind-box burst buffer: flush a summary danmu after the
         # user stops opening boxes for BLIND_IDLE_SEC seconds.
         self._blind_bursts: dict[int, dict] = {}  # uid -> {user_name, count, cost, value, task}
-        # Per-user gift thank buffer, same debounce model as blind bursts.
+        # Per-(user, gift) thank buffer, same debounce model as blind bursts.
         # Skips free gifts (price == 0) and blind boxes (handled separately).
-        self._gift_bursts: dict[int, dict] = {}  # uid -> {user_name, gifts{name:count}, task}
+        # 每种礼物各自倒计时：送了 A + B 会分别在各自 idle 期满后发两条感谢，
+        # 送同种 A 多次则合并到同一条（计数累加）。
+        self._gift_bursts: dict[tuple[int, str], dict] = {}  # (uid, gift_name) -> {user_name, count, task}
         # Welcome dedup: uid -> last_sent_epoch; plus global last-sent to
         # throttle bursty entries so we don't flood chat in popular rooms.
         self._welcome_sent: dict[int, float] = {}
@@ -460,17 +462,18 @@ class BiliLiveClient:
         uid = event.get("user_id") or 0
         if not uid:
             return
-        buf = self._gift_bursts.get(uid)
-        if not buf:
-            buf = {"user_name": event.get("user_name", ""), "gifts": {}, "task": None}
-            self._gift_bursts[uid] = buf
         name = extra.get("gift_name") or event.get("content") or "礼物"
         num = extra.get("num") or 1
+        key = (uid, name)
+        buf = self._gift_bursts.get(key)
+        if not buf:
+            buf = {"user_name": event.get("user_name", ""), "count": 0, "task": None}
+            self._gift_bursts[key] = buf
         buf["user_name"] = event.get("user_name", "") or buf["user_name"]
-        buf["gifts"][name] = buf["gifts"].get(name, 0) + num
+        buf["count"] += num
         if buf["task"] and not buf["task"].done():
             buf["task"].cancel()
-        buf["task"] = asyncio.create_task(self._flush_gift_burst(uid))
+        buf["task"] = asyncio.create_task(self._flush_gift_burst(uid, name))
 
     def _pick_template(self, cmd_id: str, cfg: dict, default: str) -> str:
         """Pick the next template from a multi-template config, round-robin.
@@ -903,17 +906,32 @@ class BiliLiveClient:
         except Exception as e:
             log.warning(f"[AI回复] 发送失败: {e}")
 
-    async def _flush_gift_burst(self, uid: int):
+    async def _flush_gift_burst(self, uid: int, gift_name: str):
         try:
             await asyncio.sleep(self.BLIND_IDLE_SEC)
         except asyncio.CancelledError:
             return
-        buf = self._gift_bursts.pop(uid, None)
-        if not buf or not buf["gifts"]:
+        buf = self._gift_bursts.pop((uid, gift_name), None)
+        if not buf or not buf["count"]:
             return
-        parts = [n if c == 1 else f"{n} x{c}" for n, c in buf["gifts"].items()]
         display_name = self._nickname_for(uid) or buf["user_name"] or "有人"
-        await self.send_danmu(f"感谢{display_name}的 {', '.join(parts)}")
+        c = buf["count"]
+        gift_count = gift_name if c == 1 else f"{gift_name} x{c}"
+        cmd_cfg = get_command(self.real_room_id, "broadcast_gift") or {}
+        tpl = self._pick_template(
+            "broadcast_gift",
+            cmd_cfg.get("config") or {},
+            "感谢{name}的 {gift_count}",
+        )
+        streamer = self.streamer_name or ""
+        msg = (
+            tpl.replace("{name}", display_name).replace("{昵称}", display_name)
+               .replace("{gift_count}", gift_count)
+               .replace("{gift}", gift_name).replace("{礼物}", gift_name)
+               .replace("{num}", str(c)).replace("{数量}", str(c))
+               .replace("{streamer}", streamer).replace("{主播}", streamer)
+        )
+        await self.send_danmu(msg)
 
     def request_reconnect(self):
         self._reconnect = True

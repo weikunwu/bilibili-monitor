@@ -30,6 +30,7 @@ const AUTOMATION_IDS = new Set([
 ])
 
 const BLIND_DEFAULT_TEMPLATE = '感谢{name}的{count}个盲盒，{verdict}'
+const GIFT_DEFAULT_TEMPLATE = '感谢{name}的 {gift_count}'
 const GUARD_DEFAULT_TEMPLATE = '感谢{name}{content}了{num}个月{guard}'
 const FOLLOW_DEFAULT_TEMPLATE = '感谢{name}的关注~'
 const LIKE_DEFAULT_TEMPLATE = '感谢{name}的点赞~'
@@ -133,6 +134,7 @@ function ThanksGroup({
     const legacy = cmd.config?.template as string | undefined
     return [legacy || def]
   }
+  const [giftTpls, setGiftTpls] = useState<string[]>(initTpls(gift, GIFT_DEFAULT_TEMPLATE))
   const [guardTpls, setGuardTpls] = useState<string[]>(initTpls(guard, GUARD_DEFAULT_TEMPLATE))
   const [blindTpls, setBlindTpls] = useState<string[]>(initTpls(blind, BLIND_DEFAULT_TEMPLATE))
   const [followTpls, setFollowTpls] = useState<string[]>(initTpls(follow, FOLLOW_DEFAULT_TEMPLATE))
@@ -153,6 +155,7 @@ function ThanksGroup({
       const c = arr.map((s) => s.trim()).filter(Boolean)
       return c.length ? c : [def]
     }
+    const gi = clean(giftTpls, GIFT_DEFAULT_TEMPLATE)
     const g = clean(guardTpls, GUARD_DEFAULT_TEMPLATE)
     const b = clean(blindTpls, BLIND_DEFAULT_TEMPLATE)
     const f = clean(followTpls, FOLLOW_DEFAULT_TEMPLATE)
@@ -162,24 +165,27 @@ function ThanksGroup({
     setSaving(true)
     try {
       await onCommitEnabled(allIds)
+      await saveCommandConfig(roomId, 'broadcast_gift', { templates: gi })
       await saveCommandConfig(roomId, 'broadcast_guard', { templates: g })
       await saveCommandConfig(roomId, 'broadcast_blind', { templates: b })
       await saveCommandConfig(roomId, 'broadcast_follow', { templates: f })
       await saveCommandConfig(roomId, 'broadcast_like', { templates: l })
       await saveCommandConfig(roomId, 'broadcast_share', { templates: sh })
       await saveCommandConfig(roomId, 'broadcast_superchat', { templates: sc })
+      onUpdateConfig('broadcast_gift', { templates: gi })
       onUpdateConfig('broadcast_guard', { templates: g })
       onUpdateConfig('broadcast_blind', { templates: b })
       onUpdateConfig('broadcast_follow', { templates: f })
       onUpdateConfig('broadcast_like', { templates: l })
       onUpdateConfig('broadcast_share', { templates: sh })
       onUpdateConfig('broadcast_superchat', { templates: sc })
-      setGuardTpls(g); setBlindTpls(b); setFollowTpls(f); setLikeTpls(l); setShareTpls(sh); setSuperchatTpls(sc)
+      setGiftTpls(gi); setGuardTpls(g); setBlindTpls(b); setFollowTpls(f); setLikeTpls(l); setShareTpls(sh); setSuperchatTpls(sc)
       setSaved(true); setTimeout(() => setSaved(false), 1500)
     } finally { setSaving(false) }
   }
 
   function restoreDefaults() {
+    setGiftTpls([GIFT_DEFAULT_TEMPLATE])
     setGuardTpls([GUARD_DEFAULT_TEMPLATE])
     setBlindTpls([BLIND_DEFAULT_TEMPLATE])
     setFollowTpls([FOLLOW_DEFAULT_TEMPLATE])
@@ -264,7 +270,10 @@ function ThanksGroup({
             share, shareTpls, setShareTpls, SHARE_DEFAULT_TEMPLATE,
             <>占位符：<code>{'{name}'}</code> 用户昵称，<code>{'{streamer}'}</code> 主播昵称</>,
           )}
-          {section(gift, null, null, '')}
+          {section(
+            gift, giftTpls, setGiftTpls, GIFT_DEFAULT_TEMPLATE,
+            <>占位符：<code>{'{name}'}</code> 用户昵称，<code>{'{streamer}'}</code> 主播昵称，<code>{'{gift}'}</code> 礼物名，<code>{'{num}'}</code> 数量，<code>{'{gift_count}'}</code> 名字+数量（如 "爱心抱枕 x3"，数量为 1 时只显示名字）</>,
+          )}
           {section(
             guard, guardTpls, setGuardTpls, GUARD_DEFAULT_TEMPLATE,
             <>占位符：<code>{'{name}'}</code> 用户昵称，<code>{'{streamer}'}</code> 主播昵称，<code>{'{content}'}</code> 开通/续费，<code>{'{num}'}</code> 月数，<code>{'{guard}'}</code> 舰长/提督/总督</>,
