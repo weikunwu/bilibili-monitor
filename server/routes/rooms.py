@@ -255,16 +255,33 @@ async def start_room(room_id: int, request: Request, _=Depends(require_room_acce
     return {"ok": True, "room_id": room_id}
 
 
+# 续费码兑换限流：失败 5 次/小时锁定，成功清零。token 本身 128-bit 熵
+# 不怕爆破，这里主要防 DoS / 误操作刷锁。
+_redeem_attempts: dict[int, tuple[int, float]] = defaultdict(lambda: (0, 0.0))
+_MAX_REDEEM_ATTEMPTS = 5
+_REDEEM_WINDOW_SECONDS = 3600
+
+
 @router.post("/api/rooms/{room_id}/redeem")
 async def redeem_room_token(room_id: int, request: Request, _=Depends(require_room_access)):
+    user_id = getattr(request.state, "user_id", 0) or 0
+    now = time.time()
+    fails, first_time = _redeem_attempts[user_id]
+    if fails >= _MAX_REDEEM_ATTEMPTS and now - first_time < _REDEEM_WINDOW_SECONDS:
+        raise HTTPException(429, "尝试次数过多，请 1 小时后再试")
+    if now - first_time >= _REDEEM_WINDOW_SECONDS:
+        _redeem_attempts[user_id] = (0, 0.0)
+
     body = await request.json()
     token = str(body.get("token", "")).strip()
     if not token:
         raise HTTPException(400, "请输入续费码")
-    user_id = getattr(request.state, "user_id", 0) or 0
     ok, info = redeem_renewal_token(token, user_id, room_id)
     if not ok:
+        fails, first_time = _redeem_attempts[user_id]
+        _redeem_attempts[user_id] = (fails + 1, first_time or now)
         raise HTTPException(400, info)
+    _redeem_attempts.pop(user_id, None)
     return {"ok": True, "expires_at": info}
 
 
