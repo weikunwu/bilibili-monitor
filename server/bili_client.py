@@ -154,6 +154,10 @@ class BiliLiveClient:
         self._last_share_thanks_ts: float = 0.0
         # 本房间 AI 回复上一次发送时间（防止同房间高频刷屏）。
         self._last_ai_reply_ts: float = 0.0
+        # 本房间所有自动弹幕（感谢/欢迎/AI/提醒/命令响应…）共用一把锁，
+        # 保证相邻两条之间至少 DANMU_MIN_INTERVAL 秒，避免被 B 站限流。
+        self._send_danmu_lock = asyncio.Lock()
+        self._last_send_danmu_ts: float = 0.0
 
     def _make_cookie_header(self) -> dict:
         headers = dict(HEADERS)
@@ -1272,38 +1276,50 @@ class BiliLiveClient:
             log.warning(f"[自动送礼] 异常: {e}")
             asyncio.create_task(self.send_danmu("[打个有效] 送礼失败"))
 
+    DANMU_MIN_INTERVAL = 2.0  # 同一机器人相邻两条弹幕最少间隔（秒）
+
     async def send_danmu(self, msg: str, reply_uid: int = 0, reply_uname: str = ""):
         if not self.cookies.get("SESSDATA"):
             return
         csrf = self.cookies.get("bili_jct", "")
         # B站弹幕限制40字，超长分段发送
         chunks = [msg[i:i+40] for i in range(0, len(msg), 40)]
-        try:
-            async with aiohttp.ClientSession(headers=self._make_cookie_header()) as session:
-                for chunk in chunks:
-                    payload = {
-                        "bubble": 0, "msg": chunk, "color": 16777215,
-                        "mode": 1, "fontsize": 25, "rnd": int(time.time()),
-                        "roomid": self.real_room_id,
-                        "csrf": csrf, "csrf_token": csrf,
-                    }
-                    if reply_uid and reply_uname:
-                        # B站 @ 协议：reply_mid/reply_uname/reply_attr
-                        # 触发被 @ 用户在消息中心收通知 + 弹幕前显示头像
-                        payload["reply_mid"] = reply_uid
-                        payload["reply_uname"] = reply_uname
-                        payload["reply_attr"] = 0
-                    for attempt in range(3):
-                        async with session.post(SEND_MSG_API, data=payload) as resp:
-                            data = await resp.json(content_type=None)
-                            if data.get("code") == 0:
-                                break
-                            log.warning(f"[发弹幕] 第{attempt+1}次失败: {data.get('message', data.get('msg', ''))}")
-                            await asyncio.sleep(2)
-                    if len(chunks) > 1:
-                        await asyncio.sleep(2)
-        except Exception as e:
-            log.warning(f"[发弹幕] 异常: {e}")
+        # 全局串行化：不同流程（感谢/欢迎/AI/命令…）并发调用时排队发送，
+        # 相邻两次之间等够 DANMU_MIN_INTERVAL，消息整体用完后记录时间戳。
+        async with self._send_danmu_lock:
+            now = time.monotonic()
+            wait = self._last_send_danmu_ts + self.DANMU_MIN_INTERVAL - now
+            if wait > 0:
+                await asyncio.sleep(wait)
+            try:
+                async with aiohttp.ClientSession(headers=self._make_cookie_header()) as session:
+                    for i, chunk in enumerate(chunks):
+                        payload = {
+                            "bubble": 0, "msg": chunk, "color": 16777215,
+                            "mode": 1, "fontsize": 25, "rnd": int(time.time()),
+                            "roomid": self.real_room_id,
+                            "csrf": csrf, "csrf_token": csrf,
+                        }
+                        if reply_uid and reply_uname:
+                            # B站 @ 协议：reply_mid/reply_uname/reply_attr
+                            # 触发被 @ 用户在消息中心收通知 + 弹幕前显示头像
+                            payload["reply_mid"] = reply_uid
+                            payload["reply_uname"] = reply_uname
+                            payload["reply_attr"] = 0
+                        for attempt in range(3):
+                            async with session.post(SEND_MSG_API, data=payload) as resp:
+                                data = await resp.json(content_type=None)
+                                if data.get("code") == 0:
+                                    break
+                                log.warning(f"[发弹幕] 第{attempt+1}次失败: {data.get('message', data.get('msg', ''))}")
+                                await asyncio.sleep(2)
+                        # 多段消息之间也遵守同样间隔
+                        if i < len(chunks) - 1:
+                            await asyncio.sleep(self.DANMU_MIN_INTERVAL)
+            except Exception as e:
+                log.warning(f"[发弹幕] 异常: {e}")
+            finally:
+                self._last_send_danmu_ts = time.monotonic()
 
     async def handle_set_nickname(self, user_id: int, user_name: str, nickname: str):
         """Handle '叫我xxx' danmu command: upsert this user's nickname for this room."""
