@@ -16,6 +16,15 @@ import { toast } from '../lib/toast'
 
 const { Column, HeaderCell, Cell } = Table
 
+// 大航海购买事件：gift_name 就是档位名。普通礼物事件即使 sender 有舰长等级，
+// gift_name 也不会落在这里。区分开才不会把舰长用户送的所有礼物强制染成蓝色。
+const GUARD_GIFT_NAMES = new Set(['舰长', '提督', '总督'])
+
+function tierCoinForGuard(level: number): number {
+  // 总督=金(10000+) / 提督=紫(1000-4999) / 舰长=蓝(<1000)
+  return level === 1 ? 10000 : level === 2 ? 1000 : 0
+}
+
 interface Props {
   roomId: number
   dateRange: DateRange
@@ -110,10 +119,10 @@ export function GiftPanel({
       if (extra.guard_level && extra.guard_level > u.guard_level) u.guard_level = extra.guard_level
       const num = extra.num || 1
       const coin = extra.total_coin || 0
-      // 大航海礼物按等级选模板色（总督=金/提督=紫/舰长=蓝），
-      // 借 gift_coins 的阈值触发；total_coin 保持真实金瓜子数。
-      const lvl = extra.guard_level || 0
-      const tierCoin = lvl > 0 ? (lvl === 1 ? 10000 : lvl === 2 ? 1000 : 0) : coin
+      // 只有真的买大航海（gift_name 是舰长/提督/总督）才按档位上色；
+      // 舰长发的普通礼物不应被 guard_level 污染成蓝卡。
+      const isGuardBuy = GUARD_GIFT_NAMES.has(giftName)
+      const tierCoin = isGuardBuy ? tierCoinForGuard(extra.guard_level || 0) : coin
       u.gifts[giftName] = (u.gifts[giftName] || 0) + num
       u.gift_coins[giftName] = (u.gift_coins[giftName] || 0) + tierCoin
       u.total_coin += coin
@@ -144,8 +153,10 @@ export function GiftPanel({
   const handleGenerateRowGif = useCallback((rowData: LiveEvent) => {
     const extra = rowData.extra!
     const name = extra.gift_name!
-    const lvl = extra.guard_level || 0
-    const tierCoin = lvl > 0 ? (lvl === 1 ? 10000 : lvl === 2 ? 1000 : 0) : (extra.total_coin || 0)
+    const isGuardBuy = GUARD_GIFT_NAMES.has(name)
+    const tierCoin = isGuardBuy
+      ? tierCoinForGuard(extra.guard_level || 0)
+      : (extra.total_coin || 0)
     const u: GiftUser = {
       user_name: rowData.user_name!,
       avatar: extra.avatar || '',
