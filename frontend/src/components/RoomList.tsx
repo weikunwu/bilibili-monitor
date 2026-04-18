@@ -6,6 +6,7 @@ import CloseOutlineIcon from '@rsuite/icons/CloseOutline'
 import ChangeListIcon from '@rsuite/icons/ChangeList'
 import TrashIcon from '@rsuite/icons/Trash'
 import { botLogout, bindRoomSelf, unbindRoomSelf } from '../api/client'
+import { confirmDialog } from '../lib/confirm'
 import type { Room } from '../types'
 
 // Per-tab cache of fresh streamer-info so we re-hit B站 once per room,
@@ -280,7 +281,7 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
                       size="sm" color="red" appearance="ghost" style={{ width: 132 }}
                       onClick={async (e) => {
                         e.stopPropagation()
-                        if (!confirm(`解绑 ${r.bot_name || '机器人'}？会清除 cookie 并停止监控。`)) return
+                        if (!await confirmDialog({ message: `解绑 ${r.bot_name || '机器人'}？会清除 cookie 并停止监控。`, danger: true, okText: '解绑' })) return
                         await botLogout(r.room_id)
                         onRoomsChanged?.()
                       }}

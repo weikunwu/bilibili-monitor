@@ -13,6 +13,7 @@ import {
   type OverlaySettings,
 } from '../api/client'
 import { useIsMobile } from '../hooks/useIsMobile'
+import { confirmDialog } from '../lib/confirm'
 
 interface Props {
   roomId: number
@@ -119,7 +120,7 @@ export function RealtimeGiftsPanel({ roomId }: Props) {
   }
 
   async function rotate() {
-    if (!confirm('重新生成 token 会让旧链接立即失效，确认继续？')) return
+    if (!await confirmDialog({ message: '重新生成 token 会让旧链接立即失效，确认继续？', danger: true, okText: '重新生成' })) return
     setRotating(true)
     try {
       const t = await rotateOverlayToken(roomId)
@@ -150,7 +151,7 @@ export function RealtimeGiftsPanel({ roomId }: Props) {
   }
 
   async function clearDisplay() {
-    if (!confirm('清除当前 overlay 展示？之后只会显示本次清除之后的新事件。')) return
+    if (!await confirmDialog({ message: '清除当前 overlay 展示？之后只会显示本次清除之后的新事件。', danger: true, okText: '清除' })) return
     setClearing(true)
     try {
       const s = await clearOverlayHistory(roomId)

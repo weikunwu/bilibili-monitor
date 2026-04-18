@@ -9,6 +9,7 @@ import {
   type Nickname,
 } from '../api/client'
 import { useIsMobile } from '../hooks/useIsMobile'
+import { confirmDialog } from '../lib/confirm'
 
 const { Column, HeaderCell, Cell } = Table
 
@@ -43,7 +44,7 @@ export function NicknamesPanel({ roomId }: Props) {
   }
 
   async function handleDelete(n: Nickname) {
-    if (!confirm(`删除 ${n.user_name} 的昵称「${n.nickname}」？`)) return
+    if (!await confirmDialog({ message: `删除 ${n.user_name} 的昵称「${n.nickname}」？`, danger: true, okText: '删除' })) return
     await deleteNickname(roomId, n.user_id)
     await load()
   }

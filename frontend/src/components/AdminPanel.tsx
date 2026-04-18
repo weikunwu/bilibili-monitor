@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Input, Button, SelectPicker, Modal, Checkbox, Stack, Divider, Message } from 'rsuite'
 import type { Room } from '../types'
 import { fetchUsers, createUser, deleteUser, assignUserRooms, addRoom, removeRoom, type UserInfo } from '../api/client'
+import { confirmDialog } from '../lib/confirm'
 
 interface Props {
   rooms: Room[]
@@ -43,7 +44,7 @@ export function AdminPanel({ rooms, onRoomsChanged }: Props) {
   }
 
   async function handleDelete(userId: number) {
-    if (!confirm('确定删除该用户？')) return
+    if (!await confirmDialog({ message: '确定删除该用户？', danger: true, okText: '删除' })) return
     await deleteUser(userId)
     loadUsers()
   }
@@ -87,7 +88,7 @@ export function AdminPanel({ rooms, onRoomsChanged }: Props) {
   }
 
   async function handleRemoveRoom(roomId: number) {
-    if (!confirm(`确定删除房间 ${roomId}？`)) return
+    if (!await confirmDialog({ message: `确定删除房间 ${roomId}？`, danger: true, okText: '删除' })) return
     try {
       await removeRoom(roomId)
       onRoomsChanged()

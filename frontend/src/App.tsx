@@ -5,6 +5,7 @@ import { fetchRooms, fetchEvents, fetchMe, toggleSaveDanmu, type CurrentUser } f
 import { useWebSocket } from './hooks/useWebSocket'
 import { useLocalStorage } from './hooks/useLocalStorage'
 import { localToUTC, fmtDate } from './lib/formatters'
+import { confirmDialog } from './lib/confirm'
 import { MAX_EVENTS, TAB_LIVE, TAB_REALTIME, TAB_EVENTS, TAB_BLINDBOX, TAB_REACTIVE, TAB_AUTOMATION, TAB_NICKNAMES } from './lib/constants'
 import { TabSidebar } from './components/TabBar'
 
@@ -247,7 +248,12 @@ function RoomPage({ rooms, currentUser, onRoomsChanged }: {
       <div className="header">
         <Button appearance="subtle" size="xs" onClick={() => navigate('/')}>← 房间</Button>
         <a className="room-link" href={`https://live.bilibili.com/${roomId}`} target="_blank" rel="noopener noreferrer"
-          onClick={(e) => { if (!confirm('前往直播间？')) e.preventDefault() }}>
+          onClick={async (e) => {
+            e.preventDefault()
+            if (await confirmDialog({ message: '前往直播间？', okText: '前往' })) {
+              window.open(`https://live.bilibili.com/${roomId}`, '_blank', 'noopener,noreferrer')
+            }
+          }}>
           <h1>{currentRoom?.streamer_name || roomId}</h1>
         </a>
         <span className="room-info">({roomId})</span>

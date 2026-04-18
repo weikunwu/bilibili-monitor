@@ -4,6 +4,7 @@ import { fetchGiftSummary } from '../api/client'
 import { generateGiftCard } from '../lib/giftCard'
 import { generateGiftGif, type GiftGifItem } from '../lib/giftGif'
 import { generateSuperChatCard } from '../lib/superchatCard'
+import { toast } from '../lib/toast'
 import type { LiveEvent } from '../types'
 
 export interface SuperChatImageOptions {
@@ -27,7 +28,7 @@ export const GiftImageModal = forwardRef<GiftImageModalRef>(function GiftImageMo
       try { await document.fonts.load('italic 800 30px "Baloo 2"') } catch { /* ok */ }
       const data = await fetchGiftSummary(roomId, userName, blindOnly)
       const u = data.users?.[0]
-      if (!u) { alert(blindOnly ? '该用户今日暂无盲盒记录' : '该用户今日暂无礼物记录'); return }
+      if (!u) { toast(blindOnly ? '该用户今日暂无盲盒记录' : '该用户今日暂无礼物记录', 'warning'); return }
 
       const offscreen = document.createElement('canvas')
       await generateGiftCard(offscreen, u)
@@ -42,7 +43,7 @@ export const GiftImageModal = forwardRef<GiftImageModalRef>(function GiftImageMo
     },
     async showGiftGif(items: GiftGifItem[]) {
       const blob = await generateGiftGif(items)
-      if (!blob) { alert('所选礼物均无动态图'); return }
+      if (!blob) { toast('所选礼物均无动态图', 'warning'); return }
       setImgUrl(URL.createObjectURL(blob))
       setExt('gif')
       setIsOpen(true)

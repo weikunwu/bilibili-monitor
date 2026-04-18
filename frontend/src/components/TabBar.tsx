@@ -1,5 +1,5 @@
 import { Sidenav, Nav } from 'rsuite'
-import { Radio, BarChart3, Search, Box, MessageCircle, Clock, Tag } from 'lucide-react'
+import { Radio, BarChart3, Search, Box, MessageCircle, Terminal, Tag } from 'lucide-react'
 import type { TabType } from '../types'
 import {
   TAB_LIVE, TAB_REALTIME, TAB_EVENTS, TAB_BLINDBOX,
@@ -38,7 +38,7 @@ const GROUPS: Group[] = [
     label: '配置',
     items: [
       { type: TAB_REACTIVE, label: '互动回复', icon: <MessageCircle size={16} /> },
-      { type: TAB_AUTOMATION, label: '主动 & 高级', icon: <Clock size={16} /> },
+      { type: TAB_AUTOMATION, label: '指令 & 高级', icon: <Terminal size={16} /> },
       { type: TAB_NICKNAMES, label: '昵称管理', icon: <Tag size={16} /> },
     ],
   },

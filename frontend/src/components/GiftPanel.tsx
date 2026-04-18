@@ -12,6 +12,7 @@ import { PREDEFINED_RANGES } from '../lib/dateRanges'
 import { generateGiftCard } from '../lib/giftCard'
 import { stackCanvasesVertically } from '../lib/canvasUtils'
 import { useIsMobile } from '../hooks/useIsMobile'
+import { toast } from '../lib/toast'
 
 const { Column, HeaderCell, Cell } = Table
 
@@ -179,8 +180,8 @@ export function GiftPanel({
         if (u.gift_gifs?.[giftName]) items.push({ u, giftName })
       }
     }
-    if (items.length === 0) { alert('所选礼物均无动态图'); return }
-    if (items.length > 10) { alert('动态截图一次最多生成 10 个，请减少选择'); return }
+    if (items.length === 0) { toast('所选礼物均无动态图', 'warning'); return }
+    if (items.length > 10) { toast('动态截图一次最多生成 10 个，请减少选择', 'warning'); return }
     await onGenerateGiftGif?.(items)
   }, [aggregateChecked, onGenerateGiftGif])
 

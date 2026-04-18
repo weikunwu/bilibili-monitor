@@ -766,7 +766,7 @@ export function ToolsPanel({ roomId, category }: Props) {
   }
 
   const allowedIds = category === 'reactive' ? REACTIVE_IDS : AUTOMATION_IDS
-  const title = category === 'reactive' ? '互动回复' : '主动 & 高级'
+  const title = category === 'reactive' ? '互动回复' : '指令 & 高级'
 
   return (
     <div>

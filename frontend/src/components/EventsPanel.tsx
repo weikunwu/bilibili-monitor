@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { CheckPicker, DateRangePicker, Pagination, Nav } from 'rsuite'
 import type { DateRange } from 'rsuite/DateRangePicker'
 
@@ -61,19 +61,38 @@ export function EventsPanel({
     setMounted((m) => m[k] ? m : { ...m, [k]: true })
   }
 
+  // event-filter 的 sticky top 必须等于 header 的实际高度，否则上滚到 sticky
+  // 触发时会和 header 重叠几像素出现"抖一下"。把 header 高度实测后写入
+  // CSS 变量，避免硬编码（rsuite Nav padding 或字体变了就失效）。
+  const panelRef = useRef<HTMLDivElement>(null)
+  const headerRef = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    const panel = panelRef.current
+    const header = headerRef.current
+    if (!panel || !header) return
+    const ro = new ResizeObserver(() => {
+      panel.style.setProperty('--events-header-h', `${header.offsetHeight}px`)
+    })
+    ro.observe(header)
+    panel.style.setProperty('--events-header-h', `${header.offsetHeight}px`)
+    return () => ro.disconnect()
+  }, [])
+
   return (
-    <div>
-      <div className="panel-title">事件查询</div>
-      <Nav
-        appearance="subtle"
-        activeKey={kind}
-        onSelect={(key) => key && selectChip(key as EventsKind)}
-        className="events-nav"
-      >
-        {CHIPS.map((c) => (
-          <Nav.Item key={c.kind} eventKey={c.kind}>{c.label}</Nav.Item>
-        ))}
-      </Nav>
+    <div className="events-panel" ref={panelRef}>
+      <div className="events-panel-header" ref={headerRef}>
+        <div className="panel-title">事件查询</div>
+        <Nav
+          appearance="subtle"
+          activeKey={kind}
+          onSelect={(key) => key && selectChip(key as EventsKind)}
+          className="events-nav"
+        >
+          {CHIPS.map((c) => (
+            <Nav.Item key={c.kind} eventKey={c.kind}>{c.label}</Nav.Item>
+          ))}
+        </Nav>
+      </div>
 
       <div style={{ display: kind === 'danmu' ? 'block' : 'none' }}>
         {mounted.danmu && (

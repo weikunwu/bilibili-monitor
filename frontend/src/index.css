@@ -61,6 +61,35 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 .event-checkbox { flex-shrink: 0; align-self: center; }
 .empty { text-align: center; padding: 60px; color: #555; font-size: 16px; }
 
+/* rsuite Picker 的 value-list / toggle-value 是 flex 子项，
+   默认 min-width:auto 会锁死为内容宽度，导致 width:200px 被长选中项撑开。
+   手动加 min-width:0 让 flex-shrink 正常工作，选中项过长时走 ellipsis。 */
+.rs-picker-value-list { min-width: 0; }
+.rs-picker-toggle-value { min-width: 0; }
+
+/* rsuite Picker 默认内层 .rs-picker-toggle 是 inline-flex，按内容宽度伸缩，
+   完全不理外层 width:200。结果：空选时 toggle 只占 100px 露白；多选时
+   toggle 撑过 200px 盖到下一个 picker。在 event-filter 里强制 toggle
+   填满父容器，让外层 width 真正决定可视宽度（配合上面的 min-width:0
+   让选中项 ellipsis）。 */
+.event-filter .rs-picker-toggle { width: 100%; }
+
+/* 事件查询：title+Nav 作为第一层 sticky header，
+   每个子 panel 的 event-filter 作为第二层 sticky，
+   让表格滚动时顶部常驻。 */
+.events-panel { --events-header-h: 92px; }
+.events-panel .events-panel-header {
+  position: sticky; top: 0; z-index: 10;
+  background: #0f0f1a;
+}
+.events-panel .event-filter {
+  position: sticky; top: var(--events-header-h); z-index: 9;
+  background: #0f0f1a;
+}
+@media (max-width: 768px) {
+  .events-panel { --events-header-h: 86px; }
+}
+
 /* Blind box panel */
 .blind-box-panel, .nicknames-panel { padding: 0 0 16px; }
 .nicknames-controls { display: flex; align-items: center; gap: 12px; padding: 0 24px 12px; }
