@@ -92,6 +92,7 @@ export interface Room {
   bot_name: string
   active: boolean
   save_danmu: boolean
+  expires_at: string | null  // UTC 'YYYY-MM-DD HH:MM:SS'，null 表示永不过期
 }
 
 export interface Stats {

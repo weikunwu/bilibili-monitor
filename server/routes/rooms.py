@@ -17,6 +17,7 @@ from ..db import (
     add_room as db_add_room, add_user_room, remove_user_room, is_room_claimed,
     count_user_rooms,
     get_overlay_settings, update_overlay_settings, clear_overlay_history,
+    get_room_expires_at,
 )
 from ..auth import require_room_access
 from ..config import ROOM_INFO_API, H5_ROOM_INFO_API, MASTER_INFO_API, HEADERS
@@ -33,6 +34,7 @@ async def _fetch_room_info(room_id: int) -> dict:
         "live_status": 0, "ruid": 0, "followers": 0,
         "area_name": "", "parent_area_name": "", "announcement": "",
         "bot_uid": 0, "bot_name": "", "active": False,
+        "expires_at": None,
     }
     try:
         async with aiohttp.ClientSession() as session:
@@ -104,12 +106,14 @@ async def get_rooms(request: Request):
                 "bot_name": c.bot_name if c.cookies.get("SESSDATA") else "",
                 "active": c._running,
                 "save_danmu": get_room_save_danmu(room_id),
+                "expires_at": get_room_expires_at(room_id),
             })
         else:
             # No client in memory — fetch basic info from Bilibili API
             info = await _fetch_room_info(room_id)
             info["active"] = bool(active)
             info["save_danmu"] = get_room_save_danmu(room_id)
+            info["expires_at"] = get_room_expires_at(room_id)
             result.append(info)
     return result
 
@@ -241,6 +245,12 @@ async def start_room(room_id: int, request: Request, _=Depends(require_room_acce
     is_admin = getattr(request.state, "user_role", "") == "admin"
     if not is_admin and client and not client.cookies.get("SESSDATA"):
         raise HTTPException(400, "请先绑定机器人后再启动监控")
+    exp = get_room_expires_at(room_id)
+    if not is_admin and exp:
+        from datetime import datetime, timezone
+        now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        if exp <= now_utc:
+            raise HTTPException(400, "房间已到期，请续费后再启动")
     await manager.start_room(room_id)
     return {"ok": True, "room_id": room_id}
 

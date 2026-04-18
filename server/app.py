@@ -7,8 +7,10 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
+from datetime import datetime, timezone
+
 from .config import BASE_DIR, log
-from .db import init_db, cleanup_old_events
+from .db import init_db, cleanup_old_events, get_expired_active_rooms
 from .auth import AuthMiddleware, get_session_user, get_user_allowed_rooms, handle_login, handle_logout, handle_change_password, handle_send_register_code, handle_register, handle_send_reset_code, handle_reset_password
 from . import turnstile
 from .manager import manager
@@ -169,6 +171,7 @@ async def main(port: int):
     await asyncio.gather(
         server.serve(),
         _periodic_clip_cleanup(),
+        _periodic_expiration_check(),
         effect_catalog.run_periodic(),
         *run_tasks,
     )
@@ -182,3 +185,17 @@ async def _periodic_clip_cleanup():
         except Exception as e:
             log.warning(f"[clip cleanup] {e}")
         await asyncio.sleep(3600)
+
+
+async def _periodic_expiration_check():
+    """每分钟扫一次，把到期且还在监听的房间停掉。
+    expires_at 存 UTC 字符串，直接和 UTC now 字典序比较即可。"""
+    while True:
+        try:
+            now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+            for rid in get_expired_active_rooms(now_utc):
+                log.info(f"房间 {rid} 到期，自动停止监听")
+                manager.stop_room(rid)
+        except Exception as e:
+            log.warning(f"[expiration check] {e}")
+        await asyncio.sleep(60)

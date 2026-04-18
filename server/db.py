@@ -312,6 +312,14 @@ def init_db():
     room_cols = {r[1] for r in conn.execute("PRAGMA table_info(rooms)").fetchall()}
     if "live_started_at" not in room_cols:
         conn.execute("ALTER TABLE rooms ADD COLUMN live_started_at TEXT")
+    # 房间到期时间（UTC ISO，'YYYY-MM-DD HH:MM:SS'）。NULL = 永不过期。
+    # 首次加列时把所有已有房间统一设成北京 2026-05-31 23:59:59 = UTC 15:59:59。
+    if "expires_at" not in room_cols:
+        conn.execute("ALTER TABLE rooms ADD COLUMN expires_at TEXT")
+        conn.execute(
+            "UPDATE rooms SET expires_at=? WHERE expires_at IS NULL",
+            ("2026-05-31 15:59:59",),
+        )
 
     admin_email = os.environ.get("ADMIN_EMAIL", "")
     admin_password = os.environ.get("ADMIN_PASSWORD", "")
@@ -345,8 +353,14 @@ def get_all_rooms() -> list[tuple[int, int]]:
 
 
 def add_room(room_id: int):
+    """新增房间：默认送 7 天试用期。如果 room 已存在，INSERT OR IGNORE 保留原值。"""
+    from datetime import datetime, timezone, timedelta
+    trial_expires = (datetime.now(timezone.utc) + timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")
     conn = sqlite3.connect(str(DB_PATH))
-    conn.execute("INSERT OR IGNORE INTO rooms (room_id, active) VALUES (?, 0)", (room_id,))
+    conn.execute(
+        "INSERT OR IGNORE INTO rooms (room_id, active, expires_at) VALUES (?, 0, ?)",
+        (room_id, trial_expires),
+    )
     conn.commit()
     conn.close()
 
@@ -380,6 +394,31 @@ def get_live_started_at(room_id: int) -> Optional[str]:
     row = conn.execute("SELECT live_started_at FROM rooms WHERE room_id=?", (room_id,)).fetchone()
     conn.close()
     return row[0] if row and row[0] else None
+
+
+def get_room_expires_at(room_id: int) -> Optional[str]:
+    conn = sqlite3.connect(str(DB_PATH))
+    row = conn.execute("SELECT expires_at FROM rooms WHERE room_id=?", (room_id,)).fetchone()
+    conn.close()
+    return row[0] if row and row[0] else None
+
+
+def set_room_expires_at(room_id: int, iso_utc: Optional[str]):
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.execute("UPDATE rooms SET expires_at=? WHERE room_id=?", (iso_utc, room_id))
+    conn.commit()
+    conn.close()
+
+
+def get_expired_active_rooms(now_utc: str) -> list[int]:
+    """返回所有 active=1 且到期时间 <= now_utc 的 room_id。"""
+    conn = sqlite3.connect(str(DB_PATH))
+    rows = conn.execute(
+        "SELECT room_id FROM rooms WHERE active=1 AND expires_at IS NOT NULL AND expires_at <= ?",
+        (now_utc,),
+    ).fetchall()
+    conn.close()
+    return [r[0] for r in rows]
 
 
 def list_users() -> list[dict]:

@@ -38,6 +38,25 @@ function formatFans(n: number): string {
   return n.toLocaleString()
 }
 
+/** 到期时间：DB 存 UTC 'YYYY-MM-DD HH:MM:SS'，渲染成北京时间。
+ *  已过期显示红色"已到期"徽章。 */
+function ExpiresBadge({ expiresAt }: { expiresAt: string | null }) {
+  if (!expiresAt) return null
+  const d = new Date(expiresAt.replace(' ', 'T') + 'Z')
+  if (isNaN(d.getTime())) return null
+  const pad = (n: number) => n.toString().padStart(2, '0')
+  const text = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+  const expired = d.getTime() <= Date.now()
+  return (
+    <>
+      <span className="rc-detail-label" style={{ marginLeft: 16 }}>到期</span>
+      <span className={expired ? 'rc-expired' : 'rc-expires'}>
+        {text}{expired ? '（已到期）' : ''}
+      </span>
+    </>
+  )
+}
+
 function StreamerBlock({ room }: { room: Room }) {
   const ref = useRef<HTMLDivElement>(null)
   const [fresh, setFresh] = useState<StreamerInfo | null>(null)
@@ -254,6 +273,7 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
                 ) : (
                   <span className="rc-bot-status">未绑定</span>
                 )}
+                <ExpiresBadge expiresAt={r.expires_at} />
               </div>
               <div className="rc-footer-actions">
                 <ButtonToolbar>
@@ -267,7 +287,7 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
                     </Button>
                   )}
                   <Button
-                    size="sm" appearance="ghost" style={{ width: 132 }}
+                    size="sm" color="yellow" appearance="ghost" style={{ width: 132 }}
                     onClick={(e) => {
                       e.stopPropagation()
                       toaster.push(<Message type="info" showIcon closable>试运行期间暂时不用续费哦</Message>, { duration: 3000 })
