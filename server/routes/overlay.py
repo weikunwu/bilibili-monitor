@@ -74,13 +74,15 @@ def _row_to_gift_user(
         num = extra.get("num", 1)
         price = extra.get("price", 0)
         total_coin = price * num
+        # 大航海按等级选模板色：总督=金(≥10000)/提督=紫(≥1000)/舰长=蓝(<1000)
+        tier_coin = 10000 if guard_level == 1 else (1000 if guard_level == 2 else 0)
         return {
             "type": "guard",
             "event_id": event_id,
             "user_name": user_name or str(user_id),
             "avatar": extra.get("avatar", ""),
             "gifts": {name: num},
-            "gift_coins": {name: total_coin},
+            "gift_coins": {name: tier_coin},
             "gift_imgs": {name: extra.get("gift_img", "")} if extra.get("gift_img") else {},
             "gift_actions": {name: "开通"},
             "gift_ids": {name: 0},
@@ -102,17 +104,23 @@ def _row_to_gift_user(
     action = extra.get("action", "投喂")
     blind_name = extra.get("blind_name", "")
     action_str = f"{blind_name} 爆出" if blind_name else action
+    guard_level = extra.get("guard_level", 0)
+    # 若礼物流里夹带大航海（guard_level>0），也按等级映射模板色
+    if guard_level:
+        tier_coin = 10000 if guard_level == 1 else (1000 if guard_level == 2 else 0)
+    else:
+        tier_coin = total_coin
     return {
         "type": "gift",
         "event_id": event_id,
         "user_name": user_name or str(user_id),
         "avatar": extra.get("avatar", ""),
         "gifts": {gift_name: num},
-        "gift_coins": {gift_name: total_coin},
+        "gift_coins": {gift_name: tier_coin},
         "gift_imgs": {gift_name: extra.get("gift_img", "")} if extra.get("gift_img") else {},
         "gift_actions": {gift_name: action_str},
         "gift_ids": {gift_name: extra.get("gift_id", 0)} if extra.get("gift_id") else {},
-        "guard_level": extra.get("guard_level", 0),
+        "guard_level": guard_level,
         "total_coin": total_coin,
     }
 

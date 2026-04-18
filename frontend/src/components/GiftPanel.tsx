@@ -106,8 +106,12 @@ export function GiftPanel({
       const name = extra.gift_name || ev.content || ''
       const num = extra.num || 1
       const coin = extra.total_coin || 0
+      // 大航海礼物按等级选模板色（总督=金/提督=紫/舰长=蓝），
+      // 借 gift_coins 的阈值触发；total_coin 保持真实金瓜子数。
+      const lvl = extra.guard_level || 0
+      const tierCoin = lvl > 0 ? (lvl === 1 ? 10000 : lvl === 2 ? 1000 : 0) : coin
       u.gifts[name] = (u.gifts[name] || 0) + num
-      u.gift_coins[name] = (u.gift_coins[name] || 0) + coin
+      u.gift_coins[name] = (u.gift_coins[name] || 0) + tierCoin
       u.total_coin += coin
       if (extra.gift_img && !u.gift_imgs[name]) u.gift_imgs[name] = extra.gift_img
       if (extra.action && !u.gift_actions[name]) u.gift_actions[name] = extra.action
@@ -156,13 +160,15 @@ export function GiftPanel({
   const handleGenerateRowGif = useCallback((rowData: LiveEvent) => {
     const extra = rowData.extra!
     const name = extra.gift_name!
+    const lvl = extra.guard_level || 0
+    const tierCoin = lvl > 0 ? (lvl === 1 ? 10000 : lvl === 2 ? 1000 : 0) : (extra.total_coin || 0)
     const u: GiftUser = {
       user_name: rowData.user_name!,
       avatar: extra.avatar || '',
       gifts: { [name]: extra.num || 1 },
       gift_imgs: extra.gift_img ? { [name]: extra.gift_img } : {},
       gift_actions: extra.action ? { [name]: extra.action } : {},
-      gift_coins: { [name]: extra.total_coin || 0 },
+      gift_coins: { [name]: tierCoin },
       gift_ids: extra.gift_id ? { [name]: extra.gift_id } : {},
       gift_gifs: { [name]: extra.gift_gif! },
       guard_level: extra.guard_level || 0,
