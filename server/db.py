@@ -165,16 +165,16 @@ def init_db():
     conn.execute("CREATE INDEX IF NOT EXISTS idx_events_ts ON events(timestamp)")
     # 按房间 + 用户 + 时间的 GROUP BY 查询（list_room_users）会走这个索引。
     conn.execute("CREATE INDEX IF NOT EXISTS idx_events_room_user_ts ON events(room_id, user_id, timestamp)")
-    # Drop superseded single-column indexes from earlier schemas.
-    conn.execute("DROP INDEX IF EXISTS idx_events_type")
-    conn.execute("DROP INDEX IF EXISTS idx_events_room")
 
     conn.execute("""
         CREATE TABLE IF NOT EXISTS rooms (
             room_id INTEGER PRIMARY KEY,
             settings_json TEXT NOT NULL DEFAULT '{}',
             bot_cookie TEXT DEFAULT NULL,
-            active INTEGER NOT NULL DEFAULT 0
+            active INTEGER NOT NULL DEFAULT 0,
+            live_started_at TEXT,
+            expires_at TEXT,
+            expired_reminder_count INTEGER NOT NULL DEFAULT 0
         )
     """)
     conn.execute("""
@@ -230,25 +230,6 @@ def init_db():
             created_at TEXT NOT NULL DEFAULT (datetime('now'))
         )
     """)
-    # 新增 staff 角色：老库的 CHECK 只允许 ('admin','user')，SQLite 不能 ALTER CHECK，
-    # 只能重建表。已有数据原样迁移。
-    cur = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'").fetchone()
-    if cur and "'staff'" not in (cur[0] or ""):
-        conn.execute("""
-            CREATE TABLE users_new (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                email TEXT UNIQUE NOT NULL,
-                password_hash TEXT NOT NULL,
-                role TEXT NOT NULL DEFAULT 'user' CHECK(role IN ('admin','staff','user')),
-                created_at TEXT NOT NULL DEFAULT (datetime('now'))
-            )
-        """)
-        conn.execute(
-            "INSERT INTO users_new (id, email, password_hash, role, created_at) "
-            "SELECT id, email, password_hash, role, created_at FROM users"
-        )
-        conn.execute("DROP TABLE users")
-        conn.execute("ALTER TABLE users_new RENAME TO users")
     conn.execute("""
         CREATE TABLE IF NOT EXISTS user_rooms (
             user_id INTEGER NOT NULL,
@@ -321,28 +302,6 @@ def init_db():
             cleared_at TEXT NOT NULL DEFAULT ''
         )
     """)
-    # 老库补列
-    ov_cols = {r[1] for r in conn.execute("PRAGMA table_info(overlay_settings)").fetchall()}
-    if "show_superchat" not in ov_cols:
-        conn.execute("ALTER TABLE overlay_settings ADD COLUMN show_superchat INTEGER NOT NULL DEFAULT 1")
-    if "time_range" not in ov_cols:
-        conn.execute("ALTER TABLE overlay_settings ADD COLUMN time_range TEXT NOT NULL DEFAULT 'today'")
-    # rooms 表加 live_started_at（bili_client 收到 LIVE 时写 UTC ISO；供 overlay 查"本次直播"）
-    room_cols = {r[1] for r in conn.execute("PRAGMA table_info(rooms)").fetchall()}
-    if "live_started_at" not in room_cols:
-        conn.execute("ALTER TABLE rooms ADD COLUMN live_started_at TEXT")
-    # 房间到期时间（UTC ISO，'YYYY-MM-DD HH:MM:SS'）。NULL = 永不过期。
-    # 首次加列时把所有已有房间统一设成北京 2026-05-31 23:59:59 = UTC 15:59:59。
-    if "expires_at" not in room_cols:
-        conn.execute("ALTER TABLE rooms ADD COLUMN expires_at TEXT")
-        conn.execute(
-            "UPDATE rooms SET expires_at=? WHERE expires_at IS NULL",
-            ("2026-05-31 15:59:59",),
-        )
-    # 到期后提醒弹幕计数：马上发 1 条 + 之后每天 1 条，共 5 条。续费时重置为 0。
-    if "expired_reminder_count" not in room_cols:
-        conn.execute("ALTER TABLE rooms ADD COLUMN expired_reminder_count INTEGER NOT NULL DEFAULT 0")
-
     # 管理员手动生成的续费码。每条一码一用，成功兑换后写入 used_* 字段。
     conn.execute("""
         CREATE TABLE IF NOT EXISTS renewal_tokens (
@@ -365,13 +324,6 @@ def init_db():
                 (admin_email, hash_password(admin_password), "admin"),
             )
             log.info(f"创建管理员账号: {admin_email}")
-
-    # Migrate: rename event_type 'danmaku' -> 'danmu'
-    conn.execute("UPDATE events SET event_type='danmu' WHERE event_type='danmaku'")
-    # Migrate: rename settings key 'save_danmaku' -> 'save_danmu'
-    conn.execute("UPDATE rooms SET settings_json=REPLACE(settings_json, '\"save_danmaku\"', '\"save_danmu\"') WHERE settings_json LIKE '%save_danmaku%'")
-    # Migrate: rename command type 'streamer_danmaku' -> 'streamer_danmu'
-    conn.execute("UPDATE commands SET type='streamer_danmu' WHERE type='streamer_danmaku'")
 
     conn.commit()
     conn.close()
