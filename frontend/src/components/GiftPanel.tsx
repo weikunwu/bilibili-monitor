@@ -88,14 +88,19 @@ export function GiftPanel({
   }, [filtered])
 
   const aggregateChecked = useCallback(() => {
+    // 按 (用户, 礼物) 聚合：同一用户送同一种礼物合并计数，但不同礼物/不同用户
+    // 各自独占一张卡。最后按单卡 total_coin 全局降序，避免同一用户的所有礼物
+    // 被强行捏在一起。
     const checked = filtered.filter((ev) => checkedKeys.has(ev._key))
     const map: Record<string, GiftUser> = {}
     for (const ev of checked) {
-      const key = ev.user_name || ''
       const extra = ev.extra || {}
+      const userName = ev.user_name || ''
+      const giftName = extra.gift_name || ev.content || ''
+      const key = `${userName}\u0000${giftName}`
       if (!map[key]) {
         map[key] = {
-          user_name: key, avatar: extra.avatar || '',
+          user_name: userName, avatar: extra.avatar || '',
           gifts: {}, gift_imgs: {}, gift_actions: {}, gift_coins: {}, gift_ids: {},
           guard_level: 0, total_coin: 0,
         }
@@ -103,45 +108,24 @@ export function GiftPanel({
       const u = map[key]
       if (!u.avatar && extra.avatar) u.avatar = extra.avatar
       if (extra.guard_level && extra.guard_level > u.guard_level) u.guard_level = extra.guard_level
-      const name = extra.gift_name || ev.content || ''
       const num = extra.num || 1
       const coin = extra.total_coin || 0
       // 大航海礼物按等级选模板色（总督=金/提督=紫/舰长=蓝），
       // 借 gift_coins 的阈值触发；total_coin 保持真实金瓜子数。
       const lvl = extra.guard_level || 0
       const tierCoin = lvl > 0 ? (lvl === 1 ? 10000 : lvl === 2 ? 1000 : 0) : coin
-      u.gifts[name] = (u.gifts[name] || 0) + num
-      u.gift_coins[name] = (u.gift_coins[name] || 0) + tierCoin
+      u.gifts[giftName] = (u.gifts[giftName] || 0) + num
+      u.gift_coins[giftName] = (u.gift_coins[giftName] || 0) + tierCoin
       u.total_coin += coin
-      if (extra.gift_img && !u.gift_imgs[name]) u.gift_imgs[name] = extra.gift_img
-      if (extra.action && !u.gift_actions[name]) u.gift_actions[name] = extra.action
-      if (extra.gift_id && !u.gift_ids[name]) u.gift_ids[name] = extra.gift_id
+      if (extra.gift_img && !u.gift_imgs[giftName]) u.gift_imgs[giftName] = extra.gift_img
+      if (extra.action && !u.gift_actions[giftName]) u.gift_actions[giftName] = extra.action
+      if (extra.gift_id && !u.gift_ids[giftName]) u.gift_ids[giftName] = extra.gift_id
       if (extra.gift_gif) {
         if (!u.gift_gifs) u.gift_gifs = {}
-        if (!u.gift_gifs[name]) u.gift_gifs[name] = extra.gift_gif
+        if (!u.gift_gifs[giftName]) u.gift_gifs[giftName] = extra.gift_gif
       }
     }
-    // sort gifts within each user by tier: gold > pink > purple > blue
-    function tierOrder(battery: number): number {
-      if (battery >= 10000) return 0
-      if (battery >= 5000) return 1
-      if (battery >= 1000) return 2
-      return 3
-    }
-    for (const u of Object.values(map)) {
-      const sorted = Object.keys(u.gifts).sort((a, b) => {
-        const ta = tierOrder(u.gift_coins[a] || 0)
-        const tb = tierOrder(u.gift_coins[b] || 0)
-        return ta !== tb ? ta - tb : (u.gift_coins[b] || 0) - (u.gift_coins[a] || 0)
-      })
-      const g: Record<string, number> = {}
-      const c: Record<string, number> = {}
-      for (const n of sorted) { g[n] = u.gifts[n]; c[n] = u.gift_coins[n] }
-      u.gifts = g
-      u.gift_coins = c
-    }
-    const users = Object.values(map).sort((a, b) => b.total_coin - a.total_coin)
-    return users
+    return Object.values(map).sort((a, b) => b.total_coin - a.total_coin)
   }, [filtered, checkedKeys])
 
   const handleGenerateCard = useCallback(async () => {

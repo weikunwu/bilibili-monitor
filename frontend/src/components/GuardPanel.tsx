@@ -77,13 +77,17 @@ export function GuardPanel({
   const handleGenerateCard = useCallback(async () => {
     const checked = filtered.filter((ev) => checkedKeys.has(ev._key))
     if (checked.length === 0) return
+    // 按 (用户, 舰长档位) 聚合：同一用户开同一档位累加，但不同档位独占一张卡，
+    // 最后按卡 total_coin 全局降序。避免一个用户的多条记录被强行合成一张卡。
     const map: Record<string, GiftUser> = {}
     for (const ev of checked) {
-      const key = ev.user_name || ''
       const extra = ev.extra || {}
+      const userName = ev.user_name || ''
+      const name = extra.guard_name || ev.content || ''
+      const key = `${userName}\u0000${name}`
       if (!map[key]) {
         map[key] = {
-          user_name: key, avatar: extra.avatar || '',
+          user_name: userName, avatar: extra.avatar || '',
           gifts: {}, gift_imgs: {}, gift_actions: {}, gift_coins: {}, gift_ids: {},
           guard_level: 0, total_coin: 0,
         }
@@ -91,7 +95,6 @@ export function GuardPanel({
       const u = map[key]
       if (!u.avatar && extra.avatar) u.avatar = extra.avatar
       if (extra.guard_level && extra.guard_level > u.guard_level) u.guard_level = extra.guard_level
-      const name = extra.guard_name || ev.content || ''
       const num = extra.num || 1
       const coin = extra.price || 0
       u.gifts[name] = (u.gifts[name] || 0) + num
