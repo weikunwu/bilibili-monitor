@@ -49,7 +49,8 @@ def get_user_allowed_rooms(user_id: int, role: str) -> Optional[list[int]]:
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         path = request.url.path
-        if path in ("/api/auth", "/api/public-config", "/login", "/register", "/forgot-password") \
+        if path in ("/api/auth", "/api/public-config", "/login", "/register", "/forgot-password",
+                    "/robots.txt", "/sitemap.xml", "/styles.css.map", "/favicon.ico") \
                 or path.startswith("/api/register/") or path.startswith("/api/password-reset/") \
                 or path.startswith("/static/") or path.startswith("/assets/"):
             return await call_next(request)

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { MdCircle } from 'react-icons/md'
 import { Button, ButtonToolbar, IconButton, Input, Modal, Tag, useToaster, Message } from 'rsuite'
 import PlayOutlineIcon from '@rsuite/icons/PlayOutline'
@@ -9,20 +9,21 @@ import { botLogout, bindRoomSelf, unbindRoomSelf, redeemRoomToken } from '../api
 import { confirmDialog } from '../lib/confirm'
 import type { Room } from '../types'
 
-// Per-tab cache of fresh streamer-info so we re-hit B站 once per room,
-// not once per card remount. Server caches the client-side value forever
-// so the bulk /api/rooms response can be stale for renamed anchors.
+// Per-tab cache of fresh streamer-info so 切来切去不重复打 B站。
 interface StreamerInfo { streamer_name: string; streamer_avatar: string; followers: number }
-const streamerInfoCache = new Map<number, Promise<StreamerInfo>>()
-function fetchStreamerInfo(roomId: number): Promise<StreamerInfo> {
-  let p = streamerInfoCache.get(roomId)
-  if (!p) {
-    p = fetch(`/api/rooms/${roomId}/streamer-info`)
-      .then((r) => (r.ok ? r.json() : { streamer_name: '', streamer_avatar: '', followers: 0 }))
-      .catch(() => ({ streamer_name: '', streamer_avatar: '', followers: 0 }))
-    streamerInfoCache.set(roomId, p)
-  }
-  return p
+const streamerInfoCache = new Map<number, StreamerInfo>()
+
+async function batchFetchStreamerInfo(roomIds: number[]): Promise<void> {
+  const missing = roomIds.filter((id) => !streamerInfoCache.has(id))
+  if (missing.length === 0) return
+  try {
+    const r = await fetch(`/api/rooms/streamer-info?ids=${missing.join(',')}`)
+    if (!r.ok) return
+    const data = (await r.json()) as Record<string, StreamerInfo>
+    for (const [k, v] of Object.entries(data)) {
+      streamerInfoCache.set(Number(k), v)
+    }
+  } catch { /* ignore */ }
 }
 
 interface Props {
@@ -70,44 +71,12 @@ function ExpiresRow({ expiresAt }: { expiresAt: string | null }) {
   )
 }
 
-function StreamerBlock({ room }: { room: Room }) {
-  const ref = useRef<HTMLDivElement>(null)
-  const [fresh, setFresh] = useState<StreamerInfo | null>(null)
-  const [visible, setVisible] = useState(false)
-
-  // IntersectionObserver：卡片滚到可视区域附近才拉取最新主播资料，
-  // 避免一进页面就并发发几十个 streamer-info 请求。
-  useEffect(() => {
-    if (visible) return
-    const el = ref.current
-    if (!el) return
-    const io = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((e) => e.isIntersecting)) {
-          setVisible(true)
-          io.disconnect()
-        }
-      },
-      { rootMargin: '200px' },
-    )
-    io.observe(el)
-    return () => io.disconnect()
-  }, [visible])
-
-  useEffect(() => {
-    if (!visible) return
-    let cancelled = false
-    fetchStreamerInfo(room.room_id).then((v) => {
-      if (!cancelled && (v.streamer_avatar || v.streamer_name)) setFresh(v)
-    })
-    return () => { cancelled = true }
-  }, [visible, room.room_id])
-
+function StreamerBlock({ room, fresh }: { room: Room; fresh: StreamerInfo | null }) {
   const avatar = fresh?.streamer_avatar || room.streamer_avatar
   const name = fresh?.streamer_name || room.streamer_name
   const followers = fresh?.followers ?? room.followers
   return (
-    <div className="rc-streamer" ref={ref}>
+    <div className="rc-streamer">
       {avatar ? (
         <img className="rc-avatar" src={avatar} referrerPolicy="no-referrer" alt="" />
       ) : (
@@ -134,6 +103,18 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
   const [redeemToken, setRedeemToken] = useState('')
   const [redeemErr, setRedeemErr] = useState('')
   const [redeeming, setRedeeming] = useState(false)
+
+  // 拉取所有房间的最新主播资料：一次批量请求，backend 内部并发限流。
+  const [streamerInfo, setStreamerInfo] = useState<Map<number, StreamerInfo>>(() => new Map(streamerInfoCache))
+  useEffect(() => {
+    if (rooms.length === 0) return
+    const ids = rooms.map((r) => r.room_id)
+    let cancelled = false
+    batchFetchStreamerInfo(ids).then(() => {
+      if (!cancelled) setStreamerInfo(new Map(streamerInfoCache))
+    })
+    return () => { cancelled = true }
+  }, [rooms])
 
   const openRedeem = (r: Room) => {
     setRedeemTarget(r)
@@ -305,7 +286,7 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
 
             {/* Streamer info + area/announcement */}
             <div className="rc-body">
-              <StreamerBlock room={r} />
+              <StreamerBlock room={r} fresh={streamerInfo.get(r.room_id) || null} />
               <div className="rc-details">
                 {(r.parent_area_name || r.area_name) && (
                   <div className="rc-detail-row">

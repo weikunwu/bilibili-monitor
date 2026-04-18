@@ -33,3 +33,6 @@ frontend/dist/
 
 # Local test output
 clips/
+
+# Internal planning docs
+docs/multi-instance-plan.md

@@ -4,7 +4,7 @@ import asyncio
 
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse, Response, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from datetime import datetime, timezone
@@ -135,6 +135,22 @@ async def spa_forgot_password_fallback():
 @app.get("/overlay/{path:path}")
 async def spa_overlay_fallback():
     return FileResponse(BASE_DIR / "frontend" / "dist" / "index.html")
+
+
+# 爬虫 / 浏览器 devtools 的小文件，不走 AuthMiddleware 重定向 → 直接短路返回。
+@app.get("/robots.txt")
+async def robots_txt():
+    return PlainTextResponse("User-agent: *\nDisallow: /\n")
+
+
+@app.get("/sitemap.xml")
+async def sitemap_xml():
+    return Response(status_code=404)
+
+
+@app.get("/styles.css.map")
+async def styles_css_map():
+    return Response(status_code=204)
 
 
 # ── WebSocket ──

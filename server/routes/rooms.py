@@ -322,19 +322,14 @@ async def get_room_background(room_id: int, _=Depends(require_room_access)):
     return {"url": url}
 
 
-@router.get("/api/rooms/{room_id}/streamer-info")
-async def get_streamer_info(room_id: int, _=Depends(require_room_access)):
-    """Fetch live streamer display info (name/avatar/followers) from B站 each
-    call. The client-side cache in bili_client is populated once at startup
-    and never refreshes, so a renamed/re-faced anchor would show stale data
-    until process restart. Also updates the in-memory client so subsequent
-    WS broadcasts carry the fresh values."""
+async def _fetch_streamer_info_one(room_id: int) -> dict:
+    """Fetch latest streamer display info (name/avatar/followers) from B站.
+    Updates the in-memory client cache so WS broadcasts carry the fresh values."""
     client = manager.get(room_id)
     uid = client.streamer_uid if client else 0
     if not uid:
-        # Fall back to room info → streamer uid lookup.
         try:
-            async with aiohttp.ClientSession(headers=HEADERS) as session:
+            async with _INFO_FETCH_SEM, aiohttp.ClientSession(headers=HEADERS) as session:
                 async with session.get(ROOM_INFO_API, params={"room_id": room_id}) as resp:
                     d = await resp.json(content_type=None)
                     if d.get("code") == 0:
@@ -344,7 +339,7 @@ async def get_streamer_info(room_id: int, _=Depends(require_room_access)):
     if not uid:
         return {"streamer_uid": 0, "streamer_name": "", "streamer_avatar": "", "followers": 0}
     try:
-        async with aiohttp.ClientSession(headers=HEADERS) as session:
+        async with _INFO_FETCH_SEM, aiohttp.ClientSession(headers=HEADERS) as session:
             async with session.get(MASTER_INFO_API, params={"uid": uid}) as resp:
                 d = await resp.json(content_type=None)
         info = (d.get("data") or {}).get("info") or {}
@@ -358,6 +353,34 @@ async def get_streamer_info(room_id: int, _=Depends(require_room_access)):
         return {"streamer_uid": uid, "streamer_name": name, "streamer_avatar": face, "followers": followers}
     except Exception:
         return {"streamer_uid": uid, "streamer_name": "", "streamer_avatar": "", "followers": 0}
+
+
+@router.get("/api/rooms/streamer-info")
+async def get_streamer_info_batch(request: Request, ids: str = ""):
+    """Batch endpoint: ?ids=1,2,3 → {1: {...}, 2: {...}, ...}.
+    被前端 RoomList 用来一次拉全所有房间主播资料，避免 N+1 请求。"""
+    room_ids: list[int] = []
+    for x in ids.split(","):
+        s = x.strip()
+        if s.isdigit():
+            room_ids.append(int(s))
+    allowed = getattr(request.state, "allowed_rooms", None)
+    if allowed is not None:
+        room_ids = [r for r in room_ids if r in allowed]
+    if not room_ids:
+        return {}
+    results = await asyncio.gather(
+        *(_fetch_streamer_info_one(r) for r in room_ids), return_exceptions=True,
+    )
+    return {
+        r: res for r, res in zip(room_ids, results)
+        if not isinstance(res, BaseException)
+    }
+
+
+@router.get("/api/rooms/{room_id}/streamer-info")
+async def get_streamer_info(room_id: int, _=Depends(require_room_access)):
+    return await _fetch_streamer_info_one(room_id)
 
 
 @router.get("/api/rooms/{room_id}/auto-clip")
