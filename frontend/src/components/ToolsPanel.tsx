@@ -642,9 +642,6 @@ function AiReplyEditor({
 export function ToolsPanel({ roomId, category }: Props) {
   const [commands, setCommands] = useState<Command[]>([])
   const [autoClip, setAutoClip] = useState(false)
-  const [committedAutoClip, setCommittedAutoClip] = useState(false)
-  const [autoClipSaving, setAutoClipSaving] = useState(false)
-  const [autoClipSaved, setAutoClipSaved] = useState(false)
   const [cheapGifts, setCheapGifts] = useState<CheapGift[]>([])
 
   const [committedEnabled, setCommittedEnabled] = useState<Record<string, boolean>>({})
@@ -655,7 +652,7 @@ export function ToolsPanel({ roomId, category }: Props) {
       setCommands(cmds)
       setCommittedEnabled(Object.fromEntries(cmds.map((c) => [c.id, c.enabled])))
     }).catch(() => {})
-    fetchAutoClip(roomId).then((v) => { setAutoClip(v); setCommittedAutoClip(v) }).catch(() => {})
+    fetchAutoClip(roomId).then(setAutoClip).catch(() => {})
     fetchCheapGifts(roomId).then(setCheapGifts).catch(() => {})
   }, [roomId])
 
@@ -683,9 +680,31 @@ export function ToolsPanel({ roomId, category }: Props) {
     }).catch(() => {})
   }, [roomId, cheapGifts, commands])
 
-  // 选中礼物仅更新本地 draft；点 "保存" 才下发。
-  function handleAutoGiftChange(cmdIndex: number, giftId: number | null) {
-    if (giftId == null) return
+  // 草稿开关：本地翻转，等编辑器的 "保存" 按钮时一起提交。
+  function toggleDraft(cmdId: string) {
+    setCommands((prev) => prev.map((c) => (
+      c.id === cmdId ? { ...c, enabled: !c.enabled } : c
+    )))
+  }
+
+  // 即时开关：automation tab 下的指令，开关一切就直接落库。
+  async function toggleImmediate(cmdId: string) {
+    if (!roomId) return
+    const cmd = commands.find((c) => c.id === cmdId)
+    if (!cmd) return
+    const next = !cmd.enabled
+    setCommands((prev) => prev.map((c) => (c.id === cmdId ? { ...c, enabled: next } : c)))
+    try {
+      await toggleCommand(roomId, cmdId)
+      setCommittedEnabled((prev) => ({ ...prev, [cmdId]: next }))
+    } catch {
+      setCommands((prev) => prev.map((c) => (c.id === cmdId ? { ...c, enabled: !next } : c)))
+    }
+  }
+
+  // auto_gift dropdown onChange：直接存配置，顺带开启开关（如果之前是关的）。
+  async function handleAutoGiftChangeImmediate(cmdIndex: number, giftId: number | null) {
+    if (giftId == null || !roomId) return
     const g = cheapGifts.find((x) => x.gift_id === giftId)
     if (!g) return
     const num = Math.max(1, Math.ceil(1000 / g.price))
@@ -693,41 +712,20 @@ export function ToolsPanel({ roomId, category }: Props) {
     setCommands((prev) => prev.map((c, i) => (
       i === cmdIndex ? { ...c, config: { ...c.config, ...config } } : c
     )))
-  }
-
-  const AUTO_GIFT_DEFAULT = { gift_id: 31036, gift_name: '辣条', gift_price: 100, gift_num: 10 }
-
-  function restoreAutoGiftDefault(cmdIndex: number) {
-    setCommands((prev) => prev.map((c, i) => (
-      i === cmdIndex ? { ...c, enabled: true, config: { ...c.config, ...AUTO_GIFT_DEFAULT } } : c
-    )))
-  }
-
-  const [autoGiftSaving, setAutoGiftSaving] = useState(false)
-  const [autoGiftSaved, setAutoGiftSaved] = useState(false)
-  async function saveAutoGift(cmdIndex: number) {
-    if (!roomId) return
-    const cmd = commands[cmdIndex]
-    const cfg = cmd.config || {}
-    const payload = {
-      gift_id: Number(cfg.gift_id || AUTO_GIFT_DEFAULT.gift_id),
-      gift_name: String(cfg.gift_name || AUTO_GIFT_DEFAULT.gift_name),
-      gift_price: Number(cfg.gift_price || AUTO_GIFT_DEFAULT.gift_price),
-      gift_num: Number(cfg.gift_num || AUTO_GIFT_DEFAULT.gift_num),
-    }
-    setAutoGiftSaving(true)
     try {
-      await commitEnabled([cmd.id])
-      await saveCommandConfig(roomId, cmd.id, payload)
-      setAutoGiftSaved(true); setTimeout(() => setAutoGiftSaved(false), 1500)
-    } finally { setAutoGiftSaving(false) }
+      await saveCommandConfig(roomId, 'auto_gift', config)
+    } catch { /* ignore */ }
   }
 
-  // 草稿开关：本地翻转，等编辑器的 "保存" 按钮时一起提交。
-  function toggleDraft(cmdId: string) {
-    setCommands((prev) => prev.map((c) => (
-      c.id === cmdId ? { ...c, enabled: !c.enabled } : c
-    )))
+  // auto_clip 即时开关
+  async function toggleAutoClipImmediate(next: boolean) {
+    if (!roomId) return
+    setAutoClip(next)
+    try {
+      await toggleAutoClip(roomId, next)
+    } catch {
+      setAutoClip(!next)
+    }
   }
 
   // 重置草稿开关到指定值（"恢复默认" 用）
@@ -756,22 +754,6 @@ export function ToolsPanel({ roomId, category }: Props) {
         return next
       })
     }
-  }
-
-  async function saveAutoClip() {
-    if (!roomId) return
-    if (autoClip === committedAutoClip) {
-      setAutoClipSaved(true); setTimeout(() => setAutoClipSaved(false), 1500)
-      return
-    }
-    setAutoClipSaving(true)
-    try {
-      await toggleAutoClip(roomId, autoClip)
-      setCommittedAutoClip(autoClip)
-      setAutoClipSaved(true); setTimeout(() => setAutoClipSaved(false), 1500)
-    } catch {
-      setAutoClip(committedAutoClip)
-    } finally { setAutoClipSaving(false) }
   }
 
   const allowedIds = category === 'reactive' ? REACTIVE_IDS : AUTOMATION_IDS
@@ -824,7 +806,7 @@ export function ToolsPanel({ roomId, category }: Props) {
               <span>{cmd.name}</span>
               <Toggle
                 checked={cmd.enabled}
-                onChange={() => toggleDraft(cmd.id)}
+                onChange={() => (category === 'automation' ? toggleImmediate(cmd.id) : toggleDraft(cmd.id))}
                 size="sm"
               />
             </div>
@@ -908,7 +890,7 @@ export function ToolsPanel({ roomId, category }: Props) {
               />
             )}
             {cmd.id === 'auto_gift' && cheapGifts.length > 0 && (
-              <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ marginTop: 6 }}>
                 <SelectPicker
                   size="sm"
                   searchable
@@ -919,20 +901,10 @@ export function ToolsPanel({ roomId, category }: Props) {
                     return { label: `${g.name} ×${num} (¥${total})`, value: g.gift_id }
                   })}
                   value={cmd.config?.gift_id ?? null}
-                  onChange={(v) => handleAutoGiftChange(i, v as number | null)}
+                  onChange={(v) => handleAutoGiftChangeImmediate(i, v as number | null)}
                   placeholder="选择礼物"
                   style={{ maxWidth: 260, width: '100%' }}
                 />
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
-                  <Button
-                    appearance="subtle" size="sm" style={{ width: 88 }}
-                    onClick={() => restoreAutoGiftDefault(i)}
-                  >恢复默认</Button>
-                  <Button
-                    appearance="primary" size="sm" style={{ width: 88 }}
-                    onClick={() => saveAutoGift(i)} disabled={autoGiftSaving}
-                  >{autoGiftSaving ? '保存中…' : autoGiftSaved ? '已保存' : '保存'}</Button>
-                </div>
               </div>
             )}
           </div>
@@ -946,24 +918,13 @@ export function ToolsPanel({ roomId, category }: Props) {
         <div className="cmd-info">
           <div className="cmd-name" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span>礼物自动剪辑</span>
-            <Toggle checked={autoClip} onChange={setAutoClip} size="sm" />
+            <Toggle checked={autoClip} onChange={toggleAutoClipImmediate} size="sm" />
             <span style={{ color: '#ef5350', fontWeight: 'normal' }}>
               非实际录屏！！仅模拟合成！！
             </span>
           </div>
           <div className="cmd-desc">直播时收到单价 ≥<span style={{ color: '#ef5350' }}>¥1000</span> 礼物时自动录制前后片段，可在礼物和大航海列表下载</div>
           <div className="cmd-desc">录制片段仅保留 24 小时</div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: 6 }}>
-            <Button
-              appearance="subtle" size="sm" style={{ width: 88 }}
-              onClick={() => setAutoClip(false)}
-            >恢复默认</Button>
-            <Button
-              appearance="primary" size="sm" style={{ width: 88 }}
-              onClick={saveAutoClip}
-              disabled={autoClipSaving}
-            >{autoClipSaving ? '保存中…' : autoClipSaved ? '已保存' : '保存'}</Button>
-          </div>
         </div>
       </div>
         </>
