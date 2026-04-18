@@ -223,6 +223,14 @@ DEFAULT_COMMANDS = [
         "default_enabled": True,
         "config": {},
     },
+    {
+        "id": "rare_blind_query",
+        "name": "盲盒爆出查询",
+        "type": "user_danmu",
+        "description": '观众发"本月<礼物名>"或"今月<礼物名>"（如"本月浪漫城堡"），机器人回复本月盲盒里爆出的该礼物数量（仅统计单个价值 > 10000 电池的爆出）',
+        "default_enabled": True,
+        "config": {},
+    },
 ]
 
 # ── Wbi Signing ──

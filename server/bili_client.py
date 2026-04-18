@@ -1234,6 +1234,25 @@ class BiliLiveClient:
                                                     user_id=None if is_streamer else uid,
                                                 ))
 
+                                        # 盲盒爆出查询："本月<礼物名>"/"今月<礼物名>"
+                                        # → 本月单次爆出价值 > 10000 电池的该礼物数量。
+                                        # 需要放在 DANMU_PERIOD_MAP 之后：本月盲盒/今月盲盒
+                                        # 这种命令先被前面吃掉，不会误匹配。
+                                        if not is_command:
+                                            rare_cmd = get_command(self.real_room_id, "rare_blind_query")
+                                            if rare_cmd and rare_cmd["enabled"]:
+                                                rm = re.fullmatch(r"(?:本月|今月)(.+)", content)
+                                                if rm:
+                                                    gift_query = rm.group(1).strip()
+                                                    if gift_query and self.bot_uid:
+                                                        is_command = True
+                                                        is_streamer = (uid == self.streamer_uid)
+                                                        asyncio.create_task(self.handle_rare_blind_by_gift(
+                                                            gift_query,
+                                                            user_name=None if is_streamer else uname,
+                                                            user_id=0 if is_streamer else uid,
+                                                        ))
+
                                         # AI 回复：排除机器人自己 + 任何命中过的指令
                                         if not is_command and uid and (not self.bot_uid or uid != self.bot_uid) and content:
                                             asyncio.create_task(self._maybe_ai_reply(uid, uname, content, event.get("extra") or {}))
@@ -1394,6 +1413,38 @@ class BiliLiveClient:
         for name, b in boxes.items():
             await asyncio.sleep(2)
             await self.send_danmu(f"{name}{b['count']}个，{fmt_profit(b['value'] - b['cost'])}")
+
+    # 单个盲盒爆出价值 > 这个阈值（电池）才计入"稀有爆出"查询。
+    # 10000 电池 = 1000 元。
+    RARE_BLIND_MIN_PRICE = 10000
+
+    async def handle_rare_blind_by_gift(self, gift_name: str, user_name: str | None = None, user_id: int = 0):
+        """本月盲盒里爆出 gift_name 的次数（单次价值 > RARE_BLIND_MIN_PRICE）。
+        user_id 非 0 → 只统计该观众自己的；user_id=0（主播触发）→ 全房间汇总。"""
+        utc_start, utc_end, _ = beijing_time_range("this_month")
+        sql = (
+            "SELECT COALESCE(SUM(CAST(COALESCE(json_extract(extra_json, '$.num'), 1) AS INTEGER)), 0) "
+            "FROM events WHERE event_type='gift' AND room_id=? "
+            "AND timestamp >= ? AND timestamp < ? "
+            "AND COALESCE(json_extract(extra_json, '$.blind_name'), '') != '' "
+            "AND json_extract(extra_json, '$.gift_name') = ? "
+            "AND COALESCE(json_extract(extra_json, '$.price'), 0) > ?"
+        )
+        params: list = [self.real_room_id, utc_start, utc_end, gift_name, self.RARE_BLIND_MIN_PRICE]
+        if user_id:
+            sql += " AND user_id=?"
+            params.append(user_id)
+        conn = sqlite3.connect(str(DB_PATH))
+        row = conn.execute(sql, params).fetchone()
+        conn.close()
+        total = int(row[0] or 0)
+        display_name = (self._nickname_for(user_id) or user_name) if user_name else ""
+        prefix = f"{display_name}，" if display_name else ""
+        scope = "本月" if not user_name else "本月你"
+        if total == 0:
+            await self.send_danmu(f"{prefix}{scope}暂无爆出 {gift_name}")
+        else:
+            await self.send_danmu(f"{prefix}{scope}共爆出 {gift_name} {total} 个")
 
     def stop(self):
         self._running = False
