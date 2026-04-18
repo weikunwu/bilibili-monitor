@@ -157,7 +157,7 @@ export function AdminPanel({ rooms, onRoomsChanged, role: currentRole }: Props) 
   }
 
   return (
-    <div style={{ padding: '16px 24px' }}>
+    <div className="admin-panel">
       {/* ── Renewal tokens ── */}
       <h3 style={{ color: '#fb7299', marginBottom: 8, fontSize: 16 }}>续费码</h3>
       <div style={{ fontSize: 13, color: '#888', marginBottom: 12, lineHeight: 1.6 }}>
@@ -285,7 +285,7 @@ export function AdminPanel({ rooms, onRoomsChanged, role: currentRole }: Props) 
         {error && <Message type="error" showIcon style={{ marginBottom: 12 }}>{error}</Message>}
 
         {users.map((u) => (
-          <div key={u.id} className="cmd-item">
+          <div key={u.id} className="cmd-item admin-user-item">
             <div className="cmd-info">
               <div className="cmd-name">{u.email}</div>
               <div className="cmd-desc">
@@ -302,9 +302,9 @@ export function AdminPanel({ rooms, onRoomsChanged, role: currentRole }: Props) 
               size="sm"
               searchable={false}
               cleanable={false}
-              style={{ width: 120, flexShrink: 0 }}
+              className="admin-user-role"
             />
-            <div style={{ width: 140, display: 'flex', justifyContent: 'flex-end', gap: 6, flexShrink: 0 }}>
+            <div className="admin-user-actions">
               {u.role !== 'admin' && (
                 <Button appearance="ghost" size="xs" onClick={() => startEditRooms(u)}>
                   分配房间
