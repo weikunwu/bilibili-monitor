@@ -522,14 +522,21 @@ def redeem_renewal_token(token: str, user_id: int, room_id: int) -> tuple[bool, 
 def list_users() -> list[dict]:
     conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
-    rows = conn.execute("SELECT id, email, role, created_at FROM users").fetchall()
+    rows = conn.execute(
+        "SELECT u.id, u.email, u.role, u.created_at, "
+        "       GROUP_CONCAT(ur.room_id) AS room_ids "
+        "FROM users u LEFT JOIN user_rooms ur ON ur.user_id = u.id "
+        "GROUP BY u.id ORDER BY u.id"
+    ).fetchall()
+    conn.close()
     result = []
     for r in rows:
-        rooms = [x[0] for x in conn.execute(
-            "SELECT room_id FROM user_rooms WHERE user_id = ?", (r["id"],)
-        ).fetchall()]
-        result.append({**dict(r), "rooms": rooms})
-    conn.close()
+        ids = r["room_ids"]
+        rooms = [int(x) for x in ids.split(",")] if ids else []
+        result.append({
+            "id": r["id"], "email": r["email"], "role": r["role"],
+            "created_at": r["created_at"], "rooms": rooms,
+        })
     return result
 
 

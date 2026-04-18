@@ -67,6 +67,16 @@ async def _fetch_room_info(room_id: int) -> dict:
     return base
 
 
+# B站 info 冷启动并发上限：多房间同时 ensure_info 容易打到 B站 速率限制，
+# 用 semaphore 压成最多 5 个在飞。gather 仍会等全部完成，信息不丢。
+_INFO_FETCH_SEM = asyncio.Semaphore(5)
+
+
+async def _ensure_info_limited(client):
+    async with _INFO_FETCH_SEM:
+        return await client.ensure_info()
+
+
 @router.get("/api/rooms")
 async def get_rooms(request: Request):
     allowed = getattr(request.state, "allowed_rooms", None)
@@ -79,7 +89,7 @@ async def get_rooms(request: Request):
             continue
         c = manager.get(room_id)
         if c and not c._info_fetched:
-            clients_to_fetch.append(c.ensure_info())
+            clients_to_fetch.append(_ensure_info_limited(c))
     if clients_to_fetch:
         await asyncio.gather(*clients_to_fetch, return_exceptions=True)
 
