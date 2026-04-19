@@ -1204,6 +1204,13 @@ class BiliLiveClient:
                                     continue
                                 if base_cmd == "POPULARITY_RED_POCKET_WINNER_LIST" and self._seen_v2_red_pocket:
                                     continue
+                                # PK 所有事件原样打到 log，方便摸协议；不做任何处理
+                                if base_cmd.startswith("PK_BATTLE_"):
+                                    try:
+                                        raw = json.dumps(pkt, ensure_ascii=False)
+                                    except Exception:
+                                        raw = str(pkt)
+                                    log.info(f"[pk-raw] room={self.real_room_id} cmd={cmd} {raw[:2000]}")
                                 if base_cmd in (
                                     "ANCHOR_LOT_END", "ANCHOR_LOT_AWARD",
                                     "POPULARITY_RED_POCKET_WINNER_LIST",
