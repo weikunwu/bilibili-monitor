@@ -46,6 +46,16 @@ PROTO_HEARTBEAT = 1
 PROTO_ZLIB = 2
 PROTO_BROTLI = 3
 
+# ── 爱发电（ifdian）── plan_id → 续费月数。改定价时只改这张表。
+AFDIAN_PLANS: dict[str, int] = {
+    "6dc211fc3a4e11f1b03a5254001e7c00": 1,
+    "7bb78d823a4e11f1aa9352540025c377": 3,
+    "922b9cca3a4e11f1a98752540025c377": 12,
+    "d1cf395a3b8811f1a5e45254001e7c00": 1,  # 测试方案
+}
+AFDIAN_QUERY_ORDER_API = "https://afdian.com/api/open/query-order"
+
+
 # ── B站 API ──
 DANMU_CONF_API = "https://api.live.bilibili.com/room/v1/Danmu/getConf"
 DANMU_INFO_API = "https://api.live.bilibili.com/xlive/web-room/v1/index/getDanmuInfo"

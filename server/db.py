@@ -314,6 +314,17 @@ def init_db():
             used_for_room_id INTEGER
         )
     """)
+    # 爱发电订单：以 out_trade_no 为主键幂等防重放。爱发电重试同一订单时直接返回 200。
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS afdian_orders (
+            out_trade_no TEXT PRIMARY KEY,
+            room_id INTEGER,
+            months INTEGER NOT NULL,
+            total_amount TEXT,
+            raw_json TEXT,
+            processed_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+    """)
 
     admin_email = os.environ.get("ADMIN_EMAIL", "")
     admin_password = os.environ.get("ADMIN_PASSWORD", "")
@@ -516,6 +527,58 @@ def redeem_renewal_token(token: str, user_id: int, room_id: int) -> tuple[bool, 
     except Exception as e:
         conn.execute("ROLLBACK")
         return False, f"兑换失败: {e}"
+    finally:
+        conn.close()
+
+
+def apply_afdian_order(
+    out_trade_no: str, room_id: int, months: int,
+    total_amount: str = "", raw_json: str = "",
+) -> tuple[bool, str]:
+    """幂等地把一个爱发电订单应用到房间：已处理的订单直接返回 (False, "duplicate")，
+    房间不存在返回 (False, "room_not_found")，成功返回 (True, new_expires_at_utc)。
+    基准和 redeem_renewal_token 一致：max(now, expires_at) + months*30d。"""
+    from datetime import datetime, timezone, timedelta
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        dup = conn.execute(
+            "SELECT 1 FROM afdian_orders WHERE out_trade_no=?", (out_trade_no,)
+        ).fetchone()
+        if dup:
+            conn.execute("ROLLBACK")
+            return False, "duplicate"
+        exp_row = conn.execute(
+            "SELECT expires_at FROM rooms WHERE room_id=?", (room_id,)
+        ).fetchone()
+        if not exp_row:
+            conn.execute("ROLLBACK")
+            return False, "room_not_found"
+        now_utc = datetime.now(timezone.utc)
+        base = now_utc
+        if exp_row[0]:
+            try:
+                cur = datetime.strptime(exp_row[0], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+                if cur > base:
+                    base = cur
+            except ValueError:
+                pass
+        new_exp = base + timedelta(days=30 * months)
+        new_exp_str = new_exp.strftime("%Y-%m-%d %H:%M:%S")
+        conn.execute(
+            "UPDATE rooms SET expires_at=?, expired_reminder_count=0 WHERE room_id=?",
+            (new_exp_str, room_id),
+        )
+        conn.execute(
+            "INSERT INTO afdian_orders (out_trade_no, room_id, months, total_amount, raw_json) "
+            "VALUES (?,?,?,?,?)",
+            (out_trade_no, room_id, months, total_amount, raw_json),
+        )
+        conn.execute("COMMIT")
+        return True, new_exp_str
+    except Exception as e:
+        conn.execute("ROLLBACK")
+        return False, f"error:{e}"
     finally:
         conn.close()
 

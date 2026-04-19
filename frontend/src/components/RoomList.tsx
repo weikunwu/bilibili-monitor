@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { MdCircle } from 'react-icons/md'
-import { Button, ButtonToolbar, IconButton, Input, Modal, Tag, useToaster, Message } from 'rsuite'
+import { Button, ButtonToolbar, IconButton, Input, Modal, Stack, Tag, useToaster, Message } from 'rsuite'
 import PlayOutlineIcon from '@rsuite/icons/PlayOutline'
 import CloseOutlineIcon from '@rsuite/icons/CloseOutline'
 import ChangeListIcon from '@rsuite/icons/ChangeList'
@@ -103,6 +103,8 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
   const [redeemToken, setRedeemToken] = useState('')
   const [redeemErr, setRedeemErr] = useState('')
   const [redeeming, setRedeeming] = useState(false)
+
+  const [afdianTarget, setAfdianTarget] = useState<Room | null>(null)
 
   // 拉取所有房间的最新主播资料：一次批量请求，backend 内部并发限流。
   const [streamerInfo, setStreamerInfo] = useState<Map<number, StreamerInfo>>(() => new Map(streamerInfoCache))
@@ -242,6 +244,38 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
           <Button onClick={handleRedeem} color="yellow" appearance="primary" loading={redeeming}>续费</Button>
         </Modal.Footer>
       </Modal>
+      <Modal open={afdianTarget !== null} onClose={() => setAfdianTarget(null)} size="xs">
+        <Modal.Header>
+          <Modal.Title>爱发电续费</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <div style={{ fontSize: 13, color: '#888', marginBottom: 12, lineHeight: 1.6 }}>
+            房间 <b>{afdianTarget?.streamer_name || afdianTarget?.room_id}</b> · 选档位跳到爱发电付款，付款成功后房间到期时间会自动延长，无需回填任何码。
+          </div>
+          <Stack direction="column" spacing={8} alignItems="stretch">
+            {[
+              { plan: '6dc211fc3a4e11f1b03a5254001e7c00', label: '月卡 · 1 个月' },
+              { plan: '7bb78d823a4e11f1aa9352540025c377', label: '季卡 · 3 个月' },
+              { plan: '922b9cca3a4e11f1a98752540025c377', label: '年卡 · 12 个月' },
+              { plan: 'd1cf395a3b8811f1a5e45254001e7c00', label: '测试方案 · 1 个月' },
+            ].map((opt) => (
+              <Button
+                key={opt.plan}
+                appearance="primary"
+                color="orange"
+                onClick={() => {
+                  if (!afdianTarget) return
+                  const url = `https://ifdian.net/order/create?plan_id=${opt.plan}&product_type=0&custom_order_id=${afdianTarget.room_id}`
+                  window.open(url, '_blank', 'noopener,noreferrer')
+                }}
+              >{opt.label}</Button>
+            ))}
+          </Stack>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button onClick={() => setAfdianTarget(null)} appearance="subtle">关闭</Button>
+        </Modal.Footer>
+      </Modal>
       <Modal open={unbindTarget !== null} onClose={() => !unbinding && setUnbindTarget(null)} size="xs">
         <Modal.Header>
           <Modal.Title>解绑房间</Modal.Title>
@@ -334,6 +368,10 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
                     size="sm" color="yellow" appearance="ghost" style={{ width: 132 }}
                     onClick={(e) => { e.stopPropagation(); openRedeem(r) }}
                   >续费机器人</Button>
+                  <Button
+                    size="sm" color="orange" appearance="ghost" style={{ width: 132 }}
+                    onClick={(e) => { e.stopPropagation(); setAfdianTarget(r) }}
+                  >爱发电续费</Button>
                   <Button size="sm" appearance="ghost" startIcon={<ChangeListIcon />} style={{ width: 132 }} onClick={(e) => { e.stopPropagation(); onBindBot?.(r.room_id) }}>
                     {r.bot_uid ? '更换机器人' : '绑定机器人'}
                   </Button>

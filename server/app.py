@@ -19,7 +19,7 @@ from .routes.rooms import purge_stale_rate_limits as purge_room_rate_limits
 from . import turnstile
 from .manager import manager
 from . import recorder, effect_catalog, gift_catalog
-from .routes import events, rooms, bot, admin, clips, overlay
+from .routes import events, rooms, bot, admin, clips, overlay, afdian
 
 app = FastAPI(title="布布机器人")
 
@@ -50,6 +50,7 @@ app.include_router(bot.router)
 app.include_router(admin.router)
 app.include_router(clips.router)
 app.include_router(overlay.router)
+app.include_router(afdian.router)
 
 
 @app.post("/api/auth")
