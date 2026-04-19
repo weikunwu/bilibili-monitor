@@ -79,16 +79,12 @@ export function OverlayGiftsPage() {
               key={u.event_id}
               item={u}
               first={i === 0}
-              roomId={roomId!}
-              token={token}
             />
           ) : (
             <GiftCardCanvas
               key={u.event_id}
               user={u}
               first={i === 0}
-              roomId={roomId!}
-              token={token}
             />
           )
         ))}
@@ -103,8 +99,8 @@ export function OverlayGiftsPage() {
 }
 
 function GiftCardCanvas({
-  user, first, roomId, token,
-}: { user: GiftUser; first: boolean; roomId: string; token: string }) {
+  user, first,
+}: { user: GiftUser; first: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   // 每次 gifts/total 变化才重绘，减小闪烁
   const sig = JSON.stringify({
@@ -113,11 +109,9 @@ function GiftCardCanvas({
 
   useEffect(() => {
     if (!canvasRef.current) return
-    const proxyUrl = (src: string) =>
-      `/api/overlay/proxy-image/${roomId}?token=${encodeURIComponent(token)}&url=${encodeURIComponent(src)}`
-    generateGiftCard(canvasRef.current, user, { proxyUrl }).catch(() => {})
+    generateGiftCard(canvasRef.current, user).catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sig, roomId, token])
+  }, [sig])
 
   return (
     <canvas
@@ -128,14 +122,12 @@ function GiftCardCanvas({
 }
 
 function SuperChatCardCanvas({
-  item, first, roomId, token,
-}: { item: SuperChatOverlayItem; first: boolean; roomId: string; token: string }) {
+  item, first,
+}: { item: SuperChatOverlayItem; first: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
     if (!canvasRef.current) return
-    const proxyUrl = (src: string) =>
-      `/api/overlay/proxy-image/${roomId}?token=${encodeURIComponent(token)}&url=${encodeURIComponent(src)}`
     // generateSuperChatCard 期待的是 LiveEvent shape：拼一个最小的过去
     const pseudoEvent: LiveEvent = {
       id: item.event_id,
@@ -145,8 +137,8 @@ function SuperChatCardCanvas({
       content: item.content,
       extra: item.extra,
     } as LiveEvent
-    generateSuperChatCard(canvasRef.current, pseudoEvent, { proxyUrl }).catch(() => {})
-  }, [item, roomId, token])
+    generateSuperChatCard(canvasRef.current, pseudoEvent).catch(() => {})
+  }, [item])
 
   return (
     <canvas

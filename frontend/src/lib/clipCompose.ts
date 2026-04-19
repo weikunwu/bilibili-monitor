@@ -68,9 +68,9 @@ async function loadVideo(src: string): Promise<HTMLVideoElement> {
   return v
 }
 
-function proxied(url: string): string {
-  return `/api/proxy-image?url=${encodeURIComponent(url)}`
-}
+// B站 CDN 都带 Access-Control-Allow-Origin: *，配上 referrerPolicy:'no-referrer'
+// 就能直连（CDN 对非 bilibili Referer 返 403）。
+const NO_REF: RequestInit = { referrerPolicy: 'no-referrer' }
 
 export interface ComposeProgress {
   stage: 'downloading' | 'loading' | 'recording' | 'finalizing'
@@ -170,9 +170,10 @@ async function buildSmallCardSpec(ev: LiveEvent): Promise<SmallCardSpec | null> 
   const avatar = extra.avatar ? await new Promise<HTMLImageElement | null>((resolve) => {
     const img = new Image()
     img.crossOrigin = 'anonymous'
+    img.referrerPolicy = 'no-referrer'
     img.onload = () => resolve(img)
     img.onerror = () => resolve(null)
-    img.src = `/api/proxy-image?url=${encodeURIComponent(extra.avatar!)}`
+    img.src = extra.avatar!
   }) : null
   const avatarSize = fontSize + padY * 2 - 6   // inset from pill height so it clearly sits inside the rounded cap
   const avatarGap = 6
@@ -218,8 +219,8 @@ export async function composeClipInBrowser(
   const rawVapAssets = await Promise.all(
     overlays.map(async (ov) => {
       const [mp4Blob, info] = await Promise.all([
-        fetch(proxied(ov.vap_mp4!)).then((r) => r.blob()),
-        fetch(proxied(ov.vap_json!))
+        fetch(ov.vap_mp4!, NO_REF).then((r) => r.blob()),
+        fetch(ov.vap_json!, NO_REF)
           .then((r) => r.json())
           .then((j) => (j.info || j) as VapSidecarInfo),
       ])
@@ -289,9 +290,10 @@ export async function composeClipInBrowser(
     bgImg = await new Promise<HTMLImageElement | null>((resolve) => {
       const img = new Image()
       img.crossOrigin = 'anonymous'
+      img.referrerPolicy = 'no-referrer'
       img.onload = () => resolve(img)
       img.onerror = () => resolve(null)
-      img.src = `/api/proxy-image?url=${encodeURIComponent(backdropUrl)}`
+      img.src = backdropUrl
     })
   }
 

@@ -5,13 +5,10 @@ import sqlite3
 import time
 from datetime import datetime, timezone, timedelta
 from typing import Optional
-from urllib.parse import urlparse
 
-import aiohttp
 from fastapi import APIRouter, Depends, Query
-from fastapi.responses import Response
 
-from ..config import DB_PATH, BASE_DIR, HEADERS, log
+from ..config import DB_PATH, BASE_DIR
 from ..auth import require_room_access
 from ..manager import manager
 from ..time_utils import enforce_query_range
@@ -22,48 +19,6 @@ router = APIRouter()
 # 下一次 /api/stats 立刻看到新值；用户静态看页时 TTL 兜底，避免重复聚合全表。
 _STATS_TTL_SEC = 15.0
 _stats_cache: dict[int, tuple[float, dict]] = {}
-
-
-# Only allow CDN hosts we actually need. Anything else would make the
-# endpoint an SSRF pivot into cloud metadata / internal services.
-_ALLOWED_PROXY_SUFFIXES = (
-    ".hdslb.com",
-    ".bilibili.com",
-    ".bilivideo.com",
-    ".bilivideo.cn",
-    ".biliapi.net",
-)
-
-
-def _is_allowed_proxy_host(url: str) -> bool:
-    try:
-        p = urlparse(url)
-    except Exception:
-        return False
-    if p.scheme not in ("http", "https"):
-        return False
-    host = (p.hostname or "").lower()
-    if not host:
-        return False
-    return any(host == s.lstrip(".") or host.endswith(s) for s in _ALLOWED_PROXY_SUFFIXES)
-
-
-@router.get("/api/proxy-image")
-async def proxy_image(url: str = Query(...), _=Depends(require_room_access)):
-    """代理 B站 CDN 图片，解决前端 CORS 问题。仅允许 B站 域名，防 SSRF。"""
-    if not _is_allowed_proxy_host(url):
-        return Response(status_code=400)
-    try:
-        async with aiohttp.ClientSession(headers=HEADERS) as session:
-            async with session.get(url, allow_redirects=False) as resp:
-                content_type = resp.headers.get("Content-Type", "image/png")
-                data = await resp.read()
-                return Response(content=data, media_type=content_type, headers={
-                    "Cache-Control": "public, max-age=86400",
-                    "Access-Control-Allow-Origin": "*",
-                })
-    except Exception:
-        return Response(status_code=502)
 
 
 def _today_utc_range(tz_offset: Optional[int] = None) -> tuple[str, str]:

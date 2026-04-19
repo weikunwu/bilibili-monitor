@@ -275,7 +275,7 @@ export function GiftPanel({
                   value={extra.total_coin ? formatBattery(extra.total_coin) : null}
                   mainContent={
                     <span className="gift-item">
-                      {extra.gift_img && <img className="gift-item-img" src={fixUrl(extra.gift_img)} alt="" />}
+                      {extra.gift_img && <img className="gift-item-img" src={fixUrl(extra.gift_img)} referrerPolicy="no-referrer" alt="" />}
                       {extra.gift_name || ev.content} x{extra.num || 1}
                     </span>
                   }
@@ -378,7 +378,7 @@ export function GiftPanel({
                   const extra = rowData.extra || {}
                   return (
                     <span className="gift-item">
-                      {extra.gift_img && <img className="gift-item-img" src={fixUrl(extra.gift_img)} alt="" />}
+                      {extra.gift_img && <img className="gift-item-img" src={fixUrl(extra.gift_img)} referrerPolicy="no-referrer" alt="" />}
                       {extra.gift_name || rowData.content} x{extra.num || 1}
                       {isMobile && extra.total_coin ? (
                         <span className="gift-item-coin">{formatBattery(extra.total_coin)}</span>

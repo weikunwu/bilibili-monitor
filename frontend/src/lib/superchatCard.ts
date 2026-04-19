@@ -1,21 +1,16 @@
 import type { LiveEvent } from '../types'
 import { GUARD_FRAME_URLS } from './constants'
-import { getProxyImageUrl } from './formatters'
+import { fixUrl } from './formatters'
 
-type ProxyUrlFn = (src: string) => string
-
-function loadImage(
-  src: string,
-  proxy = false,
-  proxyFn: ProxyUrlFn = getProxyImageUrl,
-): Promise<HTMLImageElement | null> {
+function loadImage(src: string): Promise<HTMLImageElement | null> {
   return new Promise((resolve) => {
     if (!src) { resolve(null); return }
     const img = new Image()
     img.crossOrigin = 'anonymous'
+    img.referrerPolicy = 'no-referrer'
     img.onload = () => resolve(img)
     img.onerror = () => resolve(null)
-    img.src = proxy ? proxyFn(src) : src
+    img.src = fixUrl(src)
   })
 }
 
@@ -60,9 +55,8 @@ function roundRect(
 export async function generateSuperChatCard(
   canvas: HTMLCanvasElement,
   event: LiveEvent,
-  opts?: { proxyUrl?: ProxyUrlFn; showPrice?: boolean },
+  opts?: { showPrice?: boolean },
 ): Promise<void> {
-  const proxyFn = opts?.proxyUrl || getProxyImageUrl
   const showPrice = opts?.showPrice ?? true
   const ctx = canvas.getContext('2d')!
   const e = event.extra || {}
@@ -98,11 +92,11 @@ export async function generateSuperChatCard(
   ctx.clearRect(0, 0, W, H)
 
   const [avatar, guardFrame, decoImg] = await Promise.all([
-    loadImage(e.avatar || '', true, proxyFn),
+    loadImage(e.avatar || ''),
     e.guard_level && e.guard_level > 0
       ? loadImage(GUARD_FRAME_URLS[e.guard_level])
       : Promise.resolve(null),
-    e.background_image ? loadImage(e.background_image, true, proxyFn) : Promise.resolve(null),
+    e.background_image ? loadImage(e.background_image) : Promise.resolve(null),
   ])
 
   const RADIUS = 8

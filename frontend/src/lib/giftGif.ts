@@ -54,23 +54,24 @@ function ditherFS(rgba: Uint8ClampedArray, w: number, h: number, palette: number
 }
 import type { GiftUser, GiftGifItem } from '../types'
 import { GUARD_FRAME_URLS, CARD_TPL_URLS } from './constants'
-import { getProxyImageUrl } from './formatters'
+import { fixUrl } from './formatters'
 
 export type { GiftGifItem }
 
-function loadImage(src: string, proxy = false): Promise<HTMLImageElement | null> {
+function loadImage(src: string): Promise<HTMLImageElement | null> {
   return new Promise((resolve) => {
     if (!src) { resolve(null); return }
     const img = new Image()
     img.crossOrigin = 'anonymous'
+    img.referrerPolicy = 'no-referrer'
     img.onload = () => resolve(img)
     img.onerror = () => resolve(null)
-    img.src = proxy ? getProxyImageUrl(src) : src
+    img.src = fixUrl(src)
   })
 }
 
 async function fetchGifFrames(gifUrl: string) {
-  const resp = await fetch(getProxyImageUrl(gifUrl))
+  const resp = await fetch(fixUrl(gifUrl), { referrerPolicy: 'no-referrer' })
   const buf = await resp.arrayBuffer()
   const gif = parseGIF(buf)
   const frames = decompressFrames(gif, true)
@@ -252,7 +253,7 @@ export async function generateGiftGif(items: GiftGifItem[]): Promise<Blob | null
     const tplKey = battery >= 10000 ? 'gold' : battery >= 5000 ? 'pink' : battery >= 1000 ? 'purple' : 'blue'
     const [tpl, avatar, guardFrame, frames] = await Promise.all([
       loadImage(CARD_TPL_URLS[tplKey]),
-      loadImage(u.avatar || '', true),
+      loadImage(u.avatar || ''),
       u.guard_level > 0 ? loadImage(GUARD_FRAME_URLS[u.guard_level]) : Promise.resolve(null),
       fetchGifFrames(gifUrl),
     ])

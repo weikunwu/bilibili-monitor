@@ -259,7 +259,7 @@ export function GuardPanel({
                   value={extra.price ? `¥${(extra.price / 10).toFixed(1).replace(/\.0$/, '')}` : null}
                   mainContent={
                     <span className="gift-item">
-                      {extra.gift_img && <img className="gift-item-img" src={fixUrl(extra.gift_img)} alt="" />}
+                      {extra.gift_img && <img className="gift-item-img" src={fixUrl(extra.gift_img)} referrerPolicy="no-referrer" alt="" />}
                       {name} x{num}
                       {extra.price ? (
                         <span className="gift-item-coin">{formatBattery(extra.price * num)}</span>
@@ -363,7 +363,7 @@ export function GuardPanel({
                   const num = extra.num || 1
                   return (
                     <span className="gift-item">
-                      {extra.gift_img && <img className="gift-item-img" src={fixUrl(extra.gift_img)} alt="" />}
+                      {extra.gift_img && <img className="gift-item-img" src={fixUrl(extra.gift_img)} referrerPolicy="no-referrer" alt="" />}
                       {name} x{num}
                       {isMobile && extra.price ? (
                         <span className="gift-item-coin">{formatBattery(extra.price * num)}</span>

@@ -42,15 +42,25 @@ export function OverlayEntryEffectsPage() {
   const pollRef = useRef<number>(0)
   const currentRef = useRef<QueuedEvent | null>(null)
 
-  // OBS 浏览器源要透明背景
+  // OBS 浏览器源要透明背景 + 整页 no-referrer
+  // 后者用来让 <video> 直连 B站 CDN：CDN 校验 Referer，<video> 元素不认
+  // referrerpolicy 属性，只能靠页级 meta 兜底。overlay 页没别的外链请求，
+  // 整页 no-referrer 没副作用。
   useEffect(() => {
     const prevHtml = document.documentElement.style.background
     const prevBody = document.body.style.background
     document.documentElement.style.background = 'transparent'
     document.body.style.background = 'transparent'
+
+    const meta = document.createElement('meta')
+    meta.name = 'referrer'
+    meta.content = 'no-referrer'
+    document.head.appendChild(meta)
+
     return () => {
       document.documentElement.style.background = prevHtml
       document.body.style.background = prevBody
+      meta.remove()
     }
   }, [])
 
@@ -150,11 +160,9 @@ function VapPlayer({
     let rvfcId = 0
 
     async function start() {
-      // mp4 / json 都直连 B站 CDN — CDN 校验的是 Referer（非 bilibili 域或非空均 403），
-      // 用 referrerPolicy:'no-referrer' 让浏览器不发 Referer 就能放行。
       let info: VapInfo
       try {
-        const jsonResp = await fetch(jsonUrl, { referrerPolicy: 'no-referrer' })
+        const jsonResp = await fetch(jsonUrl)
         if (!jsonResp.ok) throw new Error('json fetch fail')
         const j = await jsonResp.json()
         info = (j.info || j) as VapInfo
@@ -179,8 +187,6 @@ function VapPlayer({
       if (!tmpCtx) { onDone(); return }
 
       video.crossOrigin = 'anonymous'
-      // HTMLVideoElement 在 TS lib 里没 referrerPolicy 字段，但浏览器认 HTML 属性。
-      video.setAttribute('referrerpolicy', 'no-referrer')
       video.src = mp4Url
       video.muted = !soundOn
       video.playsInline = true

@@ -10,12 +10,10 @@ import time
 from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
 
-import aiohttp
-from fastapi import APIRouter, HTTPException, Query, Request, Response
+from fastapi import APIRouter, HTTPException, Query, Request
 
-from ..config import DB_PATH, HEADERS
+from ..config import DB_PATH
 from ..db import verify_overlay_token, get_overlay_settings, get_live_started_at
-from .events import _is_allowed_proxy_host
 
 
 router = APIRouter()
@@ -25,10 +23,8 @@ MAX_EVENTS = 20  # 绝对上限；实际 N 由房间设置决定
 # ── 速率限制 ──
 # 每个 IP 在 60 秒窗口内的调用次数上限（超过返回 429）。
 # gifts: 正常 poll 12/min (每 5 秒一次)，留 5x buffer
-# proxy-image: 每次 poll 最多 20 张图 (10 头像 + 10 礼物图)，浏览器 24h 缓存；留 15x buffer
 RATE_LIMIT = {
     "gifts": (60, 60.0),
-    "proxy": (300, 60.0),
 }
 # name -> {ip: deque[timestamp]}
 _rate_buckets: dict[str, dict[str, deque[float]]] = defaultdict(lambda: defaultdict(deque))
@@ -256,27 +252,3 @@ async def overlay_gifts(
     return {"room_id": room_id, "users": items}
 
 
-@router.get("/api/overlay/proxy-image/{room_id}")
-async def overlay_proxy_image(
-    room_id: int,
-    request: Request,
-    token: str = Query(...),
-    url: str = Query(...),
-):
-    """叠加页用的 B站 CDN 图片代理，token 鉴权防滥用 (主接口 /api/proxy-image 仍需登录)。"""
-    _check_rate(request, "proxy")
-    if not verify_overlay_token(room_id, token):
-        raise HTTPException(status_code=403, detail="invalid overlay token")
-    if not _is_allowed_proxy_host(url):
-        return Response(status_code=400)
-    try:
-        async with aiohttp.ClientSession(headers=HEADERS) as session:
-            async with session.get(url, allow_redirects=False) as resp:
-                content_type = resp.headers.get("Content-Type", "image/png")
-                data = await resp.read()
-                return Response(content=data, media_type=content_type, headers={
-                    "Cache-Control": "public, max-age=86400",
-                    "Access-Control-Allow-Origin": "*",
-                })
-    except Exception:
-        return Response(status_code=502)
