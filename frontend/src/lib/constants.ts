@@ -15,6 +15,7 @@ export const TAB_BLINDBOX = 'blindbox' as const
 export const TAB_REACTIVE = 'reactive' as const   // 互动回复（AI/欢迎/感谢/潜水）
 export const TAB_AUTOMATION = 'automation' as const // 主动 & 高级（定时/打个有效/自动剪辑）
 export const TAB_NICKNAMES = 'nicknames' as const
+export const TAB_ENTRY_EFFECTS = 'entry-effects' as const
 export const TAB_ADMIN = 'admin' as const
 
 export const BADGE_NAMES: Record<string, string> = {

@@ -325,6 +325,20 @@ def init_db():
             processed_at TEXT NOT NULL DEFAULT (datetime('now'))
         )
     """)
+    # 进场特效：每个 (room_id, uid) 一条记录。视频落磁盘，DB 只存文件名。
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS entry_effects (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            room_id INTEGER NOT NULL,
+            uid INTEGER NOT NULL,
+            user_name TEXT NOT NULL DEFAULT '',
+            video_filename TEXT NOT NULL,
+            size_bytes INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            UNIQUE(room_id, uid)
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_entry_effects_room ON entry_effects(room_id)")
 
     admin_email = os.environ.get("ADMIN_EMAIL", "")
     admin_password = os.environ.get("ADMIN_PASSWORD", "")
@@ -529,6 +543,66 @@ def redeem_renewal_token(token: str, user_id: int, room_id: int) -> tuple[bool, 
         return False, f"兑换失败: {e}"
     finally:
         conn.close()
+
+
+# ── 进场特效 ──
+
+def list_entry_effects(room_id: int) -> list[dict]:
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        "SELECT id, room_id, uid, user_name, video_filename, size_bytes, created_at "
+        "FROM entry_effects WHERE room_id=? ORDER BY created_at DESC",
+        (room_id,),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_entry_effect_for_user(room_id: int, uid: int) -> Optional[dict]:
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.row_factory = sqlite3.Row
+    row = conn.execute(
+        "SELECT id, room_id, uid, user_name, video_filename, size_bytes, created_at "
+        "FROM entry_effects WHERE room_id=? AND uid=?",
+        (room_id, uid),
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def upsert_entry_effect(room_id: int, uid: int, user_name: str, video_filename: str, size_bytes: int) -> dict:
+    """Upsert：同一 (room, uid) 再次上传会直接替换记录，调用方负责删旧文件。"""
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.execute(
+        "INSERT INTO entry_effects (room_id, uid, user_name, video_filename, size_bytes) "
+        "VALUES (?,?,?,?,?) "
+        "ON CONFLICT(room_id, uid) DO UPDATE SET "
+        "user_name=excluded.user_name, video_filename=excluded.video_filename, "
+        "size_bytes=excluded.size_bytes, created_at=datetime('now')",
+        (room_id, uid, user_name, video_filename, size_bytes),
+    )
+    conn.commit()
+    conn.close()
+    row = get_entry_effect_for_user(room_id, uid)
+    assert row is not None
+    return row
+
+
+def delete_entry_effect(room_id: int, effect_id: int) -> Optional[str]:
+    """删除记录，返回旧 video_filename 供调用方清磁盘；不存在返回 None。"""
+    conn = sqlite3.connect(str(DB_PATH))
+    row = conn.execute(
+        "SELECT video_filename FROM entry_effects WHERE id=? AND room_id=?",
+        (effect_id, room_id),
+    ).fetchone()
+    if not row:
+        conn.close()
+        return None
+    conn.execute("DELETE FROM entry_effects WHERE id=? AND room_id=?", (effect_id, room_id))
+    conn.commit()
+    conn.close()
+    return row[0]
 
 
 def apply_afdian_order(

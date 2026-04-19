@@ -16,10 +16,11 @@ from .db import (
 )
 from .auth import AuthMiddleware, get_session_user, get_user_allowed_rooms, handle_login, handle_logout, handle_change_password, handle_send_register_code, handle_register, handle_send_reset_code, handle_reset_password, purge_stale_rate_limits as purge_auth_rate_limits
 from .routes.rooms import purge_stale_rate_limits as purge_room_rate_limits
+from .routes.entry_effects import purge_stale_cooldowns as purge_entry_effect_cooldowns
 from . import turnstile
 from .manager import manager
 from . import recorder, effect_catalog, gift_catalog
-from .routes import events, rooms, bot, admin, clips, overlay, afdian
+from .routes import events, rooms, bot, admin, clips, overlay, afdian, entry_effects
 
 app = FastAPI(title="布布机器人")
 
@@ -51,6 +52,7 @@ app.include_router(admin.router)
 app.include_router(clips.router)
 app.include_router(overlay.router)
 app.include_router(afdian.router)
+app.include_router(entry_effects.router)
 
 
 @app.post("/api/auth")
@@ -208,6 +210,7 @@ async def _periodic_memory_cleanup():
         try:
             purge_auth_rate_limits()
             purge_room_rate_limits()
+            purge_entry_effect_cooldowns()
             total = 0
             for client in list(manager.all_clients().values()):
                 total += client.purge_stale_welcome()

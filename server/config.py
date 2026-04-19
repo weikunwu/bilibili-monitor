@@ -61,6 +61,14 @@ AFDIAN_QUERY_ORDER_API = "https://afdian.com/api/open/query-order"
 # 一定能被查到；不然会出现 "本月<低价礼物>" 命中缓存但查询结果永远是 0。
 RARE_BLIND_MIN_PRICE = 10000
 
+# ── 进场特效 ──
+# 视频文件存 DATA_DIR/entry_effects/<room_id>/<filename>。
+ENTRY_EFFECT_ROOT = DATA_DIR / "entry_effects"
+ENTRY_EFFECT_ROOT.mkdir(parents=True, exist_ok=True)
+ENTRY_EFFECT_MAX_BYTES = 10 * 1024 * 1024   # 10 MB
+ENTRY_EFFECT_ALLOWED_EXT = {".mp4", ".webm"}
+ENTRY_EFFECT_COOLDOWN_SEC = 5 * 60          # 同一个 uid 每 5 分钟最多触发一次
+
 
 # ── B站 API ──
 DANMU_CONF_API = "https://api.live.bilibili.com/room/v1/Danmu/getConf"

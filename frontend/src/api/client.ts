@@ -452,6 +452,45 @@ export async function fetchRoomUsers(
   return res.json()
 }
 
+export interface EntryEffect {
+  id: number
+  room_id: number
+  uid: number
+  user_name: string
+  video_filename: string
+  size_bytes: number
+  created_at: string
+}
+
+export async function fetchEntryEffects(roomId: number): Promise<EntryEffect[]> {
+  const res = await fetch(`/api/rooms/${roomId}/entry-effects`)
+  if (!res.ok) return []
+  return res.json()
+}
+
+export async function uploadEntryEffect(
+  roomId: number, uid: number, userName: string, file: File,
+): Promise<EntryEffect> {
+  const fd = new FormData()
+  fd.append('uid', String(uid))
+  fd.append('user_name', userName)
+  fd.append('file', file)
+  const res = await fetch(`/api/rooms/${roomId}/entry-effects`, { method: 'POST', body: fd })
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({} as { detail?: string }))
+    throw new Error(d.detail || '上传失败')
+  }
+  return res.json()
+}
+
+export async function deleteEntryEffect(roomId: number, effectId: number): Promise<void> {
+  const res = await fetch(`/api/rooms/${roomId}/entry-effects/${effectId}`, { method: 'DELETE' })
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({} as { detail?: string }))
+    throw new Error(d.detail || '删除失败')
+  }
+}
+
 export async function fetchGiftGif(giftId: number): Promise<{ gif: string }> {
   const res = await fetch(`/api/gift-gif?gift_id=${giftId}`)
   return res.json()
