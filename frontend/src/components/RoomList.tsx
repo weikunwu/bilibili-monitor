@@ -92,6 +92,9 @@ function StreamerBlock({ room, fresh }: { room: Room; fresh: StreamerInfo | null
   )
 }
 
+// 爱发电账号实名/签约流程走完前先隐藏入口，改一行就能开。
+const AFDIAN_ENABLED = false
+
 export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdmin }: Props) {
   const toaster = useToaster()
   const [bindOpen, setBindOpen] = useState(false)
@@ -368,10 +371,12 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
                     size="sm" color="yellow" appearance="ghost" style={{ width: 132 }}
                     onClick={(e) => { e.stopPropagation(); openRedeem(r) }}
                   >续费机器人</Button>
-                  <Button
-                    size="sm" color="orange" appearance="ghost" style={{ width: 132 }}
-                    onClick={(e) => { e.stopPropagation(); setAfdianTarget(r) }}
-                  >爱发电续费</Button>
+                  {AFDIAN_ENABLED && (
+                    <Button
+                      size="sm" color="orange" appearance="ghost" style={{ width: 132 }}
+                      onClick={(e) => { e.stopPropagation(); setAfdianTarget(r) }}
+                    >爱发电续费</Button>
+                  )}
                   <Button size="sm" appearance="ghost" startIcon={<ChangeListIcon />} style={{ width: 132 }} onClick={(e) => { e.stopPropagation(); onBindBot?.(r.room_id) }}>
                     {r.bot_uid ? '更换机器人' : '绑定机器人'}
                   </Button>
