@@ -63,7 +63,7 @@ async function loadVideo(src: string): Promise<HTMLVideoElement> {
   v.preload = 'auto'
   await new Promise<void>((resolve, reject) => {
     v.addEventListener('loadedmetadata', () => resolve(), { once: true })
-    v.addEventListener('error', () => reject(new Error('video load failed')), { once: true })
+    v.addEventListener('error', () => reject(new Error('视频加载失败')), { once: true })
   })
   return v
 }

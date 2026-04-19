@@ -76,7 +76,7 @@ export function OverlayEntryEffectsPage() {
     }
   }, [roomId, token])
 
-  if (!token) return <div style={{ color: '#f55', padding: 20 }}>missing token</div>
+  if (!token) return <div style={{ color: '#f55', padding: 20 }}>缺少 token</div>
   if (!current) return null
 
   const videoUrl = `/api/overlay/${roomId}/entry-effects/${current.id}/video?token=${encodeURIComponent(token)}`

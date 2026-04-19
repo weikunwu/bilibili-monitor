@@ -38,7 +38,7 @@ export function OverlayGiftsPage() {
 
   useEffect(() => {
     if (!roomId) return
-    if (!token) { setError('missing token'); return }
+    if (!token) { setError('缺少 token'); return }
     let cancelled = false
     async function poll() {
       try {
