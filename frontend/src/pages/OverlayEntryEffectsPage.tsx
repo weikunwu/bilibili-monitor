@@ -109,6 +109,8 @@ export function OverlayEntryEffectsPage() {
       {current.kind === 'gift_vap' && current.mp4_url && current.json_url ? (
         <VapPlayer
           key={key}
+          roomId={roomId!}
+          token={token}
           mp4Url={current.mp4_url}
           jsonUrl={current.json_url}
           soundOn={soundOn}
@@ -134,8 +136,10 @@ export function OverlayEntryEffectsPage() {
  * 这里用隐藏 <video> 逐帧绘到 canvas：RGB 半边做颜色，alpha 半边灰度值
  * 写到 RGB 半边的 A 通道，得到真正带透明度的帧。 */
 function VapPlayer({
-  mp4Url, jsonUrl, soundOn, onDone,
+  roomId, token, mp4Url, jsonUrl, soundOn, onDone,
 }: {
+  roomId: string
+  token: string
   mp4Url: string
   jsonUrl: string
   soundOn: boolean
@@ -150,11 +154,12 @@ function VapPlayer({
     let rvfcId = 0
 
     async function start() {
-      // B站 CDN (*.hdslb.com) 返回 Access-Control-Allow-Origin: *，可直连；
-      // <video crossOrigin="anonymous"> 让 canvas 不被 tainted，getImageData 就能用。
+      // mp4 直连 B站 CDN（CORS * 放行）；json 走服务器代理——CDN 对 json 查 Referer，
+      // 浏览器 fetch 必带 Origin 就 403，只有服务端无 Origin 的请求能通过。
       let info: VapInfo
       try {
-        const jsonResp = await fetch(jsonUrl)
+        const proxied = `/api/overlay/proxy-image/${roomId}?token=${encodeURIComponent(token)}&url=${encodeURIComponent(jsonUrl)}`
+        const jsonResp = await fetch(proxied)
         if (!jsonResp.ok) throw new Error('json fetch fail')
         const j = await jsonResp.json()
         info = (j.info || j) as VapInfo
@@ -234,7 +239,7 @@ function VapPlayer({
       }) | null
       if (rvfcId && v?.cancelVideoFrameCallback) v.cancelVideoFrameCallback(rvfcId)
     }
-  }, [mp4Url, jsonUrl, soundOn, onDone])
+  }, [roomId, token, mp4Url, jsonUrl, soundOn, onDone])
 
   return (
     <>
