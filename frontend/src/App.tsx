@@ -39,16 +39,17 @@ const VALID_TABS: TabType[] = [TAB_LIVE, TAB_REALTIME, TAB_EVENTS, TAB_BLINDBOX,
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null)
+  const [authLoading, setAuthLoading] = useState(true)
   const [rooms, setRooms] = useState<Room[]>([])
 
   useEffect(() => {
     // 公开的 OBS 叠加页：没有登录 cookie，跳过初始用户/房间拉取，
     // 否则 fetchRooms 401 会把观众强跳到登录页。
-    if (window.location.pathname.startsWith('/overlay/')) return
+    if (window.location.pathname.startsWith('/overlay/')) { setAuthLoading(false); return }
     // 登录/注册/忘记密码页同理：尚未登录，别去拉保护接口
-    if (window.location.pathname.startsWith('/register')) return
-    if (window.location.pathname.startsWith('/login')) return
-    if (window.location.pathname.startsWith('/forgot-password')) return
+    if (window.location.pathname.startsWith('/register')) { setAuthLoading(false); return }
+    if (window.location.pathname.startsWith('/login')) { setAuthLoading(false); return }
+    if (window.location.pathname.startsWith('/forgot-password')) { setAuthLoading(false); return }
     // fetchMe 是判定登录的真相源：null 直接跳登录，避免靠 fetchRooms 的 401 兜底
     // （fetchRooms 已有 redirect，但如果调用顺序/竞态变化就不保险，这里加一道）。
     fetchMe().then((user) => {
@@ -57,9 +58,14 @@ export default function App() {
         return
       }
       setCurrentUser(user)
+      setAuthLoading(false)
     })
     fetchRooms().then(setRooms)
   }, [])
+
+  // 刷新 /admin 时 currentUser 初始为 null，不能让保护路由立刻跳转；
+  // 等 fetchMe 回来之后再挂 Routes，避免 `role === 'admin'` 在 null 阶段误判跳走。
+  if (authLoading) return null
 
   return (
     <Routes>
