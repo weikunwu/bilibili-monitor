@@ -40,8 +40,36 @@ router = APIRouter()
 # ── 触发队列 / 冷却 ──
 # 队列容量限制，防止断开的 OBS 页面让队列无限涨。
 _MAX_QUEUE = 20
+# 兜底单队列：没带 sid 的老 overlay 还能用；新事件没活动 session 时也先压这里，
+# 等下一个 session 第一次 poll 时一次性拉走。
 _pending_queues: dict[int, deque[dict]] = defaultdict(deque)
+# 每个 OBS 会话独立队列，按 (room_id, sid) 存。同一房间多开 OBS = 多个 sid，
+# 触发时 fan-out 到每个 alive sid 的队列里，互不影响。
+_session_queues: dict[tuple[int, str], deque[dict]] = {}
+_session_last_seen: dict[tuple[int, str], float] = {}
+# 多久没 poll 就视为离线，新事件不再 fan-out 到它。前端默认 3s 一次 poll。
+_SESSION_ACTIVE_TTL = 15.0
 _last_trigger: dict[tuple[int, int], float] = {}
+
+
+def _enqueue_to_overlays(room_id: int, event: dict) -> int:
+    """把一条事件 fan-out 到该房间所有 alive session 的队列；同时入 legacy
+    单队列兜底（容量受 _MAX_QUEUE 限制，不会无限涨）。返回 fan-out 的会话数。"""
+    now = time.monotonic()
+    fan = 0
+    for (rid, sid), ts in list(_session_last_seen.items()):
+        if rid != room_id or now - ts >= _SESSION_ACTIVE_TTL:
+            continue
+        q = _session_queues.setdefault((rid, sid), deque())
+        q.append(event)
+        while len(q) > _MAX_QUEUE:
+            q.popleft()
+        fan += 1
+    legacy = _pending_queues[room_id]
+    legacy.append(event)
+    while len(legacy) > _MAX_QUEUE:
+        legacy.popleft()
+    return fan
 
 
 def _effect_video_path(room_id: int, filename: str) -> Path:
@@ -72,9 +100,8 @@ def try_trigger_entry_effect(room_id: int, uid: int) -> bool:
             log.info(f"[entry-effect] room={room_id} uid={uid} 冷却中（剩 {remain}s），跳过")
             return False
         _last_trigger[key] = now
-        q = _pending_queues[room_id]
         kind_label = f"preset={effect.get('preset_key')}" if effect.get("preset_key") else f"video={effect.get('video_filename')}"
-        q.append({
+        fan = _enqueue_to_overlays(room_id, {
             "kind": "user",
             "id": effect["id"],
             "uid": uid,
@@ -82,11 +109,9 @@ def try_trigger_entry_effect(room_id: int, uid: int) -> bool:
             "preset_key": effect.get("preset_key") or "",
             "enqueued_at": now,
         })
-        while len(q) > _MAX_QUEUE:
-            q.popleft()
         log.info(
             f"[entry-effect] room={room_id} uid={uid} user={effect.get('user_name')!r} "
-            f"入队 effect id={effect['id']} {kind_label}（队列长 {len(q)}）"
+            f"入队 effect id={effect['id']} {kind_label}（fan-out {fan} 会话）"
         )
         return True
     except Exception as e:
@@ -105,17 +130,14 @@ def trigger_gift_vap(room_id: int, gift_id: int, source: str = "gift") -> bool:
             log.info(f"[gift-vap:{source}] room={room_id} gift_id={gift_id} 无全屏特效")
             return False
         mp4_url, json_url = hit
-        q = _pending_queues[room_id]
-        q.append({
+        fan = _enqueue_to_overlays(room_id, {
             "kind": "gift_vap",
             "id": gift_id,
             "mp4_url": mp4_url,
             "json_url": json_url,
             "enqueued_at": time.monotonic(),
         })
-        while len(q) > _MAX_QUEUE:
-            q.popleft()
-        log.info(f"[gift-vap:{source}] room={room_id} gift_id={gift_id} 入队")
+        log.info(f"[gift-vap:{source}] room={room_id} gift_id={gift_id} 入队（fan-out {fan} 会话）")
         return True
     except Exception as e:
         log.warning(f"[gift-vap:{source}] failed room={room_id} gift_id={gift_id}: {e}")
@@ -123,11 +145,17 @@ def trigger_gift_vap(room_id: int, gift_id: int, source: str = "gift") -> bool:
 
 
 def purge_stale_cooldowns() -> None:
-    """定时调用清过期冷却 key，避免 _last_trigger 无限涨。"""
+    """定时调用清过期冷却 key + 离线已久的 overlay 会话。"""
     now = time.monotonic()
-    stale = [k for k, ts in _last_trigger.items() if now - ts > ENTRY_EFFECT_COOLDOWN_SEC * 2]
-    for k in stale:
+    stale_cd = [k for k, ts in _last_trigger.items() if now - ts > ENTRY_EFFECT_COOLDOWN_SEC * 2]
+    for k in stale_cd:
         _last_trigger.pop(k, None)
+    stale_sess = [k for k, ts in _session_last_seen.items() if now - ts > _SESSION_ACTIVE_TTL * 4]
+    for k in stale_sess:
+        _session_last_seen.pop(k, None)
+        _session_queues.pop(k, None)
+    if stale_sess:
+        log.info(f"[overlay-session] 清掉 {len(stale_sess)} 个离线会话")
 
 
 # ── 已登录房主 API ──
@@ -260,14 +288,31 @@ async def serve_effect_auth(room_id: int, effect_id: int, _=Depends(require_room
 # ── OBS 公开端点（token 鉴权） ──
 
 @router.get("/api/overlay/{room_id}/effects/queue")
-async def overlay_queue(room_id: int, token: str = Query(...)):
+async def overlay_queue(room_id: int, token: str = Query(...), sid: str = Query("")):
     if not verify_overlay_token(room_id, token):
         log.warning(f"[overlay-queue] room={room_id} token 无效（前缀 {token[:6]!r}…），返回 403")
         raise HTTPException(403, "token 无效")
     if is_room_expired(room_id):
         log.info(f"[overlay-queue] room={room_id} 房间已到期，返回 410")
         raise HTTPException(410, "房间已到期")
-    q = _pending_queues[room_id]
+
+    if sid:
+        key = (room_id, sid)
+        is_new = key not in _session_queues
+        if is_new:
+            log.info(f"[overlay-queue] room={room_id} 新会话 sid={sid[:8]}…")
+            _session_queues[key] = deque()
+            # 第一次注册：legacy 队列里如果有积累的事件搬一份过来，避免在 session
+            # 注册前已被入到 legacy 的事件被漏掉。注意 legacy 不 popleft——可能还有
+            # 别的没 sid 的老 overlay tab 在等。
+            legacy = _pending_queues.get(room_id)
+            if legacy:
+                _session_queues[key].extend(legacy)
+        _session_last_seen[key] = time.monotonic()
+        q = _session_queues[key]
+    else:
+        q = _pending_queues[room_id]
+
     pending: list[dict] = []
     while q:
         pending.append(q.popleft())
@@ -276,7 +321,10 @@ async def overlay_queue(room_id: int, token: str = Query(...)):
             f"{e.get('kind')}({e.get('preset_key') or e.get('id')})"
             for e in pending
         )
-        log.info(f"[overlay-queue] room={room_id} 出队 {len(pending)} 条 [{kinds}]")
+        log.info(
+            f"[overlay-queue] room={room_id} sid={sid[:8] or 'legacy'} "
+            f"出队 {len(pending)} 条 [{kinds}]"
+        )
     return {"events": pending, "sound_on": get_entry_effect_sound_on(room_id)}
 
 

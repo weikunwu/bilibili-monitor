@@ -69,11 +69,16 @@ export function OverlayEffectsPage() {
   useEffect(() => {
     if (!roomId || !token) return
     let cancelled = false
-    console.log(`[overlay] mount room=${roomId} 开始轮询，间隔 ${POLL_MS}ms`)
+    // 每次 mount 生成独立 sid。后端按 (room_id, sid) 维护独立队列，多个 OBS
+    // 浏览器源同时打开时，每个都会拿到完整事件流。
+    const sid = (typeof crypto !== 'undefined' && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : Math.random().toString(36).slice(2)
+    console.log(`[overlay] mount room=${roomId} sid=${sid.slice(0, 8)}… 开始轮询，间隔 ${POLL_MS}ms`)
 
     async function poll() {
       try {
-        const r = await fetch(`/api/overlay/${roomId}/effects/queue?token=${encodeURIComponent(token)}`)
+        const r = await fetch(`/api/overlay/${roomId}/effects/queue?token=${encodeURIComponent(token)}&sid=${sid}`)
         if (r.status === 410) {
           // 房间到期，停轮询；URL 留着，续费后用户刷一下页面就能恢复
           console.warn(`[overlay] room=${roomId} 410 房间已到期，停止轮询`)
