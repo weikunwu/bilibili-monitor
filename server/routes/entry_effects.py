@@ -57,11 +57,13 @@ def try_trigger_entry_effect(room_id: int, uid: int) -> bool:
     try:
         effect = get_entry_effect_for_user(room_id, uid)
         if not effect:
+            log.info(f"[entry-effect] room={room_id} uid={uid} 无绑定，跳过")
             return False
         key = (room_id, uid)
         now = time.monotonic()
         last = _last_trigger.get(key, 0.0)
         if now - last < ENTRY_EFFECT_COOLDOWN_SEC:
+            log.info(f"[entry-effect] room={room_id} uid={uid} 冷却中，跳过（剩 {ENTRY_EFFECT_COOLDOWN_SEC - (now - last):.0f}s）")
             return False
         _last_trigger[key] = now
         q = _pending_queues[room_id]
@@ -73,7 +75,7 @@ def try_trigger_entry_effect(room_id: int, uid: int) -> bool:
         })
         while len(q) > _MAX_QUEUE:
             q.popleft()
-        log.info(f"[entry-effect] room={room_id} uid={uid} queued effect id={effect['id']} (queue={len(q)})")
+        log.info(f"[entry-effect] room={room_id} uid={uid} 入队 effect id={effect['id']} (queue={len(q)})")
         return True
     except Exception as e:
         log.warning(f"[entry-effect] trigger failed room={room_id} uid={uid}: {e}")
