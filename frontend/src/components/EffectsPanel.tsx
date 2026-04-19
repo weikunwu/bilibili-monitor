@@ -9,7 +9,7 @@ import TrashIcon from '@rsuite/icons/Trash'
 import PlusIcon from '@rsuite/icons/Plus'
 import {
   fetchEntryEffects, uploadEntryEffect, deleteEntryEffect, fetchRoomUsers,
-  fetchEntryEffectSettings, updateEntryEffectSettings,
+  fetchEffectSettings, updateEffectSettings,
   fetchOverlayToken, rotateOverlayToken, type EntryEffect,
 } from '../api/client'
 import { useIsMobile } from '../hooks/useIsMobile'
@@ -45,7 +45,7 @@ function Section({
   )
 }
 
-export function EntryEffectsPanel({ roomId }: Props) {
+export function EffectsPanel({ roomId }: Props) {
   const toaster = useToaster()
   const isMobile = useIsMobile()
   const [rows, setRows] = useState<EntryEffect[]>([])
@@ -67,7 +67,7 @@ export function EntryEffectsPanel({ roomId }: Props) {
   useEffect(() => {
     let cancelled = false
     fetchOverlayToken(roomId).then((t) => { if (!cancelled) setToken(t) }).catch(() => {})
-    fetchEntryEffectSettings(roomId).then((s) => {
+    fetchEffectSettings(roomId).then((s) => {
       if (cancelled) return
       setSoundOn(!!s.sound_on)
       setGiftTestOn(!!s.gift_effect_test_enabled)
@@ -75,16 +75,16 @@ export function EntryEffectsPanel({ roomId }: Props) {
     return () => { cancelled = true }
   }, [roomId])
 
-  const url = token ? `${window.location.origin}/overlay/${roomId}/entry-effects?token=${token}` : ''
+  const url = token ? `${window.location.origin}/overlay/${roomId}/effects?token=${token}` : ''
 
   async function handleToggleSound(on: boolean) {
     setSoundOn(on)
-    try { await updateEntryEffectSettings(roomId, { sound_on: on }) } catch { setSoundOn(!on) }
+    try { await updateEffectSettings(roomId, { sound_on: on }) } catch { setSoundOn(!on) }
   }
 
   async function handleToggleGiftTest(on: boolean) {
     setGiftTestOn(on)
-    try { await updateEntryEffectSettings(roomId, { gift_effect_test_enabled: on }) }
+    try { await updateEffectSettings(roomId, { gift_effect_test_enabled: on }) }
     catch { setGiftTestOn(!on) }
   }
 
@@ -186,7 +186,7 @@ export function EntryEffectsPanel({ roomId }: Props) {
               <Cell style={{ padding: 4 }}>
                 {(r: EntryEffect) => (
                   <video
-                    src={`/api/rooms/${r.room_id}/entry-effects/${r.id}/video`}
+                    src={`/api/rooms/${r.room_id}/effects/entries/${r.id}/video`}
                     controls
                     preload="none"
                     style={{ maxHeight: 80, maxWidth: 160, background: '#000', borderRadius: 4 }}

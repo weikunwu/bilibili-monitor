@@ -366,7 +366,6 @@ def get_all_rooms() -> list[tuple[int, int]]:
 
 def add_room(room_id: int):
     """新增房间：默认送 7 天试用期。如果 room 已存在，INSERT OR IGNORE 保留原值。"""
-    from datetime import datetime, timezone, timedelta
     trial_expires = (datetime.now(timezone.utc) + timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")
     conn = sqlite3.connect(str(DB_PATH))
     conn.execute(
@@ -467,7 +466,6 @@ def incr_expired_reminder_count(room_id: int) -> int:
 
 def create_renewal_token(months: int = 1) -> str:
     """生成一条续费码，返回字符串。"""
-    import secrets
     token = secrets.token_urlsafe(16)
     conn = sqlite3.connect(str(DB_PATH))
     conn.execute(
@@ -496,7 +494,6 @@ def list_renewal_tokens(limit: int = 100) -> list[dict]:
 def redeem_renewal_token(token: str, user_id: int, room_id: int) -> tuple[bool, str]:
     """成功返回 (True, new_expires_at_utc)；失败返回 (False, reason)。
     原子性：token 必须是 unused 才能扣；同时更新 room 的到期时间。"""
-    from datetime import datetime, timezone, timedelta
     conn = sqlite3.connect(str(DB_PATH))
     conn.execute("BEGIN IMMEDIATE")
     try:
@@ -634,7 +631,6 @@ def apply_afdian_order(
     """幂等地把一个爱发电订单应用到房间：已处理的订单直接返回 (False, "duplicate")，
     房间不存在返回 (False, "room_not_found")，成功返回 (True, new_expires_at_utc)。
     基准和 redeem_renewal_token 一致：max(now, expires_at) + months*30d。"""
-    from datetime import datetime, timezone, timedelta
     conn = sqlite3.connect(str(DB_PATH))
     conn.execute("BEGIN IMMEDIATE")
     try:

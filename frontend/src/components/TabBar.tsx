@@ -3,7 +3,7 @@ import { Radio, Gift, Search, BarChart3, MessageCircle, Wrench, Tag, Sparkles } 
 import type { TabType } from '../types'
 import {
   TAB_LIVE, TAB_REALTIME, TAB_EVENTS, TAB_BLINDBOX,
-  TAB_REACTIVE, TAB_AUTOMATION, TAB_NICKNAMES, TAB_ENTRY_EFFECTS,
+  TAB_REACTIVE, TAB_AUTOMATION, TAB_NICKNAMES, TAB_EFFECTS,
 } from '../lib/constants'
 import { useIsMobile } from '../hooks/useIsMobile'
 
@@ -25,7 +25,7 @@ const GROUPS: Group[] = [
     items: [
       { type: TAB_LIVE, label: '直播流', icon: <Radio size={16} /> },
       { type: TAB_REALTIME, label: '实时礼物流', icon: <Gift size={16} /> },
-      { type: TAB_ENTRY_EFFECTS, label: '进场&礼物特效', icon: <Sparkles size={16} /> },
+      { type: TAB_EFFECTS, label: '进场&礼物特效', icon: <Sparkles size={16} /> },
     ],
   },
   {

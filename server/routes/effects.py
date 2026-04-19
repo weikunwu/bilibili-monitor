@@ -4,12 +4,12 @@
   上传 (multipart POST) → 存到 DATA_DIR/entry_effects/<room_id>/<uuid>.<ext>，DB 写一条 (room_id, uid)。
   bili_client 收到 INTERACT_WORD msg_type=1 → 查 entry_effects → 命中且过 5 分钟冷却 → push 到
   _pending_queues[room_id]。
-  OBS 叠加页 (/overlay/<room_id>/entry-effects?token=...) 每 1.5s poll 一次
-  /api/overlay/<room_id>/entry-effects/queue，拿到就播。
+  OBS 叠加页 (/overlay/<room_id>/effects?token=...) 每 1.5s poll 一次
+  /api/overlay/<room_id>/effects/queue，拿到就播。
 
 视频文件对外两条路：
-  • 已登录房主 /api/rooms/<id>/entry-effects/<eid>/video
-  • OBS 公开 /api/overlay/<room_id>/entry-effects/<eid>/video?token=...
+  • 已登录房主 /api/rooms/<id>/effects/entries/<eid>/video
+  • OBS 公开 /api/overlay/<room_id>/effects/entries/<eid>/video?token=...
 """
 
 import time
@@ -119,12 +119,12 @@ def purge_stale_cooldowns() -> None:
 
 # ── 已登录房主 API ──
 
-@router.get("/api/rooms/{room_id}/entry-effects")
+@router.get("/api/rooms/{room_id}/effects/entries")
 async def list_effects(room_id: int, _=Depends(require_room_access)):
     return list_entry_effects(room_id)
 
 
-@router.get("/api/rooms/{room_id}/entry-effects/settings")
+@router.get("/api/rooms/{room_id}/effects/settings")
 async def get_settings(room_id: int, _=Depends(require_room_access)):
     return {
         "sound_on": get_entry_effect_sound_on(room_id),
@@ -132,7 +132,7 @@ async def get_settings(room_id: int, _=Depends(require_room_access)):
     }
 
 
-@router.patch("/api/rooms/{room_id}/entry-effects/settings")
+@router.patch("/api/rooms/{room_id}/effects/settings")
 async def update_settings(room_id: int, request: Request, _=Depends(require_room_access)):
     body = await request.json()
     if "sound_on" in body:
@@ -145,7 +145,7 @@ async def update_settings(room_id: int, request: Request, _=Depends(require_room
     }
 
 
-@router.post("/api/rooms/{room_id}/entry-effects")
+@router.post("/api/rooms/{room_id}/effects/entries")
 async def upload_effect(
     room_id: int,
     uid: int = Form(...),
@@ -183,7 +183,7 @@ async def upload_effect(
     return row
 
 
-@router.delete("/api/rooms/{room_id}/entry-effects/{effect_id}")
+@router.delete("/api/rooms/{room_id}/effects/entries/{effect_id}")
 async def remove_effect(room_id: int, effect_id: int, _=Depends(require_room_access)):
     filename = delete_entry_effect(room_id, effect_id)
     if filename is None:
@@ -195,14 +195,14 @@ async def remove_effect(room_id: int, effect_id: int, _=Depends(require_room_acc
     return {"ok": True}
 
 
-@router.get("/api/rooms/{room_id}/entry-effects/{effect_id}/video")
+@router.get("/api/rooms/{room_id}/effects/entries/{effect_id}/video")
 async def serve_effect_auth(room_id: int, effect_id: int, _=Depends(require_room_access)):
     return _serve_effect_file(room_id, effect_id)
 
 
 # ── OBS 公开端点（token 鉴权） ──
 
-@router.get("/api/overlay/{room_id}/entry-effects/queue")
+@router.get("/api/overlay/{room_id}/effects/queue")
 async def overlay_queue(room_id: int, token: str = Query(...)):
     if not verify_overlay_token(room_id, token):
         raise HTTPException(403, "token 无效")
@@ -213,7 +213,7 @@ async def overlay_queue(room_id: int, token: str = Query(...)):
     return {"events": pending, "sound_on": get_entry_effect_sound_on(room_id)}
 
 
-@router.get("/api/overlay/{room_id}/entry-effects/{effect_id}/video")
+@router.get("/api/overlay/{room_id}/effects/entries/{effect_id}/video")
 async def serve_effect_overlay(room_id: int, effect_id: int, token: str = Query(...)):
     if not verify_overlay_token(room_id, token):
         raise HTTPException(403, "token 无效")

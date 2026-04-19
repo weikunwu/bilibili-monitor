@@ -463,7 +463,7 @@ export interface EntryEffect {
 }
 
 export async function fetchEntryEffects(roomId: number): Promise<EntryEffect[]> {
-  const res = await fetch(`/api/rooms/${roomId}/entry-effects`)
+  const res = await fetch(`/api/rooms/${roomId}/effects/entries`)
   if (!res.ok) return []
   return res.json()
 }
@@ -475,7 +475,7 @@ export async function uploadEntryEffect(
   fd.append('uid', String(uid))
   fd.append('user_name', userName)
   fd.append('file', file)
-  const res = await fetch(`/api/rooms/${roomId}/entry-effects`, { method: 'POST', body: fd })
+  const res = await fetch(`/api/rooms/${roomId}/effects/entries`, { method: 'POST', body: fd })
   if (!res.ok) {
     const d = await res.json().catch(() => ({} as { detail?: string }))
     throw new Error(d.detail || '上传失败')
@@ -484,28 +484,28 @@ export async function uploadEntryEffect(
 }
 
 export async function deleteEntryEffect(roomId: number, effectId: number): Promise<void> {
-  const res = await fetch(`/api/rooms/${roomId}/entry-effects/${effectId}`, { method: 'DELETE' })
+  const res = await fetch(`/api/rooms/${roomId}/effects/entries/${effectId}`, { method: 'DELETE' })
   if (!res.ok) {
     const d = await res.json().catch(() => ({} as { detail?: string }))
     throw new Error(d.detail || '删除失败')
   }
 }
 
-export interface EntryEffectSettings {
+export interface EffectSettings {
   sound_on: boolean
   gift_effect_test_enabled: boolean
 }
 
-export async function fetchEntryEffectSettings(roomId: number): Promise<EntryEffectSettings> {
-  const res = await fetch(`/api/rooms/${roomId}/entry-effects/settings`)
+export async function fetchEffectSettings(roomId: number): Promise<EffectSettings> {
+  const res = await fetch(`/api/rooms/${roomId}/effects/settings`)
   if (!res.ok) return { sound_on: true, gift_effect_test_enabled: true }
   return res.json()
 }
 
-export async function updateEntryEffectSettings(
-  roomId: number, patch: Partial<EntryEffectSettings>,
+export async function updateEffectSettings(
+  roomId: number, patch: Partial<EffectSettings>,
 ): Promise<void> {
-  await fetch(`/api/rooms/${roomId}/entry-effects/settings`, {
+  await fetch(`/api/rooms/${roomId}/effects/settings`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(patch),

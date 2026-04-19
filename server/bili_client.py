@@ -27,7 +27,7 @@ from .db import (
     get_nickname, upsert_nickname, delete_nickname,
     set_live_started_at, get_gift_effect_test_enabled,
 )
-from .routes.entry_effects import trigger_gift_vap_test
+from .routes.effects import trigger_gift_vap_test, try_trigger_entry_effect
 from .time_utils import beijing_time_range
 
 
@@ -507,13 +507,12 @@ class BiliLiveClient:
         """观众进场 (INTERACT_WORD msg_type=1) 时，如果主播给这个 UID 配了
         进场特效视频，push 到 overlay 队列。冷却逻辑在路由模块里。
         用 self.room_id (用户侧的 display ID) 而不是 real_room_id：前端 URL
-        /api/rooms/{room_id}/entry-effects 里就是 display，DB 也以 display 存的。"""
+        /api/rooms/{room_id}/effects/entries 里就是 display，DB 也以 display 存的。"""
         if data.get("msg_type") != 1:
             return
         uid = data.get("uid") or 0
         if not uid or uid == self.bot_uid or uid == self.streamer_uid:
             return
-        from .routes.entry_effects import try_trigger_entry_effect
         try_trigger_entry_effect(self.room_id, int(uid))
 
     def purge_stale_welcome(self) -> int:

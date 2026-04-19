@@ -3,6 +3,8 @@
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
+from fastapi import HTTPException
+
 
 MAX_QUERY_RANGE_DAYS = 31
 
@@ -27,7 +29,6 @@ def _parse_utc(s: str) -> Optional[datetime]:
 def enforce_query_range(time_from: Optional[str], time_to: Optional[str]) -> None:
     """Raise HTTPException(400) 如果 [from, to] 跨度超过 MAX_QUERY_RANGE_DAYS。
     只给一头或都不给时不做限制，调用端自己按 limit 裁结果。"""
-    from fastapi import HTTPException
     a = _parse_utc(time_from) if time_from else None
     b = _parse_utc(time_to) if time_to else None
     if a and b and (b - a) > timedelta(days=MAX_QUERY_RANGE_DAYS):
