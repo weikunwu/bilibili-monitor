@@ -186,7 +186,7 @@ export function EffectsPanel({ roomId }: Props) {
           <div style={{ fontSize: 12, color: '#888' }}>
             每个 UID 仅保留一个视频（再次上传会覆盖）。
           </div>
-          <Button size="sm" appearance="primary" startIcon={<PlusIcon />} onClick={() => setShowAdd(true)}>
+          <Button size="sm" appearance="primary" startIcon={<PlusIcon />} onClick={() => setShowAdd(true)} style={{ flexShrink: 0 }}>
             新增
           </Button>
         </div>
@@ -291,7 +291,7 @@ export function EffectsPanel({ roomId }: Props) {
           <div style={{ fontSize: 12, color: '#888' }}>
             上传视频替代该礼物原本的全屏 VAP；原本无 VAP 的礼物也能借此加上特效。每个礼物仅保留一个视频。
           </div>
-          <Button size="sm" appearance="primary" startIcon={<PlusIcon />} onClick={() => setShowAddGift(true)}>
+          <Button size="sm" appearance="primary" startIcon={<PlusIcon />} onClick={() => setShowAddGift(true)} style={{ flexShrink: 0 }}>
             新增
           </Button>
         </div>
