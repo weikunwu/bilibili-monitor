@@ -187,7 +187,7 @@ export function RealtimeGiftsPanel({ roomId }: Props) {
 
   return (
     <div>
-      <div className="panel-title">实时礼物流</div>
+      <div className="panel-title">实时礼物截图</div>
       <div style={{ padding: isMobile ? '0 12px 20px' : '0 24px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
         <Section
