@@ -35,7 +35,7 @@ export function LoginPage() {
         background: '#1a1a2e', padding: 36, borderRadius: 16,
         border: '1px solid #2a2a4a', width: '100%', maxWidth: 360,
       }}>
-        <h2 style={{ color: '#fb7299', textAlign: 'center', marginTop: 0, marginBottom: 20 }}>布布机器人</h2>
+        <h2 style={{ color: '#fb7299', textAlign: 'center', marginTop: 0, marginBottom: 20 }}>狗狗机器人</h2>
 
         <form onSubmit={(e) => { e.preventDefault(); handleLogin() }}
               style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>

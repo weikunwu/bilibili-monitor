@@ -46,8 +46,8 @@ async def _send(email: str, subject: str, html: str) -> tuple[bool, str]:
 
 
 async def send_verification_code(email: str, code: str) -> tuple[bool, str]:
-    return await _send(email, "布布机器人 注册验证码", _render_code_email("布布机器人 注册验证码", code))
+    return await _send(email, "狗狗机器人 注册验证码", _render_code_email("狗狗机器人 注册验证码", code))
 
 
 async def send_reset_code(email: str, code: str) -> tuple[bool, str]:
-    return await _send(email, "布布机器人 重置密码验证码", _render_code_email("布布机器人 重置密码验证码", code))
+    return await _send(email, "狗狗机器人 重置密码验证码", _render_code_email("狗狗机器人 重置密码验证码", code))

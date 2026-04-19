@@ -25,7 +25,7 @@ from .manager import manager
 from . import recorder, effect_catalog, gift_catalog
 from .routes import events, rooms, bot, admin, clips, overlay, afdian, effects
 
-app = FastAPI(title="布布机器人")
+app = FastAPI(title="狗狗机器人")
 
 # ── Static files ──
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
@@ -266,7 +266,7 @@ async def _periodic_expiration_check():
                 if not client or not client.cookies.get("SESSDATA"):
                     continue  # 没 cookie 发不了，等用户下次重新绑定再补
                 try:
-                    await client.send_danmu("布布机器人已到期")
+                    await client.send_danmu("狗狗机器人已到期")
                     new_count = incr_expired_reminder_count(rid)
                     log.info(f"房间 {rid} 到期提醒 {new_count}/5 已发送")
                 except Exception as e:
