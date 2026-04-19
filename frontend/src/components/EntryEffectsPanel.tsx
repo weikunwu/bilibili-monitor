@@ -123,17 +123,15 @@ export function EntryEffectsPanel({ roomId }: Props) {
           </div>
         </Section>
 
-        <Section
-          isMobile={isMobile}
-          title="绑定列表"
-          description="每个 UID 仅保留一个视频（再次上传会覆盖）。文件限 10MB、mp4/webm。"
-        >
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <Button size="sm" appearance="primary" startIcon={<PlusIcon />} onClick={() => setShowAdd(true)}>
-              新增
-            </Button>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+          <div style={{ fontSize: 12, color: '#888' }}>
+            每个 UID 仅保留一个视频（再次上传会覆盖）。
           </div>
-          <Table data={rows} autoHeight loading={loading} rowKey="id" rowHeight={96}>
+          <Button size="sm" appearance="primary" startIcon={<PlusIcon />} onClick={() => setShowAdd(true)}>
+            新增
+          </Button>
+        </div>
+        <Table data={rows} autoHeight loading={loading} rowKey="id" rowHeight={96}>
             <Column flexGrow={2}>
               <HeaderCell>用户</HeaderCell>
               <Cell>
@@ -176,7 +174,6 @@ export function EntryEffectsPanel({ roomId }: Props) {
               </Cell>
             </Column>
           </Table>
-        </Section>
       </div>
 
       {showAdd && (
