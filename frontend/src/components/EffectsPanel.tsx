@@ -135,17 +135,17 @@ export function EffectsPanel({ roomId }: Props) {
               <VisibleIcon style={{ fontSize: 14 }} /> 预览
             </InputGroup.Button>
           </InputGroup>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Toggle size="sm" checked={soundOn} onChange={handleToggleSound} />
-              <span style={{ fontSize: 13, color: '#ccc' }}>OBS 里播放声音</span>
-              <span style={{ fontSize: 12, color: '#666' }}>
-                （默认静音；需 OBS 允许音频自动播放）
-              </span>
-            </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
             <Button appearance="subtle" size="sm" startIcon={<ReloadIcon />} onClick={rotate} loading={rotating}>
               重新生成 token
             </Button>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <Toggle size="sm" checked={soundOn} onChange={handleToggleSound} />
+            <span style={{ fontSize: 13, color: '#ccc' }}>OBS 里播放声音</span>
+            <span style={{ fontSize: 12, color: '#666' }}>
+              （默认静音；需 OBS 允许音频自动播放）
+            </span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <Toggle size="sm" checked={giftTestOn} onChange={handleToggleGiftTest} />
@@ -164,7 +164,31 @@ export function EffectsPanel({ roomId }: Props) {
             新增
           </Button>
         </div>
-        <Table data={rows} autoHeight loading={loading} rowKey="id" rowHeight={96}>
+        {isMobile ? (
+          <div className="effect-cards">
+            {rows.length === 0 ? (
+              <div className="empty">{loading ? '加载中...' : '暂无进场特效'}</div>
+            ) : rows.map((r) => (
+              <div className="effect-card" key={r.id}>
+                <div className="effect-card-head">
+                  <div className="effect-card-user">
+                    <div className="effect-card-name">{r.user_name || `UID ${r.uid}`}</div>
+                    <div className="effect-card-meta">UID {r.uid} · {(r.size_bytes / 1024 / 1024).toFixed(2)} MB</div>
+                  </div>
+                  <IconButton size="sm" icon={<TrashIcon />} onClick={() => handleDelete(r)} />
+                </div>
+                <video
+                  src={`/api/rooms/${r.room_id}/effects/entries/${r.id}/video`}
+                  controls
+                  preload="none"
+                  className="effect-card-video"
+                />
+                <div className="effect-card-time">{r.created_at}</div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <Table data={rows} autoHeight loading={loading} rowKey="id" rowHeight={96}>
             <Column flexGrow={2}>
               <HeaderCell>用户</HeaderCell>
               <Cell>
@@ -207,6 +231,7 @@ export function EffectsPanel({ roomId }: Props) {
               </Cell>
             </Column>
           </Table>
+        )}
       </div>
 
       {showAdd && (
