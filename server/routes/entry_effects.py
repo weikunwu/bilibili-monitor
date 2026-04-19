@@ -28,6 +28,7 @@ from ..config import (
 )
 from ..db import (
     list_entry_effects, get_entry_effect_for_user, upsert_entry_effect, delete_entry_effect,
+    get_entry_effect_sound_on, set_entry_effect_sound_on,
     verify_overlay_token,
 )
 
@@ -92,6 +93,19 @@ def purge_stale_cooldowns() -> None:
 @router.get("/api/rooms/{room_id}/entry-effects")
 async def list_effects(room_id: int, _=Depends(require_room_access)):
     return list_entry_effects(room_id)
+
+
+@router.get("/api/rooms/{room_id}/entry-effects/settings")
+async def get_settings(room_id: int, _=Depends(require_room_access)):
+    return {"sound_on": get_entry_effect_sound_on(room_id)}
+
+
+@router.patch("/api/rooms/{room_id}/entry-effects/settings")
+async def update_settings(room_id: int, request: Request, _=Depends(require_room_access)):
+    body = await request.json()
+    sound_on = bool(body.get("sound_on", False))
+    set_entry_effect_sound_on(room_id, sound_on)
+    return {"sound_on": sound_on}
 
 
 @router.post("/api/rooms/{room_id}/entry-effects")
@@ -159,7 +173,7 @@ async def overlay_queue(room_id: int, token: str = Query(...)):
     pending: list[dict] = []
     while q:
         pending.append(q.popleft())
-    return {"events": pending}
+    return {"events": pending, "sound_on": get_entry_effect_sound_on(room_id)}
 
 
 @router.get("/api/overlay/{room_id}/entry-effects/{effect_id}/video")

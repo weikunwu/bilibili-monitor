@@ -605,6 +605,17 @@ def delete_entry_effect(room_id: int, effect_id: int) -> Optional[str]:
     return row[0]
 
 
+def get_entry_effect_sound_on(room_id: int) -> bool:
+    """OBS 进场特效是否开声，房间级设置，存在 rooms.settings_json.entry_effect_sound_on。"""
+    return bool(get_room_settings(room_id).get("entry_effect_sound_on", False))
+
+
+def set_entry_effect_sound_on(room_id: int, on: bool) -> None:
+    s = get_room_settings(room_id)
+    s["entry_effect_sound_on"] = bool(on)
+    save_room_settings(room_id, s)
+
+
 def apply_afdian_order(
     out_trade_no: str, room_id: int, months: int,
     total_amount: str = "", raw_json: str = "",

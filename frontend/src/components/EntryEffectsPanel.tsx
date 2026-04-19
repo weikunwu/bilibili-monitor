@@ -9,6 +9,7 @@ import TrashIcon from '@rsuite/icons/Trash'
 import PlusIcon from '@rsuite/icons/Plus'
 import {
   fetchEntryEffects, uploadEntryEffect, deleteEntryEffect, fetchRoomUsers,
+  fetchEntryEffectSettings, updateEntryEffectSettings,
   fetchOverlayToken, rotateOverlayToken, type EntryEffect,
 } from '../api/client'
 import { useIsMobile } from '../hooks/useIsMobile'
@@ -65,12 +66,18 @@ export function EntryEffectsPanel({ roomId }: Props) {
   useEffect(() => {
     let cancelled = false
     fetchOverlayToken(roomId).then((t) => { if (!cancelled) setToken(t) }).catch(() => {})
+    fetchEntryEffectSettings(roomId).then((s) => {
+      if (!cancelled) setSoundOn(!!s.sound_on)
+    }).catch(() => {})
     return () => { cancelled = true }
   }, [roomId])
 
-  const url = token
-    ? `${window.location.origin}/overlay/${roomId}/entry-effects?token=${token}${soundOn ? '&sound=1' : ''}`
-    : ''
+  const url = token ? `${window.location.origin}/overlay/${roomId}/entry-effects?token=${token}` : ''
+
+  async function handleToggleSound(on: boolean) {
+    setSoundOn(on)
+    try { await updateEntryEffectSettings(roomId, on) } catch { setSoundOn(!on) }
+  }
 
   async function copy() {
     if (!url) return
@@ -121,10 +128,10 @@ export function EntryEffectsPanel({ roomId }: Props) {
           </InputGroup>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Toggle size="sm" checked={soundOn} onChange={setSoundOn} />
+              <Toggle size="sm" checked={soundOn} onChange={handleToggleSound} />
               <span style={{ fontSize: 13, color: '#ccc' }}>OBS 里播放声音</span>
               <span style={{ fontSize: 12, color: '#666' }}>
-                （默认静音；开启后 URL 带 sound=1，OBS 需允许音频自动播放）
+                （默认静音；需 OBS 允许音频自动播放）
               </span>
             </div>
             <Button appearance="subtle" size="sm" startIcon={<ReloadIcon />} onClick={rotate} loading={rotating}>

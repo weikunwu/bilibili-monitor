@@ -17,8 +17,8 @@ export function OverlayEntryEffectsPage() {
   const { roomId } = useParams()
   const [searchParams] = useSearchParams()
   const token = searchParams.get('token') || ''
-  // 默认静音：autoplay-with-sound 浏览器/OBS 都可能拦。URL 带 &sound=1 才开声。
-  const soundOn = searchParams.get('sound') === '1'
+  // sound_on 从后端 queue 响应拿，主播在面板里切换后下一次 poll 就生效。
+  const [soundOn, setSoundOn] = useState(false)
   const [current, setCurrent] = useState<QueuedEvent | null>(null)
   const queueRef = useRef<QueuedEvent[]>([])
   const pollRef = useRef<number>(0)
@@ -45,8 +45,10 @@ export function OverlayEntryEffectsPage() {
         const r = await fetch(`/api/overlay/${roomId}/entry-effects/queue?token=${encodeURIComponent(token)}`)
         if (!r.ok) return
         const d = await r.json()
+        if (cancelled) return
+        setSoundOn(!!d.sound_on)
         const events: QueuedEvent[] = Array.isArray(d.events) ? d.events : []
-        if (events.length && !cancelled) {
+        if (events.length) {
           queueRef.current.push(...events)
           // 如果当前没在播，立刻从队首开播
           if (!currentRef.current) pumpNext()

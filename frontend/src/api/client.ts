@@ -491,6 +491,20 @@ export async function deleteEntryEffect(roomId: number, effectId: number): Promi
   }
 }
 
+export async function fetchEntryEffectSettings(roomId: number): Promise<{ sound_on: boolean }> {
+  const res = await fetch(`/api/rooms/${roomId}/entry-effects/settings`)
+  if (!res.ok) return { sound_on: false }
+  return res.json()
+}
+
+export async function updateEntryEffectSettings(roomId: number, soundOn: boolean): Promise<void> {
+  await fetch(`/api/rooms/${roomId}/entry-effects/settings`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sound_on: soundOn }),
+  })
+}
+
 export async function fetchGiftGif(giftId: number): Promise<{ gif: string }> {
   const res = await fetch(`/api/gift-gif?gift_id=${giftId}`)
   return res.json()
