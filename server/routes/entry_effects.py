@@ -26,9 +26,11 @@ from ..config import (
     ENTRY_EFFECT_ROOT, ENTRY_EFFECT_MAX_BYTES, ENTRY_EFFECT_ALLOWED_EXT,
     ENTRY_EFFECT_COOLDOWN_SEC, log,
 )
+from .. import effect_catalog
 from ..db import (
     list_entry_effects, get_entry_effect_for_user, upsert_entry_effect, delete_entry_effect,
     get_entry_effect_sound_on, set_entry_effect_sound_on,
+    get_gift_effect_test_enabled, set_gift_effect_test_enabled,
     verify_overlay_token,
 )
 
@@ -66,6 +68,7 @@ def try_trigger_entry_effect(room_id: int, uid: int) -> bool:
         _last_trigger[key] = now
         q = _pending_queues[room_id]
         q.append({
+            "kind": "user",
             "id": effect["id"],
             "uid": uid,
             "user_name": effect["user_name"],
@@ -77,6 +80,32 @@ def try_trigger_entry_effect(room_id: int, uid: int) -> bool:
         return True
     except Exception as e:
         log.warning(f"[entry-effect] trigger failed room={room_id} uid={uid}: {e}")
+        return False
+
+
+def trigger_gift_vap_test(room_id: int, gift_id: int) -> bool:
+    """弹幕测试命令触发：从 effect_catalog 查 gift_id 的 VAP mp4，入同一条 OBS 队列。
+    命中返回 True；无对应特效或异常返回 False（不走冷却，测试场景允许多发）。"""
+    try:
+        hit = effect_catalog.get_by_gift(gift_id)
+        if not hit:
+            log.info(f"[gift-vap-test] room={room_id} gift_id={gift_id} 无全屏特效")
+            return False
+        mp4_url, json_url = hit
+        q = _pending_queues[room_id]
+        q.append({
+            "kind": "gift_vap",
+            "id": gift_id,
+            "mp4_url": mp4_url,
+            "json_url": json_url,
+            "enqueued_at": time.monotonic(),
+        })
+        while len(q) > _MAX_QUEUE:
+            q.popleft()
+        log.info(f"[gift-vap-test] room={room_id} gift_id={gift_id} 入队")
+        return True
+    except Exception as e:
+        log.warning(f"[gift-vap-test] failed room={room_id} gift_id={gift_id}: {e}")
         return False
 
 
@@ -97,15 +126,23 @@ async def list_effects(room_id: int, _=Depends(require_room_access)):
 
 @router.get("/api/rooms/{room_id}/entry-effects/settings")
 async def get_settings(room_id: int, _=Depends(require_room_access)):
-    return {"sound_on": get_entry_effect_sound_on(room_id)}
+    return {
+        "sound_on": get_entry_effect_sound_on(room_id),
+        "gift_effect_test_enabled": get_gift_effect_test_enabled(room_id),
+    }
 
 
 @router.patch("/api/rooms/{room_id}/entry-effects/settings")
 async def update_settings(room_id: int, request: Request, _=Depends(require_room_access)):
     body = await request.json()
-    sound_on = bool(body.get("sound_on", False))
-    set_entry_effect_sound_on(room_id, sound_on)
-    return {"sound_on": sound_on}
+    if "sound_on" in body:
+        set_entry_effect_sound_on(room_id, bool(body.get("sound_on")))
+    if "gift_effect_test_enabled" in body:
+        set_gift_effect_test_enabled(room_id, bool(body.get("gift_effect_test_enabled")))
+    return {
+        "sound_on": get_entry_effect_sound_on(room_id),
+        "gift_effect_test_enabled": get_gift_effect_test_enabled(room_id),
+    }
 
 
 @router.post("/api/rooms/{room_id}/entry-effects")

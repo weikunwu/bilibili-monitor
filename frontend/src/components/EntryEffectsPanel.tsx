@@ -55,6 +55,7 @@ export function EntryEffectsPanel({ roomId }: Props) {
   const [copied, setCopied] = useState(false)
   const [rotating, setRotating] = useState(false)
   const [soundOn, setSoundOn] = useState(false)
+  const [giftTestOn, setGiftTestOn] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -67,7 +68,9 @@ export function EntryEffectsPanel({ roomId }: Props) {
     let cancelled = false
     fetchOverlayToken(roomId).then((t) => { if (!cancelled) setToken(t) }).catch(() => {})
     fetchEntryEffectSettings(roomId).then((s) => {
-      if (!cancelled) setSoundOn(!!s.sound_on)
+      if (cancelled) return
+      setSoundOn(!!s.sound_on)
+      setGiftTestOn(!!s.gift_effect_test_enabled)
     }).catch(() => {})
     return () => { cancelled = true }
   }, [roomId])
@@ -76,7 +79,13 @@ export function EntryEffectsPanel({ roomId }: Props) {
 
   async function handleToggleSound(on: boolean) {
     setSoundOn(on)
-    try { await updateEntryEffectSettings(roomId, on) } catch { setSoundOn(!on) }
+    try { await updateEntryEffectSettings(roomId, { sound_on: on }) } catch { setSoundOn(!on) }
+  }
+
+  async function handleToggleGiftTest(on: boolean) {
+    setGiftTestOn(on)
+    try { await updateEntryEffectSettings(roomId, { gift_effect_test_enabled: on }) }
+    catch { setGiftTestOn(!on) }
   }
 
   async function copy() {
@@ -109,7 +118,7 @@ export function EntryEffectsPanel({ roomId }: Props) {
 
   return (
     <div>
-      <div className="panel-title">进场特效</div>
+      <div className="panel-title">进场&礼物特效</div>
       <div style={{ padding: isMobile ? '0 12px 20px' : '0 24px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
         <Section
@@ -137,6 +146,13 @@ export function EntryEffectsPanel({ roomId }: Props) {
             <Button appearance="subtle" size="sm" startIcon={<ReloadIcon />} onClick={rotate} loading={rotating}>
               重新生成 token
             </Button>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <Toggle size="sm" checked={giftTestOn} onChange={handleToggleGiftTest} />
+            <span style={{ fontSize: 13, color: '#ccc' }}>礼物特效测试</span>
+            <span style={{ fontSize: 12, color: '#666' }}>
+              （打开后，任意人发弹幕「礼物特效测试&lt;gift_id&gt;」，如「礼物特效测试35560」，OBS 叠加页会播放该礼物的全屏 VAP）
+            </span>
           </div>
         </Section>
 

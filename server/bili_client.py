@@ -25,8 +25,9 @@ from . import recorder, gift_catalog
 from .db import (
     save_event, get_command, get_room_save_danmu, get_room_auto_clip,
     get_nickname, upsert_nickname, delete_nickname,
-    set_live_started_at,
+    set_live_started_at, get_gift_effect_test_enabled,
 )
+from .routes.entry_effects import trigger_gift_vap_test
 from .time_utils import beijing_time_range
 
 
@@ -1228,6 +1229,13 @@ class BiliLiveClient:
                                             cmd_cfg = get_command(self.real_room_id, "auto_gift")
                                             if cmd_cfg and cmd_cfg["enabled"] and content == cmd_cfg["config"]["trigger"]:
                                                 asyncio.create_task(self.send_gift(cmd_cfg["config"]))
+                                                is_command = True
+
+                                        # 礼物特效测试：弹幕 "礼物特效测试<gift_id>" 触发对应 VAP 在 OBS 叠加页播放
+                                        if not is_command:
+                                            m = re.fullmatch(r"礼物特效测试(\d+)", content)
+                                            if m and get_gift_effect_test_enabled(self.room_id):
+                                                trigger_gift_vap_test(self.room_id, int(m.group(1)))
                                                 is_command = True
 
                                         # 昵称指令

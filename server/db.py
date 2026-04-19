@@ -607,12 +607,23 @@ def delete_entry_effect(room_id: int, effect_id: int) -> Optional[str]:
 
 def get_entry_effect_sound_on(room_id: int) -> bool:
     """OBS 进场特效是否开声，房间级设置，存在 rooms.settings_json.entry_effect_sound_on。"""
-    return bool(get_room_settings(room_id).get("entry_effect_sound_on", False))
+    return bool(get_room_settings(room_id).get("entry_effect_sound_on", True))
 
 
 def set_entry_effect_sound_on(room_id: int, on: bool) -> None:
     s = get_room_settings(room_id)
     s["entry_effect_sound_on"] = bool(on)
+    save_room_settings(room_id, s)
+
+
+def get_gift_effect_test_enabled(room_id: int) -> bool:
+    """弹幕「礼物特效测试<gift_id>」是否允许触发 VAP 播放，房间级设置。"""
+    return bool(get_room_settings(room_id).get("gift_effect_test_enabled", True))
+
+
+def set_gift_effect_test_enabled(room_id: int, on: bool) -> None:
+    s = get_room_settings(room_id)
+    s["gift_effect_test_enabled"] = bool(on)
     save_room_settings(room_id, s)
 
 

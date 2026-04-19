@@ -25,7 +25,7 @@ const GROUPS: Group[] = [
     items: [
       { type: TAB_LIVE, label: '直播流', icon: <Radio size={16} /> },
       { type: TAB_REALTIME, label: '实时礼物流', icon: <Gift size={16} /> },
-      { type: TAB_ENTRY_EFFECTS, label: '进场特效', icon: <Sparkles size={16} /> },
+      { type: TAB_ENTRY_EFFECTS, label: '进场&礼物特效', icon: <Sparkles size={16} /> },
     ],
   },
   {
