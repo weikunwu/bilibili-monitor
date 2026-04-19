@@ -88,7 +88,7 @@ export function BlindBoxPanel({ roomId }: Props) {
           size="sm"
           searchable
           countable
-          w={200}
+          style={{ width: 200, flexShrink: 0 }}
         />
         <CheckPicker
           data={boxOptions}
@@ -98,7 +98,7 @@ export function BlindBoxPanel({ roomId }: Props) {
           size="sm"
           searchable
           countable
-          w={200}
+          style={{ width: 200, flexShrink: 0 }}
         />
         <span style={{ flex: 1 }} />
         <DateRangePicker

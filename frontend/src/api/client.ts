@@ -2,6 +2,7 @@ import type {
   Room, Stats, LiveEvent, Command, GiftUser,
   CurrentUser, UserInfo, BlindBoxUser,
 } from '../types'
+import { toast } from '../lib/toast'
 
 export type { CurrentUser, UserInfo, BlindBoxUser, BlindBoxGift, BlindBoxType } from '../types'
 
@@ -24,6 +25,11 @@ export async function fetchStats(roomId: number): Promise<Stats> {
 /** 后端 ORDER BY id DESC；reverse=true 转成老→新（直播流需要按时间追加），false 保持新→老（历史查询默认）。 */
 async function _fetchEventsUrl(url: string, reverse: boolean): Promise<LiveEvent[]> {
   const res = await fetch(url)
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({} as { detail?: string }))
+    toast(d.detail || '查询失败', 'error')
+    return []
+  }
   const data: LiveEvent[] = await res.json()
   const arr = reverse ? data.reverse() : data
   return arr.map((e) => {
@@ -405,6 +411,11 @@ export async function fetchBlindBoxSummary(
     + `&time_to=${encodeURIComponent(timeTo)}`
     + (userName ? `&user_name=${encodeURIComponent(userName)}` : '')
   const res = await fetch(url)
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({} as { detail?: string }))
+    toast(d.detail || '查询失败', 'error')
+    return { period: '', users: [] }
+  }
   return res.json()
 }
 

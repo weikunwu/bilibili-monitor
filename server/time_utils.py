@@ -1,6 +1,37 @@
 """Shared time helpers (kept out of routes/ to avoid circular imports)."""
 
 from datetime import datetime, timezone, timedelta
+from typing import Optional
+
+
+MAX_QUERY_RANGE_DAYS = 31
+
+
+def _parse_utc(s: str) -> Optional[datetime]:
+    """Parse 'YYYY-MM-DD HH:MM:SS' (naive, treated as UTC) or ISO 'YYYY-MM-DDTHH:MM:SS(.ffff)(Z|+HH:MM)'.
+    返回 None 表示解析失败——调用方应该容忍，不要因为前端偶发格式报 500。"""
+    if not s:
+        return None
+    try:
+        if "T" in s:
+            s2 = s.rstrip("Z")
+            dt = datetime.fromisoformat(s2)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt.astimezone(timezone.utc)
+        return datetime.strptime(s, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+    except (ValueError, TypeError):
+        return None
+
+
+def enforce_query_range(time_from: Optional[str], time_to: Optional[str]) -> None:
+    """Raise HTTPException(400) 如果 [from, to] 跨度超过 MAX_QUERY_RANGE_DAYS。
+    只给一头或都不给时不做限制，调用端自己按 limit 裁结果。"""
+    from fastapi import HTTPException
+    a = _parse_utc(time_from) if time_from else None
+    b = _parse_utc(time_to) if time_to else None
+    if a and b and (b - a) > timedelta(days=MAX_QUERY_RANGE_DAYS):
+        raise HTTPException(400, f"时间区间最多 {MAX_QUERY_RANGE_DAYS} 天")
 
 
 def beijing_time_range(period: str) -> tuple[str, str, str]:

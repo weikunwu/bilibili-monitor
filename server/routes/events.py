@@ -14,6 +14,7 @@ from fastapi.responses import Response
 from ..config import DB_PATH, BASE_DIR, HEADERS, log
 from ..auth import require_room_access
 from ..manager import manager
+from ..time_utils import enforce_query_range
 
 router = APIRouter()
 
@@ -121,6 +122,7 @@ async def get_events(
     time_to: Optional[str] = Query(None),
     _=Depends(require_room_access),
 ):
+    enforce_query_range(time_from, time_to)
     return _query_events(room_id, type, user_name, time_from, time_to, limit, offset)
 
 
@@ -134,6 +136,7 @@ def _make_typed_endpoint(event_type: str):
         time_to: Optional[str] = Query(None),
         _=Depends(require_room_access),
     ):
+        enforce_query_range(time_from, time_to)
         return _query_events(room_id, event_type, user_name, time_from, time_to, limit, offset)
     return handler
 
@@ -325,6 +328,7 @@ async def blind_box_summary(
     user_name: Optional[str] = Query(None),
     _=Depends(require_room_access),
 ):
+    enforce_query_range(time_from, time_to)
     utc_start, utc_end = time_from, time_to
     label = f"{time_from[:10]} ~ {time_to[:10]}"
     # SQL 侧按 (user_id, blind_name, gift_name) 聚合，Python 只做最后一层字典嵌套。
