@@ -24,13 +24,14 @@ from fastapi.responses import FileResponse
 from ..auth import require_room_access
 from ..config import (
     ENTRY_EFFECT_ROOT, ENTRY_EFFECT_MAX_BYTES, ENTRY_EFFECT_ALLOWED_EXT,
-    ENTRY_EFFECT_COOLDOWN_SEC, log,
+    ENTRY_EFFECT_COOLDOWN_SEC, GIFT_EFFECT_ROOT, log,
 )
 from .. import effect_catalog
 from ..db import (
     list_entry_effects, get_entry_effect_for_user, upsert_entry_effect, delete_entry_effect,
     get_entry_effect_sound_on, set_entry_effect_sound_on,
     get_gift_effect_test_enabled, set_gift_effect_test_enabled,
+    list_gift_effects, get_gift_effect_for_gift, upsert_gift_effect, delete_gift_effect,
     verify_overlay_token, is_room_expired,
 )
 
@@ -120,11 +121,26 @@ def try_trigger_entry_effect(room_id: int, uid: int) -> bool:
 
 
 def trigger_gift_vap(room_id: int, gift_id: int, source: str = "gift") -> bool:
-    """从 effect_catalog 查 gift_id 的 VAP mp4，入 OBS 队列。
-    source 用于日志区分来源（"gift" 真实送礼 / "test" 弹幕测试命令）。
-    命中返回 True；无对应特效或异常返回 False。无冷却 — 真实送礼按事件来，
-    测试场景允许多发；上限靠 _MAX_QUEUE 兜底。"""
+    """触发礼物特效。优先级：
+      1. 房主上传的覆盖视频（gift_effects 表命中）→ 播自定义视频
+      2. B站 自带 VAP（effect_catalog 命中）→ 播 VAP
+      3. 都无 → 不入队
+    source 用于日志区分（"gift" 真实送礼 / "test" 弹幕测试命令）。无冷却。"""
     try:
+        override = get_gift_effect_for_gift(room_id, gift_id)
+        if override:
+            fan = _enqueue_to_overlays(room_id, {
+                "kind": "gift_custom",
+                "id": override["id"],
+                "gift_id": gift_id,
+                "gift_name": override.get("gift_name") or "",
+                "enqueued_at": time.monotonic(),
+            })
+            log.info(
+                f"[gift-vap:{source}] room={room_id} gift_id={gift_id} 自定义覆盖入队 "
+                f"id={override['id']}（fan-out {fan} 会话）"
+            )
+            return True
         hit = effect_catalog.get_by_gift(gift_id)
         if not hit:
             log.info(f"[gift-vap:{source}] room={room_id} gift_id={gift_id} 无全屏特效")
@@ -137,7 +153,7 @@ def trigger_gift_vap(room_id: int, gift_id: int, source: str = "gift") -> bool:
             "json_url": json_url,
             "enqueued_at": time.monotonic(),
         })
-        log.info(f"[gift-vap:{source}] room={room_id} gift_id={gift_id} 入队（fan-out {fan} 会话）")
+        log.info(f"[gift-vap:{source}] room={room_id} gift_id={gift_id} VAP 入队（fan-out {fan} 会话）")
         return True
     except Exception as e:
         log.warning(f"[gift-vap:{source}] failed room={room_id} gift_id={gift_id}: {e}")
@@ -158,13 +174,13 @@ def purge_stale_cooldowns() -> None:
         log.info(f"[overlay-session] 清掉 {len(stale_sess)} 个离线会话")
 
 
-def purge_orphan_effect_files() -> int:
-    """扫 ENTRY_EFFECT_ROOT/<room>/ 删 DB 里没记录的孤儿文件。
-    覆盖 unlink 之前进程崩了 / 改名失败 / 旧 schema 等残留。返回清掉的文件数。"""
-    if not ENTRY_EFFECT_ROOT.exists():
+def _purge_orphans_in(root: Path, list_records, label: str) -> int:
+    """通用：对每个 room 子目录，删 DB 没记录的文件。list_records(room_id)
+    返回 dict 列表，每条要有 video_filename 字段。"""
+    if not root.exists():
         return 0
     deleted = 0
-    for room_dir in ENTRY_EFFECT_ROOT.iterdir():
+    for room_dir in root.iterdir():
         if not room_dir.is_dir():
             continue
         try:
@@ -173,11 +189,11 @@ def purge_orphan_effect_files() -> int:
             continue
         try:
             valid = {
-                r["video_filename"] for r in list_entry_effects(room_id)
+                r["video_filename"] for r in list_records(room_id)
                 if r.get("video_filename")
             }
         except Exception as e:
-            log.warning(f"[entry-effect] 扫孤儿时读 DB 失败 room={room_id}: {e}")
+            log.warning(f"[{label}] 扫孤儿时读 DB 失败 room={room_id}: {e}")
             continue
         for f in room_dir.iterdir():
             if not f.is_file() or f.name in valid:
@@ -185,10 +201,18 @@ def purge_orphan_effect_files() -> int:
             try:
                 f.unlink()
                 deleted += 1
-                log.info(f"[entry-effect] 孤儿文件清理 room={room_id} {f.name}")
+                log.info(f"[{label}] 孤儿文件清理 room={room_id} {f.name}")
             except Exception as e:
-                log.warning(f"[entry-effect] 清理失败 {f}: {e}")
+                log.warning(f"[{label}] 清理失败 {f}: {e}")
     return deleted
+
+
+def purge_orphan_effect_files() -> int:
+    """扫 ENTRY_EFFECT_ROOT 和 GIFT_EFFECT_ROOT，删 DB 没记录的孤儿。返回总删除数。"""
+    return (
+        _purge_orphans_in(ENTRY_EFFECT_ROOT, list_entry_effects, "entry-effect")
+        + _purge_orphans_in(GIFT_EFFECT_ROOT, list_gift_effects, "gift-effect")
+    )
 
 
 # ── 已登录房主 API ──
@@ -378,3 +402,93 @@ def _serve_effect_file(room_id: int, effect_id: int) -> FileResponse:
     if not path.exists():
         raise HTTPException(404, "文件缺失")
     return FileResponse(str(path))
+
+
+# ── 礼物特效覆盖 ──
+
+def _gift_effect_video_path(room_id: int, filename: str) -> Path:
+    return GIFT_EFFECT_ROOT / str(room_id) / filename
+
+
+def _serve_gift_effect_file(room_id: int, effect_id: int) -> FileResponse:
+    rows = list_gift_effects(room_id)
+    match: Optional[dict] = next((r for r in rows if r["id"] == effect_id), None)
+    if not match:
+        raise HTTPException(404, "视频不存在")
+    path = _gift_effect_video_path(room_id, match["video_filename"])
+    if not path.exists():
+        raise HTTPException(404, "文件缺失")
+    return FileResponse(str(path))
+
+
+@router.get("/api/rooms/{room_id}/effects/gifts")
+async def list_gift_overrides(room_id: int, _=Depends(require_room_access)):
+    return list_gift_effects(room_id)
+
+
+@router.post("/api/rooms/{room_id}/effects/gifts")
+async def upload_gift_override(
+    room_id: int,
+    gift_id: int = Form(...),
+    gift_name: str = Form(""),
+    file: UploadFile = File(...),
+    _=Depends(require_room_access),
+):
+    if gift_id <= 0:
+        raise HTTPException(400, "gift_id 无效")
+    ext = _ext_of(file.filename or "")
+    if ext not in ENTRY_EFFECT_ALLOWED_EXT:
+        raise HTTPException(400, f"只支持 {'/'.join(sorted(ENTRY_EFFECT_ALLOWED_EXT))}")
+    data = await file.read()
+    if len(data) > ENTRY_EFFECT_MAX_BYTES:
+        raise HTTPException(400, f"文件超过 {ENTRY_EFFECT_MAX_BYTES // 1024 // 1024}MB")
+    if not data:
+        raise HTTPException(400, "空文件")
+
+    room_dir = GIFT_EFFECT_ROOT / str(room_id)
+    room_dir.mkdir(parents=True, exist_ok=True)
+    new_filename = f"{uuid.uuid4().hex}{ext}"
+    (room_dir / new_filename).write_bytes(data)
+
+    old = get_gift_effect_for_gift(room_id, gift_id)
+    row = upsert_gift_effect(
+        room_id, gift_id, (gift_name or "").strip(),
+        video_filename=new_filename, size_bytes=len(data),
+    )
+    log.info(
+        f"[gift-effect] room={room_id} gift_id={gift_id} name={gift_name!r} "
+        f"上传视频 {new_filename}（{len(data) // 1024}KB）"
+    )
+    if old and old.get("video_filename") and old["video_filename"] != new_filename:
+        try:
+            (room_dir / old["video_filename"]).unlink(missing_ok=True)
+            log.info(f"[gift-effect] room={room_id} gift_id={gift_id} 清掉旧文件 {old['video_filename']}")
+        except Exception as e:
+            log.warning(f"[gift-effect] 旧文件删除失败 {old['video_filename']}: {e}")
+    return row
+
+
+@router.delete("/api/rooms/{room_id}/effects/gifts/{effect_id}")
+async def remove_gift_override(room_id: int, effect_id: int, _=Depends(require_room_access)):
+    filename = delete_gift_effect(room_id, effect_id)
+    if filename is None:
+        raise HTTPException(404, "记录不存在")
+    log.info(f"[gift-effect] room={room_id} 删除 id={effect_id} 文件={filename!r}")
+    if filename:
+        try:
+            _gift_effect_video_path(room_id, filename).unlink(missing_ok=True)
+        except Exception as e:
+            log.warning(f"[gift-effect] 文件清理失败: {e}")
+    return {"ok": True}
+
+
+@router.get("/api/rooms/{room_id}/effects/gifts/{effect_id}/video")
+async def serve_gift_effect_auth(room_id: int, effect_id: int, _=Depends(require_room_access)):
+    return _serve_gift_effect_file(room_id, effect_id)
+
+
+@router.get("/api/overlay/{room_id}/effects/gifts/{effect_id}/video")
+async def serve_gift_effect_overlay(room_id: int, effect_id: int, token: str = Query(...)):
+    if not verify_overlay_token(room_id, token):
+        raise HTTPException(403, "token 无效")
+    return _serve_gift_effect_file(room_id, effect_id)

@@ -14,13 +14,15 @@ import { PRESET_COMPONENT } from '../lib/effectPresets'
 const POLL_MS = 3000
 
 interface QueuedEvent {
-  kind?: 'user' | 'gift_vap'
+  kind?: 'user' | 'gift_vap' | 'gift_custom'
   id: number
   uid?: number
   user_name?: string
   preset_key?: string
   mp4_url?: string
   json_url?: string
+  gift_id?: number
+  gift_name?: string
   enqueued_at: number
 }
 
@@ -116,9 +118,11 @@ export function OverlayEffectsPage() {
       if (next) {
         const desc = next.kind === 'gift_vap'
           ? `gift_vap mp4=${next.mp4_url}`
-          : next.preset_key
-            ? `preset=${next.preset_key} user=${next.user_name}`
-            : `user-video id=${next.id} user=${next.user_name}`
+          : next.kind === 'gift_custom'
+            ? `gift_custom gift=${next.gift_id} name=${next.gift_name}`
+            : next.preset_key
+              ? `preset=${next.preset_key} user=${next.user_name}`
+              : `user-video id=${next.id} user=${next.user_name}`
         console.log(`[overlay] ▶ 开播 ${desc}`)
       } else {
         console.log(`[overlay] 队列空，等下一个事件`)
@@ -161,6 +165,20 @@ export function OverlayEffectsPage() {
           jsonUrl={current.json_url}
           soundOn={soundOn}
           onDone={onDone}
+        />
+      ) : current.kind === 'gift_custom' ? (
+        <video
+          key={key}
+          src={`/api/overlay/${roomId}/effects/gifts/${current.id}/video?token=${encodeURIComponent(token)}`}
+          autoPlay
+          muted={!soundOn}
+          playsInline
+          onEnded={onDone}
+          onError={(e) => {
+            console.warn(`[overlay] 礼物自定义视频播放出错 gift=${current.gift_id}`, e.currentTarget.error)
+            onDone()
+          }}
+          style={{ maxWidth: '100%', maxHeight: '100%' }}
         />
       ) : current.preset_key && PRESET_COMPONENT[current.preset_key] ? (
         (() => {

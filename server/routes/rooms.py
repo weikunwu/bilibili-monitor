@@ -544,16 +544,9 @@ _CHEAP_GIFT_TTL = 24 * 3600
 _CHEAP_GIFT_MAX_ROOMS = 200
 
 
-@router.get("/api/rooms/{room_id}/cheap-gifts")
-async def cheap_gifts(room_id: int, _=Depends(require_room_access)):
-    """单价 ≤ ¥1 (≤1000 金瓜子) 的金瓜子礼物列表，按房间实际可送过滤。
-    每房间缓存 24 小时，LRU 淘汰上限 200 房，减少对 B站 的拉取。"""
-    hit = _CHEAP_GIFT_CACHE.get(room_id)
-    if hit and hit[0] > time.time():
-        _CHEAP_GIFT_CACHE.move_to_end(room_id)  # 标记最近使用
-        return hit[1]
-    if hit:  # 过期，清掉
-        _CHEAP_GIFT_CACHE.pop(room_id, None)
+async def _fetch_room_gifts(room_id: int) -> tuple[list[dict], int, int]:
+    """拉房间礼物列表 + 主播 uid + real_room_id。统一去重 / sort，
+    具体的 price/bag/bind 过滤由调用方按需做。"""
     client = manager.get(room_id)
     real_room = client.real_room_id if client and client.real_room_id else room_id
     try:
@@ -579,8 +572,22 @@ async def cheap_gifts(room_id: int, _=Depends(require_room_access)):
     # 导致用户前次选中的 gift_id 下次不在列表里 → SelectPicker 显示为未选。
     # 固定按 id 升序再去重，保证每次保留同一个 gid。
     gifts.sort(key=lambda g: int(g.get("id") or g.get("gift_id") or 0))
-
     streamer_uid = client.streamer_uid if client and getattr(client, "streamer_uid", 0) else 0
+    return gifts, streamer_uid, real_room
+
+
+@router.get("/api/rooms/{room_id}/cheap-gifts")
+async def cheap_gifts(room_id: int, _=Depends(require_room_access)):
+    """单价 ≤ ¥1 (≤1000 金瓜子) 的金瓜子礼物列表，按房间实际可送过滤。
+    每房间缓存 24 小时，LRU 淘汰上限 200 房，减少对 B站 的拉取。"""
+    hit = _CHEAP_GIFT_CACHE.get(room_id)
+    if hit and hit[0] > time.time():
+        _CHEAP_GIFT_CACHE.move_to_end(room_id)  # 标记最近使用
+        return hit[1]
+    if hit:  # 过期，清掉
+        _CHEAP_GIFT_CACHE.pop(room_id, None)
+
+    gifts, streamer_uid, real_room = await _fetch_room_gifts(room_id)
     cheap = []
     seen_ids: set[int] = set()
     seen_keys: set[tuple[str, int]] = set()
@@ -621,3 +628,56 @@ async def cheap_gifts(room_id: int, _=Depends(require_room_access)):
     while len(_CHEAP_GIFT_CACHE) > _CHEAP_GIFT_MAX_ROOMS:
         _CHEAP_GIFT_CACHE.popitem(last=False)  # 淘汰最久未用
     return cheap
+
+
+# 全礼物列表（含贵礼）独立缓存。礼物特效覆盖功能用，不限价。
+_ALL_GIFT_CACHE: "OrderedDict[int, tuple[float, list[dict]]]" = OrderedDict()
+
+
+@router.get("/api/rooms/{room_id}/all-gifts")
+async def all_gifts(room_id: int, _=Depends(require_room_access)):
+    """所有金瓜子礼物（含贵礼），用于「礼物特效覆盖」选择器。和 cheap-gifts
+    共享底层拉取，但不做价格上限。bind 仍然过滤——绑别的房间的礼物在本房不会
+    出现在事件流，留着也无意义。bag_gift 不过滤——背包送也会触发 gift 事件。"""
+    hit = _ALL_GIFT_CACHE.get(room_id)
+    if hit and hit[0] > time.time():
+        _ALL_GIFT_CACHE.move_to_end(room_id)
+        return hit[1]
+    if hit:
+        _ALL_GIFT_CACHE.pop(room_id, None)
+
+    gifts, streamer_uid, real_room = await _fetch_room_gifts(room_id)
+    out = []
+    seen_ids: set[int] = set()
+    seen_keys: set[tuple[str, int]] = set()
+    for g in gifts:
+        gid = int(g.get("id") or g.get("gift_id") or 0)
+        if not gid or gid in seen_ids:
+            continue
+        price = int(g.get("price") or 0)
+        if g.get("coin_type") != "gold" or price <= 0:
+            continue
+        bind_room = int(g.get("bind_roomid") or 0)
+        bind_ruid = int(g.get("bind_ruid") or 0)
+        if bind_room and bind_room != real_room:
+            continue
+        if bind_ruid and streamer_uid and bind_ruid != streamer_uid:
+            continue
+        name = g.get("name") or g.get("gift_name") or ""
+        key = (name, price)
+        if key in seen_keys:
+            continue
+        seen_ids.add(gid)
+        seen_keys.add(key)
+        out.append({
+            "gift_id": gid,
+            "name": name,
+            "price": price,
+            "img": g.get("img_basic") or g.get("gift_img") or g.get("img_dynamic") or "",
+        })
+    out.sort(key=lambda x: x["price"], reverse=True)  # 贵的排前面，常用的好找
+    _ALL_GIFT_CACHE[room_id] = (time.time() + _CHEAP_GIFT_TTL, out)
+    _ALL_GIFT_CACHE.move_to_end(room_id)
+    while len(_ALL_GIFT_CACHE) > _CHEAP_GIFT_MAX_ROOMS:
+        _ALL_GIFT_CACHE.popitem(last=False)
+    return out

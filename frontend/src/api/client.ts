@@ -389,6 +389,12 @@ export async function fetchCheapGifts(roomId: number): Promise<CheapGift[]> {
   return res.json()
 }
 
+export async function fetchAllGifts(roomId: number): Promise<CheapGift[]> {
+  const res = await fetch(`/api/rooms/${roomId}/all-gifts`)
+  if (!res.ok) return []
+  return res.json()
+}
+
 export async function fetchGiftSummary(
   roomId: number,
   userName: string,
@@ -501,6 +507,45 @@ export async function bindEntryEffectPreset(
 
 export async function deleteEntryEffect(roomId: number, effectId: number): Promise<void> {
   const res = await fetch(`/api/rooms/${roomId}/effects/entries/${effectId}`, { method: 'DELETE' })
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({} as { detail?: string }))
+    throw new Error(d.detail || '删除失败')
+  }
+}
+
+export interface GiftEffect {
+  id: number
+  room_id: number
+  gift_id: number
+  gift_name: string
+  video_filename: string
+  size_bytes: number
+  created_at: string
+}
+
+export async function fetchGiftEffects(roomId: number): Promise<GiftEffect[]> {
+  const res = await fetch(`/api/rooms/${roomId}/effects/gifts`)
+  if (!res.ok) return []
+  return res.json()
+}
+
+export async function uploadGiftEffect(
+  roomId: number, giftId: number, giftName: string, file: File,
+): Promise<GiftEffect> {
+  const fd = new FormData()
+  fd.append('gift_id', String(giftId))
+  fd.append('gift_name', giftName)
+  fd.append('file', file)
+  const res = await fetch(`/api/rooms/${roomId}/effects/gifts`, { method: 'POST', body: fd })
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({} as { detail?: string }))
+    throw new Error(d.detail || '上传失败')
+  }
+  return res.json()
+}
+
+export async function deleteGiftEffect(roomId: number, effectId: number): Promise<void> {
+  const res = await fetch(`/api/rooms/${roomId}/effects/gifts/${effectId}`, { method: 'DELETE' })
   if (!res.ok) {
     const d = await res.json().catch(() => ({} as { detail?: string }))
     throw new Error(d.detail || '删除失败')

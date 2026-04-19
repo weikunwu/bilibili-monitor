@@ -11,7 +11,9 @@ import EditIcon from '@rsuite/icons/Edit'
 import {
   fetchEntryEffects, uploadEntryEffect, bindEntryEffectPreset, deleteEntryEffect, fetchRoomUsers,
   fetchEffectSettings, updateEffectSettings,
-  fetchOverlayToken, rotateOverlayToken, type EntryEffect,
+  fetchOverlayToken, rotateOverlayToken,
+  fetchGiftEffects, uploadGiftEffect, deleteGiftEffect, fetchAllGifts,
+  type EntryEffect, type GiftEffect, type CheapGift,
 } from '../api/client'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { confirmDialog } from '../lib/confirm'
@@ -54,6 +56,10 @@ export function EffectsPanel({ roomId }: Props) {
   const [loading, setLoading] = useState(false)
   const [showAdd, setShowAdd] = useState(false)
   const [editing, setEditing] = useState<EntryEffect | null>(null)
+  const [giftRows, setGiftRows] = useState<GiftEffect[]>([])
+  const [giftLoading, setGiftLoading] = useState(false)
+  const [showAddGift, setShowAddGift] = useState(false)
+  const [editingGift, setEditingGift] = useState<GiftEffect | null>(null)
   const [token, setToken] = useState('')
   const [copied, setCopied] = useState(false)
   const [rotating, setRotating] = useState(false)
@@ -65,7 +71,13 @@ export function EffectsPanel({ roomId }: Props) {
     try { setRows(await fetchEntryEffects(roomId)) } finally { setLoading(false) }
   }, [roomId])
 
+  const loadGifts = useCallback(async () => {
+    setGiftLoading(true)
+    try { setGiftRows(await fetchGiftEffects(roomId)) } finally { setGiftLoading(false) }
+  }, [roomId])
+
   useEffect(() => { load() }, [load])
+  useEffect(() => { loadGifts() }, [loadGifts])
 
   useEffect(() => {
     let cancelled = false
@@ -119,6 +131,16 @@ export function EffectsPanel({ roomId }: Props) {
     }
   }
 
+  async function handleDeleteGift(r: GiftEffect) {
+    if (!await confirmDialog({ message: `删除「${r.gift_name || `gift_id ${r.gift_id}`}」的自定义特效？`, danger: true, okText: '删除' })) return
+    try {
+      await deleteGiftEffect(roomId, r.id)
+      await loadGifts()
+    } catch (err) {
+      toaster.push(<Message type="error" showIcon closable>{(err as Error).message}</Message>, { duration: 3000 })
+    }
+  }
+
   return (
     <div>
       <div className="panel-title">进场&礼物特效</div>
@@ -159,6 +181,7 @@ export function EffectsPanel({ roomId }: Props) {
           </div>
         </Section>
 
+        <div style={{ fontSize: 15, fontWeight: 600, color: '#e8e8e8', marginTop: 4 }}>进场特效</div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
           <div style={{ fontSize: 12, color: '#888' }}>
             每个 UID 仅保留一个视频（再次上传会覆盖）。
@@ -261,6 +284,93 @@ export function EffectsPanel({ roomId }: Props) {
             </Column>
           </Table>
         )}
+
+        <div style={{ height: 1, background: '#2a2a4a', margin: '8px 0' }} />
+        <div style={{ fontSize: 15, fontWeight: 600, color: '#e8e8e8' }}>礼物特效覆盖</div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+          <div style={{ fontSize: 12, color: '#888' }}>
+            上传视频替代该礼物原本的全屏 VAP；原本无 VAP 的礼物也能借此加上特效。每个礼物仅保留一个视频。
+          </div>
+          <Button size="sm" appearance="primary" startIcon={<PlusIcon />} onClick={() => setShowAddGift(true)}>
+            新增
+          </Button>
+        </div>
+        {isMobile ? (
+          <div className="effect-cards">
+            {giftRows.length === 0 ? (
+              <div className="empty">{giftLoading ? '加载中...' : '暂无自定义礼物特效'}</div>
+            ) : giftRows.map((r) => (
+              <div className="effect-card" key={r.id}>
+                <div className="effect-card-head">
+                  <div className="effect-card-user">
+                    <div className="effect-card-name">{r.gift_name || `gift_id ${r.gift_id}`}</div>
+                    <div className="effect-card-meta">
+                      gift_id {r.gift_id} · {(r.size_bytes / 1024 / 1024).toFixed(2)} MB
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <IconButton size="sm" icon={<EditIcon />} onClick={() => setEditingGift(r)} />
+                    <IconButton size="sm" icon={<TrashIcon />} onClick={() => handleDeleteGift(r)} />
+                  </div>
+                </div>
+                <video
+                  src={`/api/rooms/${r.room_id}/effects/gifts/${r.id}/video`}
+                  controls
+                  preload="none"
+                  className="effect-card-video"
+                />
+                <div className="effect-card-time">{r.created_at}</div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <Table data={giftRows} autoHeight loading={giftLoading} rowKey="id" rowHeight={96}>
+            <Column flexGrow={2}>
+              <HeaderCell>礼物</HeaderCell>
+              <Cell>
+                {(r: GiftEffect) => <span>{r.gift_name || `gift_id ${r.gift_id}`}</span>}
+              </Cell>
+            </Column>
+            <Column flexGrow={1}>
+              <HeaderCell>gift_id</HeaderCell>
+              <Cell dataKey="gift_id" />
+            </Column>
+            <Column flexGrow={1}>
+              <HeaderCell>大小</HeaderCell>
+              <Cell>
+                {(r: GiftEffect) => <span>{(r.size_bytes / 1024 / 1024).toFixed(2)} MB</span>}
+              </Cell>
+            </Column>
+            <Column flexGrow={2}>
+              <HeaderCell>预览</HeaderCell>
+              <Cell style={{ padding: 4 }}>
+                {(r: GiftEffect) => (
+                  <video
+                    src={`/api/rooms/${r.room_id}/effects/gifts/${r.id}/video`}
+                    controls
+                    preload="none"
+                    style={{ maxHeight: 80, maxWidth: 160, background: '#000', borderRadius: 4 }}
+                  />
+                )}
+              </Cell>
+            </Column>
+            <Column flexGrow={2}>
+              <HeaderCell>上传时间</HeaderCell>
+              <Cell dataKey="created_at" />
+            </Column>
+            <Column width={120}>
+              <HeaderCell>操作</HeaderCell>
+              <Cell>
+                {(r: GiftEffect) => (
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <IconButton size="xs" icon={<EditIcon />} onClick={() => setEditingGift(r)} />
+                    <IconButton size="xs" icon={<TrashIcon />} onClick={() => handleDeleteGift(r)} />
+                  </div>
+                )}
+              </Cell>
+            </Column>
+          </Table>
+        )}
       </div>
 
       {showAdd && (
@@ -276,6 +386,23 @@ export function EffectsPanel({ roomId }: Props) {
           initial={editing}
           onClose={() => setEditing(null)}
           onSaved={() => { setEditing(null); load() }}
+        />
+      )}
+      {showAddGift && (
+        <GiftEffectModal
+          roomId={roomId}
+          existing={giftRows}
+          onClose={() => setShowAddGift(false)}
+          onSaved={() => { setShowAddGift(false); loadGifts() }}
+        />
+      )}
+      {editingGift && (
+        <GiftEffectModal
+          roomId={roomId}
+          existing={giftRows}
+          initial={editingGift}
+          onClose={() => setEditingGift(null)}
+          onSaved={() => { setEditingGift(null); loadGifts() }}
         />
       )}
     </div>
@@ -423,6 +550,129 @@ function EffectModal({
               {file && <div style={{ fontSize: 12, color: '#aaa', marginTop: 4 }}>已选：{file.name}（{(file.size / 1024 / 1024).toFixed(2)}MB）</div>}
             </div>
           )}
+          {error && <Message type="error" showIcon>{error}</Message>}
+        </div>
+      </Modal.Body>
+      <Modal.Footer>
+        <Button onClick={onClose} appearance="subtle" disabled={saving}>取消</Button>
+        <Button onClick={handleSave} appearance="primary" loading={saving} disabled={!canSave}>
+          保存
+        </Button>
+      </Modal.Footer>
+    </Modal>
+  )
+}
+
+
+function GiftEffectModal({
+  roomId, existing, initial, onClose, onSaved,
+}: {
+  roomId: number
+  existing: GiftEffect[]
+  initial?: GiftEffect | null
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const isEdit = !!initial
+  const toaster = useToaster()
+  const [gifts, setGifts] = useState<CheapGift[]>([])
+  const [giftId, setGiftId] = useState<number | null>(initial?.gift_id ?? null)
+  const [giftName, setGiftName] = useState(initial?.gift_name ?? '')
+  const [file, setFile] = useState<File | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const fileRef = useRef<HTMLInputElement>(null)
+  // 已绑定过的 gift_id 不在新增列表里出现（编辑模式下当前这条不算）
+  const takenIds = new Set(existing.map((e) => e.gift_id).filter((id) => id !== initial?.gift_id))
+
+  useEffect(() => {
+    let cancelled = false
+    fetchAllGifts(roomId).then((list) => { if (!cancelled) setGifts(list) }).catch(() => {})
+    return () => { cancelled = true }
+  }, [roomId])
+
+  function onPick(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0] || null
+    if (!f) { setFile(null); return }
+    const ext = f.name.slice(f.name.lastIndexOf('.')).toLowerCase()
+    if (!ALLOWED_EXT.includes(ext)) {
+      setError(`只支持 ${ALLOWED_EXT.join('/')}`)
+      setFile(null)
+      return
+    }
+    if (f.size > MAX_BYTES) {
+      setError(`文件超过 ${MAX_BYTES / 1024 / 1024}MB`)
+      setFile(null)
+      return
+    }
+    setError('')
+    setFile(f)
+  }
+
+  async function handleSave() {
+    if (!giftId) { setError('请选择礼物'); return }
+    if (!file) { setError('请选视频文件'); return }
+    setSaving(true)
+    setError('')
+    try {
+      await uploadGiftEffect(roomId, giftId, giftName, file)
+      toaster.push(<Message type="success" showIcon closable>保存成功</Message>, { duration: 2000 })
+      onSaved()
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const canSave = !!giftId && !!file
+
+  return (
+    <Modal open onClose={onClose} size="sm">
+      <Modal.Header>
+        <Modal.Title>{isEdit ? '编辑礼物特效' : '新增礼物特效'}</Modal.Title>
+      </Modal.Header>
+      <Modal.Body>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 12, color: '#888', marginBottom: 4 }}>
+              {isEdit ? '礼物' : '选择礼物'}
+            </div>
+            {isEdit ? (
+              <div style={{ color: '#ddd', fontSize: 14 }}>
+                {initial?.gift_name || '未知名称'}
+                <span style={{ color: '#888', marginLeft: 8 }}>gift_id {initial?.gift_id}</span>
+              </div>
+            ) : (
+              <InputPicker
+                data={gifts
+                  .filter((g) => !takenIds.has(g.gift_id))
+                  .map((g) => ({
+                    label: `${g.name} · ¥${(g.price / 1000).toFixed(g.price < 1000 ? 2 : 0)} (${g.gift_id})`,
+                    value: g.gift_id,
+                    name: g.name,
+                  }))}
+                value={giftId}
+                onChange={(v) => {
+                  setGiftId(v as number | null)
+                  const hit = gifts.find((g) => g.gift_id === v)
+                  setGiftName(hit?.name || '')
+                }}
+                placeholder="搜索礼物名"
+                block
+              />
+            )}
+          </div>
+          <div>
+            <div style={{ fontSize: 12, color: '#888', marginBottom: 4 }}>视频文件（mp4/webm，≤ 100MB）</div>
+            {isEdit && initial?.video_filename && !file && (
+              <div style={{ fontSize: 12, color: '#999', marginBottom: 6 }}>
+                当前已绑定一个视频；选新文件后保存会覆盖。
+              </div>
+            )}
+            <input ref={fileRef} type="file" accept=".mp4,.webm,video/mp4,video/webm" onChange={onPick} />
+            {file && <div style={{ fontSize: 12, color: '#aaa', marginTop: 4 }}>已选：{file.name}（{(file.size / 1024 / 1024).toFixed(2)}MB）</div>}
+          </div>
           {error && <Message type="error" showIcon>{error}</Message>}
         </div>
       </Modal.Body>

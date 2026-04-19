@@ -349,6 +349,22 @@ def init_db():
     if "preset_key" not in existing_cols:
         conn.execute("ALTER TABLE entry_effects ADD COLUMN preset_key TEXT NOT NULL DEFAULT ''")
 
+    # 礼物特效覆盖：每个 (room_id, gift_id) 一条；命中时 OBS 叠加页播这个视频
+    # 而不是 B站 自带 VAP；原本没 VAP 的礼物也能借这条加上特效。
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS gift_effects (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            room_id INTEGER NOT NULL,
+            gift_id INTEGER NOT NULL,
+            gift_name TEXT NOT NULL DEFAULT '',
+            video_filename TEXT NOT NULL,
+            size_bytes INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            UNIQUE(room_id, gift_id)
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_gift_effects_room ON gift_effects(room_id)")
+
     admin_email = os.environ.get("ADMIN_EMAIL", "")
     admin_password = os.environ.get("ADMIN_PASSWORD", "")
     if admin_password:
@@ -619,6 +635,68 @@ def delete_entry_effect(room_id: int, effect_id: int) -> Optional[str]:
         conn.close()
         return None
     conn.execute("DELETE FROM entry_effects WHERE id=? AND room_id=?", (effect_id, room_id))
+    conn.commit()
+    conn.close()
+    return row[0]
+
+
+# ── 礼物特效覆盖 ──
+
+def list_gift_effects(room_id: int) -> list[dict]:
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        "SELECT id, room_id, gift_id, gift_name, video_filename, size_bytes, created_at "
+        "FROM gift_effects WHERE room_id=? ORDER BY created_at DESC",
+        (room_id,),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_gift_effect_for_gift(room_id: int, gift_id: int) -> Optional[dict]:
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.row_factory = sqlite3.Row
+    row = conn.execute(
+        "SELECT id, room_id, gift_id, gift_name, video_filename, size_bytes, created_at "
+        "FROM gift_effects WHERE room_id=? AND gift_id=?",
+        (room_id, gift_id),
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def upsert_gift_effect(
+    room_id: int, gift_id: int, gift_name: str, video_filename: str, size_bytes: int,
+) -> dict:
+    """同一 (room, gift) 再次上传直接替换；调用方负责清旧文件。"""
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.execute(
+        "INSERT INTO gift_effects (room_id, gift_id, gift_name, video_filename, size_bytes) "
+        "VALUES (?,?,?,?,?) "
+        "ON CONFLICT(room_id, gift_id) DO UPDATE SET "
+        "gift_name=excluded.gift_name, video_filename=excluded.video_filename, "
+        "size_bytes=excluded.size_bytes, created_at=datetime('now')",
+        (room_id, gift_id, gift_name, video_filename, size_bytes),
+    )
+    conn.commit()
+    conn.close()
+    row = get_gift_effect_for_gift(room_id, gift_id)
+    assert row is not None
+    return row
+
+
+def delete_gift_effect(room_id: int, effect_id: int) -> Optional[str]:
+    """删除记录，返回旧 video_filename 供调用方清磁盘；不存在返回 None。"""
+    conn = sqlite3.connect(str(DB_PATH))
+    row = conn.execute(
+        "SELECT video_filename FROM gift_effects WHERE id=? AND room_id=?",
+        (effect_id, room_id),
+    ).fetchone()
+    if not row:
+        conn.close()
+        return None
+    conn.execute("DELETE FROM gift_effects WHERE id=? AND room_id=?", (effect_id, room_id))
     conn.commit()
     conn.close()
     return row[0]
