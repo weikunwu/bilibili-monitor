@@ -7,6 +7,7 @@ import VisibleIcon from '@rsuite/icons/Visible'
 import ReloadIcon from '@rsuite/icons/Reload'
 import TrashIcon from '@rsuite/icons/Trash'
 import PlusIcon from '@rsuite/icons/Plus'
+import EditIcon from '@rsuite/icons/Edit'
 import {
   fetchEntryEffects, uploadEntryEffect, bindEntryEffectPreset, deleteEntryEffect, fetchRoomUsers,
   fetchEffectSettings, updateEffectSettings,
@@ -52,6 +53,7 @@ export function EffectsPanel({ roomId }: Props) {
   const [rows, setRows] = useState<EntryEffect[]>([])
   const [loading, setLoading] = useState(false)
   const [showAdd, setShowAdd] = useState(false)
+  const [editing, setEditing] = useState<EntryEffect | null>(null)
   const [token, setToken] = useState('')
   const [copied, setCopied] = useState(false)
   const [rotating, setRotating] = useState(false)
@@ -180,7 +182,10 @@ export function EffectsPanel({ roomId }: Props) {
                         : `${(r.size_bytes / 1024 / 1024).toFixed(2)} MB`}
                     </div>
                   </div>
-                  <IconButton size="sm" icon={<TrashIcon />} onClick={() => handleDelete(r)} />
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <IconButton size="sm" icon={<EditIcon />} onClick={() => setEditing(r)} />
+                    <IconButton size="sm" icon={<TrashIcon />} onClick={() => handleDelete(r)} />
+                  </div>
                 </div>
                 {r.preset_key ? (
                   <div className="effect-card-preset">
@@ -243,11 +248,14 @@ export function EffectsPanel({ roomId }: Props) {
               <HeaderCell>上传时间</HeaderCell>
               <Cell dataKey="created_at" />
             </Column>
-            <Column width={80}>
+            <Column width={120}>
               <HeaderCell>操作</HeaderCell>
               <Cell>
                 {(r: EntryEffect) => (
-                  <IconButton size="xs" icon={<TrashIcon />} onClick={() => handleDelete(r)} />
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <IconButton size="xs" icon={<EditIcon />} onClick={() => setEditing(r)} />
+                    <IconButton size="xs" icon={<TrashIcon />} onClick={() => handleDelete(r)} />
+                  </div>
                 )}
               </Cell>
             </Column>
@@ -256,25 +264,43 @@ export function EffectsPanel({ roomId }: Props) {
       </div>
 
       {showAdd && (
-        <AddModal
+        <EffectModal
           roomId={roomId}
           onClose={() => setShowAdd(false)}
           onSaved={() => { setShowAdd(false); load() }}
+        />
+      )}
+      {editing && (
+        <EffectModal
+          roomId={roomId}
+          initial={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => { setEditing(null); load() }}
         />
       )}
     </div>
   )
 }
 
-function AddModal({
-  roomId, onClose, onSaved,
-}: { roomId: number; onClose: () => void; onSaved: () => void }) {
+function EffectModal({
+  roomId, initial, onClose, onSaved,
+}: {
+  roomId: number
+  initial?: EntryEffect | null
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const isEdit = !!initial
   const toaster = useToaster()
   const [users, setUsers] = useState<{ user_id: number; user_name: string }[]>([])
-  const [userId, setUserId] = useState<number | null>(null)
-  const [userName, setUserName] = useState('')
-  const [mode, setMode] = useState<'preset' | 'upload'>('preset')
-  const [presetKey, setPresetKey] = useState<string>(ENTRY_PRESETS[0]?.key || '')
+  const [userId, setUserId] = useState<number | null>(initial?.uid ?? null)
+  const [userName, setUserName] = useState(initial?.user_name ?? '')
+  const [mode, setMode] = useState<'preset' | 'upload'>(
+    initial?.preset_key ? 'preset' : initial ? 'upload' : 'preset',
+  )
+  const [presetKey, setPresetKey] = useState<string>(
+    initial?.preset_key || ENTRY_PRESETS[0]?.key || '',
+  )
   const [file, setFile] = useState<File | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -287,7 +313,7 @@ function AddModal({
     } catch { /* ignore */ }
   }
 
-  useEffect(() => { search('') }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!isEdit) search('') }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   function onPick(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0] || null
@@ -328,27 +354,40 @@ function AddModal({
     }
   }
 
+  // 编辑模式 + 上传 tab：必须重新选文件才能保存（无法只“保留旧视频”）；
+  // 编辑模式 + 预设 tab：可以直接保存，因为切到不同预设或同一预设都会写一次。
   const canSave = !!userId && (mode === 'preset' ? !!presetKey : !!file)
 
   return (
     <Modal open onClose={onClose} size="sm">
-      <Modal.Header><Modal.Title>新增进场特效</Modal.Title></Modal.Header>
+      <Modal.Header>
+        <Modal.Title>{isEdit ? '编辑进场特效' : '新增进场特效'}</Modal.Title>
+      </Modal.Header>
       <Modal.Body>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div>
-            <div style={{ fontSize: 12, color: '#888', marginBottom: 4 }}>选择房间访客</div>
-            <InputPicker
-              data={users.map((u) => ({ label: `${u.user_name} (${u.user_id})`, value: u.user_id, name: u.user_name }))}
-              value={userId}
-              onChange={(v) => {
-                setUserId(v as number | null)
-                const hit = users.find((u) => u.user_id === v)
-                setUserName(hit?.user_name || '')
-              }}
-              onSearch={search}
-              placeholder="搜索用户"
-              block
-            />
+            <div style={{ fontSize: 12, color: '#888', marginBottom: 4 }}>
+              {isEdit ? '用户' : '选择房间访客'}
+            </div>
+            {isEdit ? (
+              <div style={{ color: '#ddd', fontSize: 14 }}>
+                {initial?.user_name || '未知昵称'}
+                <span style={{ color: '#888', marginLeft: 8 }}>UID {initial?.uid}</span>
+              </div>
+            ) : (
+              <InputPicker
+                data={users.map((u) => ({ label: `${u.user_name} (${u.user_id})`, value: u.user_id, name: u.user_name }))}
+                value={userId}
+                onChange={(v) => {
+                  setUserId(v as number | null)
+                  const hit = users.find((u) => u.user_id === v)
+                  setUserName(hit?.user_name || '')
+                }}
+                onSearch={search}
+                placeholder="搜索用户"
+                block
+              />
+            )}
           </div>
           <Nav appearance="subtle" activeKey={mode} onSelect={(k) => setMode(k as 'preset' | 'upload')}>
             <Nav.Item eventKey="preset">预设动画</Nav.Item>
@@ -375,6 +414,11 @@ function AddModal({
           ) : (
             <div>
               <div style={{ fontSize: 12, color: '#888', marginBottom: 4 }}>视频文件（mp4/webm，≤ 100MB）</div>
+              {isEdit && initial?.video_filename && !file && (
+                <div style={{ fontSize: 12, color: '#999', marginBottom: 6 }}>
+                  当前已绑定一个视频；选新文件后保存会覆盖。
+                </div>
+              )}
               <input ref={fileRef} type="file" accept=".mp4,.webm,video/mp4,video/webm" onChange={onPick} />
               {file && <div style={{ fontSize: 12, color: '#aaa', marginTop: 4 }}>已选：{file.name}（{(file.size / 1024 / 1024).toFixed(2)}MB）</div>}
             </div>

@@ -121,7 +121,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
   transform: translateY(-50%);
   display: flex; align-items: center; gap: 10px;
   white-space: nowrap;
-  animation: fx-plane-fly 4500ms linear forwards;
+  animation: fx-plane-fly 9000ms linear forwards;
 }
 .fx-plane.fx-loop .fx-plane-rig { animation-iteration-count: infinite; }
 .fx-plane-banner {

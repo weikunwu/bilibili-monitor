@@ -19,16 +19,18 @@ export interface PresetProps {
   onDone?: () => void
 }
 
-function useDoneTimer(loop: boolean | undefined, onDone: (() => void) | undefined) {
+function useDoneTimer(loop: boolean | undefined, onDone: (() => void) | undefined, ms = PRESET_DURATION_MS) {
   useEffect(() => {
     if (loop || !onDone) return
-    const t = window.setTimeout(onDone, PRESET_DURATION_MS)
+    const t = window.setTimeout(onDone, ms)
     return () => clearTimeout(t)
-  }, [loop, onDone])
+  }, [loop, onDone, ms])
 }
 
+const PLANE_DURATION_MS = 9000
+
 function PlaneBanner({ userName, loop, mini, onDone }: PresetProps) {
-  useDoneTimer(loop, onDone)
+  useDoneTimer(loop, onDone, PLANE_DURATION_MS)
   const planeSize = mini ? 28 : 96
   const fontSize = mini ? 12 : 32
   return (
