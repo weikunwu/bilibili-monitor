@@ -81,7 +81,7 @@ export function EventsPanel({
   return (
     <div className="events-panel" ref={panelRef}>
       <div className="events-panel-header" ref={headerRef}>
-        <div className="panel-title">事件查询</div>
+        <div className="panel-title">礼物截图</div>
         <Nav
           appearance="subtle"
           activeKey={kind}
