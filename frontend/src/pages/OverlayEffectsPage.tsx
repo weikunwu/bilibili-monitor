@@ -31,7 +31,7 @@ interface VapInfo {
   aFrame: [number, number, number, number]
 }
 
-export function OverlayEntryEffectsPage() {
+export function OverlayEffectsPage() {
   const { roomId } = useParams()
   const [searchParams] = useSearchParams()
   const token = searchParams.get('token') || ''
@@ -70,7 +70,7 @@ export function OverlayEntryEffectsPage() {
 
     async function poll() {
       try {
-        const r = await fetch(`/api/overlay/${roomId}/entry-effects/queue?token=${encodeURIComponent(token)}`)
+        const r = await fetch(`/api/overlay/${roomId}/effects/queue?token=${encodeURIComponent(token)}`)
         if (!r.ok) return
         const d = await r.json()
         if (cancelled) return
@@ -127,7 +127,7 @@ export function OverlayEntryEffectsPage() {
       ) : (
         <video
           key={key}
-          src={`/api/overlay/${roomId}/entry-effects/${current.id}/video?token=${encodeURIComponent(token)}`}
+          src={`/api/overlay/${roomId}/effects/entries/${current.id}/video?token=${encodeURIComponent(token)}`}
           autoPlay
           muted={!soundOn}
           playsInline

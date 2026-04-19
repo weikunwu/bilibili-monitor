@@ -6,7 +6,7 @@ import { useWebSocket } from './hooks/useWebSocket'
 import { useLocalStorage } from './hooks/useLocalStorage'
 import { localToUTC, fmtDate } from './lib/formatters'
 import { confirmDialog } from './lib/confirm'
-import { MAX_EVENTS, TAB_LIVE, TAB_REALTIME, TAB_EVENTS, TAB_BLINDBOX, TAB_REACTIVE, TAB_AUTOMATION, TAB_NICKNAMES, TAB_ENTRY_EFFECTS } from './lib/constants'
+import { MAX_EVENTS, TAB_LIVE, TAB_REALTIME, TAB_EVENTS, TAB_BLINDBOX, TAB_REACTIVE, TAB_AUTOMATION, TAB_NICKNAMES, TAB_EFFECTS } from './lib/constants'
 import { TabSidebar } from './components/TabBar'
 
 import { EventList } from './components/EventList'
@@ -14,11 +14,11 @@ import { EventsPanel } from './components/EventsPanel'
 import { ReactiveToolsPanel, AutomationToolsPanel } from './components/ToolsPanel'
 import { BlindBoxPanel } from './components/BlindBoxPanel'
 import { NicknamesPanel } from './components/NicknamesPanel'
-import { EntryEffectsPanel } from './components/EntryEffectsPanel'
+import { EffectsPanel } from './components/EffectsPanel'
 import { RealtimeGiftsPanel } from './components/RealtimeGiftsPanel'
 import { AdminPanel } from './components/AdminPanel'
 import { OverlayGiftsPage } from './pages/OverlayGiftsPage'
-import { OverlayEntryEffectsPage } from './pages/OverlayEntryEffectsPage'
+import { OverlayEffectsPage } from './pages/OverlayEffectsPage'
 import { RegisterPage } from './pages/RegisterPage'
 import { LoginPage } from './pages/LoginPage'
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage'
@@ -37,7 +37,7 @@ function todayRange(): DateRange {
   ]
 }
 
-const VALID_TABS: TabType[] = [TAB_LIVE, TAB_REALTIME, TAB_EVENTS, TAB_BLINDBOX, TAB_REACTIVE, TAB_AUTOMATION, TAB_NICKNAMES, TAB_ENTRY_EFFECTS]
+const VALID_TABS: TabType[] = [TAB_LIVE, TAB_REALTIME, TAB_EVENTS, TAB_BLINDBOX, TAB_REACTIVE, TAB_AUTOMATION, TAB_NICKNAMES, TAB_EFFECTS]
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null)
@@ -94,7 +94,7 @@ export default function App() {
           : <Navigate to="/" replace />
       } />
       <Route path="/overlay/:roomId/gifts" element={<OverlayGiftsPage />} />
-      <Route path="/overlay/:roomId/entry-effects" element={<OverlayEntryEffectsPage />} />
+      <Route path="/overlay/:roomId/effects" element={<OverlayEffectsPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
@@ -218,8 +218,8 @@ function RoomPage({ rooms, currentUser, onRoomsChanged }: {
     if (activeTab === TAB_NICKNAMES) {
       return <NicknamesPanel roomId={roomId} />
     }
-    if (activeTab === TAB_ENTRY_EFFECTS) {
-      return <EntryEffectsPanel roomId={roomId} />
+    if (activeTab === TAB_EFFECTS) {
+      return <EffectsPanel roomId={roomId} />
     }
     if (activeTab === TAB_REALTIME) {
       return <RealtimeGiftsPanel roomId={roomId} />

@@ -3,6 +3,7 @@
 import asyncio
 import time
 from collections import OrderedDict, defaultdict, deque
+from datetime import datetime, timezone
 
 import aiohttp
 from fastapi import APIRouter, Depends, Query, Request, HTTPException
@@ -478,7 +479,6 @@ async def put_overlay_settings_route(room_id: int, request: Request, _=Depends(r
 @router.post("/api/rooms/{room_id}/overlay-settings/clear")
 async def clear_overlay_history_route(room_id: int, _=Depends(require_room_access)):
     """清空当前 overlay 展示：记录一个 cleared_at (UTC now)，overlay 查询时仅返回此时间之后的事件。"""
-    from datetime import datetime, timezone
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     return clear_overlay_history(room_id, now)
 
