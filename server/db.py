@@ -700,11 +700,10 @@ def save_event(event: dict):
     )
     conn.commit()
     conn.close()
-    # 增量补进稀有盲盒礼物名缓存：只收 > RARE_BLIND_MIN_PRICE 的爆出，
+    # 增量补进高价礼物名缓存：任何单次价值 > RARE_BLIND_MIN_PRICE 的礼物都收，
     # 和查询 SQL 的门槛一致，避免假命中。
     extra = event.get("extra") or {}
     if (event.get("event_type") == "gift"
-            and extra.get("blind_name")
             and int(extra.get("price") or 0) > RARE_BLIND_MIN_PRICE):
         gift_catalog.add(extra.get("gift_name") or "")
 

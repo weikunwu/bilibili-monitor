@@ -1425,7 +1425,7 @@ class BiliLiveClient:
             await self.send_danmu(f"{name}{b['count']}个，{fmt_profit(b['value'] - b['cost'])}")
 
     async def handle_rare_blind_by_gift(self, gift_name: str, user_name: str | None = None, user_id: int = 0):
-        """本月盲盒里爆出 gift_name 的次数（单次价值 > RARE_BLIND_MIN_PRICE）。
+        """本月 gift_name 的收到数量（不分盲盒/直接投喂，单次价值 > RARE_BLIND_MIN_PRICE）。
         user_id 非 0 → 只统计该观众自己的；user_id=0（主播触发）→ 全房间汇总。"""
         # 防"鹦鹉学舌"：正则 (?:本月|今月)(.+) 会把观众复制粘贴的机器人输出
         # 当成 gift_name。只允许 gift_name 落在 B站 礼物库里，其它静默忽略。
@@ -1436,7 +1436,6 @@ class BiliLiveClient:
             "SELECT COALESCE(SUM(CAST(COALESCE(json_extract(extra_json, '$.num'), 1) AS INTEGER)), 0) "
             "FROM events WHERE event_type='gift' AND room_id=? "
             "AND timestamp >= ? AND timestamp < ? "
-            "AND COALESCE(json_extract(extra_json, '$.blind_name'), '') != '' "
             "AND json_extract(extra_json, '$.gift_name') = ? "
             "AND COALESCE(json_extract(extra_json, '$.price'), 0) > ?"
         )
@@ -1452,9 +1451,9 @@ class BiliLiveClient:
         prefix = f"{display_name}，" if display_name else ""
         scope = "本月" if not user_name else "本月你"
         if total == 0:
-            await self.send_danmu(f"{prefix}{scope}暂无爆出 {gift_name}")
+            await self.send_danmu(f"{prefix}{scope}暂无收到 {gift_name}")
         else:
-            await self.send_danmu(f"{prefix}{scope}共爆出 {gift_name} {total} 个")
+            await self.send_danmu(f"{prefix}{scope}共收到 {gift_name} {total} 个")
 
     def stop(self):
         self._running = False
