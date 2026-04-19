@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
+import { PRESET_COMPONENT } from '../lib/effectPresets'
 
 /** 进场&礼物特效 OBS 叠加页：轮询队列接口，拉到事件按顺序播一段视频。
  * 同一时间只播一个；播放中进来的新事件排队等前一个播完。
@@ -17,6 +18,7 @@ interface QueuedEvent {
   id: number
   uid?: number
   user_name?: string
+  preset_key?: string
   mp4_url?: string
   json_url?: string
   enqueued_at: number
@@ -130,6 +132,11 @@ export function OverlayEffectsPage() {
           soundOn={soundOn}
           onDone={onDone}
         />
+      ) : current.preset_key && PRESET_COMPONENT[current.preset_key] ? (
+        (() => {
+          const Comp = PRESET_COMPONENT[current.preset_key]
+          return <Comp key={key} userName={current.user_name || ''} onDone={onDone} />
+        })()
       ) : (
         <video
           key={key}

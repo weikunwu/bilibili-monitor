@@ -458,6 +458,7 @@ export interface EntryEffect {
   uid: number
   user_name: string
   video_filename: string
+  preset_key: string
   size_bytes: number
   created_at: string
 }
@@ -479,6 +480,21 @@ export async function uploadEntryEffect(
   if (!res.ok) {
     const d = await res.json().catch(() => ({} as { detail?: string }))
     throw new Error(d.detail || '上传失败')
+  }
+  return res.json()
+}
+
+export async function bindEntryEffectPreset(
+  roomId: number, uid: number, userName: string, presetKey: string,
+): Promise<EntryEffect> {
+  const res = await fetch(`/api/rooms/${roomId}/effects/entries/preset`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ uid, user_name: userName, preset_key: presetKey }),
+  })
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({} as { detail?: string }))
+    throw new Error(d.detail || '保存失败')
   }
   return res.json()
 }

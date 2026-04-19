@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import {
-  Input, InputGroup, InputPicker, Button, Modal, Table, Toggle, IconButton, Message, useToaster,
+  Input, InputGroup, InputPicker, Button, Modal, Nav, Table, Toggle, IconButton, Message, useToaster,
 } from 'rsuite'
 import CopyIcon from '@rsuite/icons/Copy'
 import VisibleIcon from '@rsuite/icons/Visible'
@@ -8,12 +8,13 @@ import ReloadIcon from '@rsuite/icons/Reload'
 import TrashIcon from '@rsuite/icons/Trash'
 import PlusIcon from '@rsuite/icons/Plus'
 import {
-  fetchEntryEffects, uploadEntryEffect, deleteEntryEffect, fetchRoomUsers,
+  fetchEntryEffects, uploadEntryEffect, bindEntryEffectPreset, deleteEntryEffect, fetchRoomUsers,
   fetchEffectSettings, updateEffectSettings,
   fetchOverlayToken, rotateOverlayToken, type EntryEffect,
 } from '../api/client'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { confirmDialog } from '../lib/confirm'
+import { ENTRY_PRESETS, PRESET_LABEL } from '../lib/effectPresets'
 
 interface Props {
   roomId: number
@@ -173,16 +174,26 @@ export function EffectsPanel({ roomId }: Props) {
                 <div className="effect-card-head">
                   <div className="effect-card-user">
                     <div className="effect-card-name">{r.user_name || `UID ${r.uid}`}</div>
-                    <div className="effect-card-meta">UID {r.uid} · {(r.size_bytes / 1024 / 1024).toFixed(2)} MB</div>
+                    <div className="effect-card-meta">
+                      UID {r.uid} · {r.preset_key
+                        ? `预设：${PRESET_LABEL[r.preset_key] || r.preset_key}`
+                        : `${(r.size_bytes / 1024 / 1024).toFixed(2)} MB`}
+                    </div>
                   </div>
                   <IconButton size="sm" icon={<TrashIcon />} onClick={() => handleDelete(r)} />
                 </div>
-                <video
-                  src={`/api/rooms/${r.room_id}/effects/entries/${r.id}/video`}
-                  controls
-                  preload="none"
-                  className="effect-card-video"
-                />
+                {r.preset_key ? (
+                  <div className="effect-card-preset">
+                    {PRESET_LABEL[r.preset_key] || r.preset_key}
+                  </div>
+                ) : (
+                  <video
+                    src={`/api/rooms/${r.room_id}/effects/entries/${r.id}/video`}
+                    controls
+                    preload="none"
+                    className="effect-card-video"
+                  />
+                )}
                 <div className="effect-card-time">{r.created_at}</div>
               </div>
             ))}
@@ -200,21 +211,31 @@ export function EffectsPanel({ roomId }: Props) {
               <Cell dataKey="uid" />
             </Column>
             <Column flexGrow={1}>
-              <HeaderCell>大小</HeaderCell>
+              <HeaderCell>类型</HeaderCell>
               <Cell>
-                {(r: EntryEffect) => <span>{(r.size_bytes / 1024 / 1024).toFixed(2)} MB</span>}
+                {(r: EntryEffect) => (
+                  <span>
+                    {r.preset_key
+                      ? `预设 · ${PRESET_LABEL[r.preset_key] || r.preset_key}`
+                      : `${(r.size_bytes / 1024 / 1024).toFixed(2)} MB`}
+                  </span>
+                )}
               </Cell>
             </Column>
             <Column flexGrow={2}>
               <HeaderCell>预览</HeaderCell>
               <Cell style={{ padding: 4 }}>
                 {(r: EntryEffect) => (
-                  <video
-                    src={`/api/rooms/${r.room_id}/effects/entries/${r.id}/video`}
-                    controls
-                    preload="none"
-                    style={{ maxHeight: 80, maxWidth: 160, background: '#000', borderRadius: 4 }}
-                  />
+                  r.preset_key ? (
+                    <span style={{ color: '#888' }}>—</span>
+                  ) : (
+                    <video
+                      src={`/api/rooms/${r.room_id}/effects/entries/${r.id}/video`}
+                      controls
+                      preload="none"
+                      style={{ maxHeight: 80, maxWidth: 160, background: '#000', borderRadius: 4 }}
+                    />
+                  )
                 )}
               </Cell>
             </Column>
@@ -252,7 +273,8 @@ function AddModal({
   const [users, setUsers] = useState<{ user_id: number; user_name: string }[]>([])
   const [userId, setUserId] = useState<number | null>(null)
   const [userName, setUserName] = useState('')
-  const [manualUid, setManualUid] = useState('')
+  const [mode, setMode] = useState<'preset' | 'upload'>('preset')
+  const [presetKey, setPresetKey] = useState<string>(ENTRY_PRESETS[0]?.key || '')
   const [file, setFile] = useState<File | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -286,14 +308,18 @@ function AddModal({
   }
 
   async function handleSave() {
-    const uid = userId || parseInt(manualUid.trim(), 10)
-    if (!uid || isNaN(uid)) { setError('请选择或输入 UID'); return }
-    if (!file) { setError('请选视频文件'); return }
+    if (!userId) { setError('请选择用户'); return }
     setSaving(true)
     setError('')
     try {
-      await uploadEntryEffect(roomId, uid, userName, file)
-      toaster.push(<Message type="success" showIcon closable>上传成功</Message>, { duration: 2000 })
+      if (mode === 'upload') {
+        if (!file) { setError('请选视频文件'); setSaving(false); return }
+        await uploadEntryEffect(roomId, userId, userName, file)
+      } else {
+        if (!presetKey) { setError('请选择预设动画'); setSaving(false); return }
+        await bindEntryEffectPreset(roomId, userId, userName, presetKey)
+      }
+      toaster.push(<Message type="success" showIcon closable>保存成功</Message>, { duration: 2000 })
       onSaved()
     } catch (err) {
       setError((err as Error).message)
@@ -302,11 +328,13 @@ function AddModal({
     }
   }
 
+  const canSave = !!userId && (mode === 'preset' ? !!presetKey : !!file)
+
   return (
-    <Modal open onClose={onClose} size="xs">
+    <Modal open onClose={onClose} size="sm">
       <Modal.Header><Modal.Title>新增进场特效</Modal.Title></Modal.Header>
       <Modal.Body>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div>
             <div style={{ fontSize: 12, color: '#888', marginBottom: 4 }}>选择房间访客</div>
             <InputPicker
@@ -316,29 +344,48 @@ function AddModal({
                 setUserId(v as number | null)
                 const hit = users.find((u) => u.user_id === v)
                 setUserName(hit?.user_name || '')
-                if (v) setManualUid('')
               }}
               onSearch={search}
               placeholder="搜索用户"
               block
             />
           </div>
-          <div>
-            <div style={{ fontSize: 12, color: '#888', marginBottom: 4 }}>或手动填 UID</div>
-            <Input value={manualUid} onChange={(v) => { setManualUid(v); if (v) setUserId(null) }} placeholder="手动输入 UID" />
-          </div>
-          <div>
-            <div style={{ fontSize: 12, color: '#888', marginBottom: 4 }}>视频文件（mp4/webm，≤ 10MB）</div>
-            <input ref={fileRef} type="file" accept=".mp4,.webm,video/mp4,video/webm" onChange={onPick} />
-            {file && <div style={{ fontSize: 12, color: '#aaa', marginTop: 4 }}>已选：{file.name}（{(file.size / 1024 / 1024).toFixed(2)}MB）</div>}
-          </div>
+          <Nav appearance="subtle" activeKey={mode} onSelect={(k) => setMode(k as 'preset' | 'upload')}>
+            <Nav.Item eventKey="preset">预设动画</Nav.Item>
+            <Nav.Item eventKey="upload">上传文件</Nav.Item>
+          </Nav>
+          {mode === 'preset' ? (
+            <div className="preset-grid">
+              {ENTRY_PRESETS.map((p) => (
+                <div
+                  key={p.key}
+                  className={`preset-card${presetKey === p.key ? ' selected' : ''}`}
+                  onClick={() => setPresetKey(p.key)}
+                >
+                  <div className="preset-card-thumb">
+                    <p.Component userName={userName || '观众'} loop mini />
+                  </div>
+                  <div className="preset-card-label">
+                    <p.Icon size={14} />
+                    {p.label}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div>
+              <div style={{ fontSize: 12, color: '#888', marginBottom: 4 }}>视频文件（mp4/webm，≤ 10MB）</div>
+              <input ref={fileRef} type="file" accept=".mp4,.webm,video/mp4,video/webm" onChange={onPick} />
+              {file && <div style={{ fontSize: 12, color: '#aaa', marginTop: 4 }}>已选：{file.name}（{(file.size / 1024 / 1024).toFixed(2)}MB）</div>}
+            </div>
+          )}
           {error && <Message type="error" showIcon>{error}</Message>}
         </div>
       </Modal.Body>
       <Modal.Footer>
         <Button onClick={onClose} appearance="subtle" disabled={saving}>取消</Button>
-        <Button onClick={handleSave} appearance="primary" loading={saving} disabled={!file || (!userId && !manualUid.trim())}>
-          上传
+        <Button onClick={handleSave} appearance="primary" loading={saving} disabled={!canSave}>
+          保存
         </Button>
       </Modal.Footer>
     </Modal>

@@ -53,6 +53,9 @@ def _ext_of(name: str) -> str:
     return name[i:].lower() if i >= 0 else ""
 
 
+_PRESET_KEYS = {"plane_banner", "heart_float", "firework", "sparkle"}
+
+
 def try_trigger_entry_effect(room_id: int, uid: int) -> bool:
     """在 bili_client 收到进场时调。命中且过冷却 → 入队，返回 True。
     不抛异常；任何异常吞掉并返回 False，避免影响主流程。"""
@@ -72,6 +75,7 @@ def try_trigger_entry_effect(room_id: int, uid: int) -> bool:
             "id": effect["id"],
             "uid": uid,
             "user_name": effect["user_name"],
+            "preset_key": effect.get("preset_key") or "",
             "enqueued_at": now,
         })
         while len(q) > _MAX_QUEUE:
@@ -174,12 +178,46 @@ async def upload_effect(
     new_path = room_dir / new_filename
     new_path.write_bytes(data)
 
-    # Upsert：旧文件要从磁盘删掉
+    # Upsert：旧文件要从磁盘删掉（仅当旧记录是上传类型）
     old = get_entry_effect_for_user(room_id, uid)
-    row = upsert_entry_effect(room_id, uid, (user_name or "").strip(), new_filename, len(data))
-    if old and old["video_filename"] != new_filename:
+    row = upsert_entry_effect(
+        room_id, uid, (user_name or "").strip(),
+        video_filename=new_filename, preset_key="", size_bytes=len(data),
+    )
+    if old and old.get("video_filename") and old["video_filename"] != new_filename:
         try:
             (room_dir / old["video_filename"]).unlink(missing_ok=True)
+        except Exception as e:
+            log.warning(f"[entry-effect] 旧文件删除失败 {old['video_filename']}: {e}")
+    return row
+
+
+@router.post("/api/rooms/{room_id}/effects/entries/preset")
+async def upload_preset_effect(
+    room_id: int,
+    request: Request,
+    _=Depends(require_room_access),
+):
+    """绑定一个预设动画给 UID。和上传等价但不落文件，OBS 叠加页拿
+    preset_key 自己渲染。"""
+    body = await request.json()
+    uid = int(body.get("uid") or 0)
+    user_name = (body.get("user_name") or "").strip()
+    preset_key = (body.get("preset_key") or "").strip()
+    if uid <= 0:
+        raise HTTPException(400, "uid 无效")
+    if preset_key not in _PRESET_KEYS:
+        raise HTTPException(400, "预设不存在")
+
+    # Upsert：如果旧记录是上传类型，把磁盘文件清掉
+    old = get_entry_effect_for_user(room_id, uid)
+    row = upsert_entry_effect(
+        room_id, uid, user_name,
+        video_filename="", preset_key=preset_key, size_bytes=0,
+    )
+    if old and old.get("video_filename"):
+        try:
+            (ENTRY_EFFECT_ROOT / str(room_id) / old["video_filename"]).unlink(missing_ok=True)
         except Exception as e:
             log.warning(f"[entry-effect] 旧文件删除失败 {old['video_filename']}: {e}")
     return row
@@ -190,10 +228,11 @@ async def remove_effect(room_id: int, effect_id: int, _=Depends(require_room_acc
     filename = delete_entry_effect(room_id, effect_id)
     if filename is None:
         raise HTTPException(404, "记录不存在")
-    try:
-        _effect_video_path(room_id, filename).unlink(missing_ok=True)
-    except Exception as e:
-        log.warning(f"[entry-effect] 文件清理失败: {e}")
+    if filename:
+        try:
+            _effect_video_path(room_id, filename).unlink(missing_ok=True)
+        except Exception as e:
+            log.warning(f"[entry-effect] 文件清理失败: {e}")
     return {"ok": True}
 
 
