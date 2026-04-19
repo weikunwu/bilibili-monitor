@@ -27,7 +27,7 @@ from .db import (
     get_nickname, upsert_nickname, delete_nickname,
     set_live_started_at, get_gift_effect_test_enabled,
 )
-from .routes.effects import trigger_gift_vap_test, try_trigger_entry_effect
+from .routes.effects import trigger_gift_vap, try_trigger_entry_effect
 from .time_utils import beijing_time_range
 
 
@@ -380,6 +380,23 @@ class BiliLiveClient:
             gift_id = self.GUARD_VAP_GIFT_IDS.get(extra.get("guard_level") or 0, 0)
         num = int(extra.get("num") or 1)
         asyncio.create_task(session.request_clip(gift_id, effect_id, label, num))
+
+    def _maybe_trigger_gift_vap(self, event: dict) -> None:
+        """真实送礼 / 上舰：若该礼物在 effect_catalog 里有全屏 VAP，按 num 入 OBS 队列。
+        连击 x N 入队 N 次 → OBS 串行播 N 遍。guard 走 guard_level →
+        GUARD_VAP_GIFT_IDS 兜底。"""
+        et = event.get("event_type")
+        if et not in ("gift", "guard"):
+            return
+        extra = event.get("extra") or {}
+        gift_id = int(extra.get("gift_id") or 0)
+        if et == "guard" and not gift_id:
+            gift_id = self.GUARD_VAP_GIFT_IDS.get(extra.get("guard_level") or 0, 0)
+        if not gift_id:
+            return
+        num = max(1, int(extra.get("num") or 1))
+        for _ in range(num):
+            trigger_gift_vap(self.room_id, gift_id, source=et)
 
     def _maybe_broadcast_blind(self, event: dict):
         """Accumulate a user's blind-box events and emit one summary danmu
@@ -1207,6 +1224,7 @@ class BiliLiveClient:
                                         save_event(event)
                                         await self.on_event(event)
                                     self._maybe_clip(event)
+                                    self._maybe_trigger_gift_vap(event)
                                     self._maybe_broadcast_blind(event)
                                     self._maybe_broadcast_gift_thanks(event)
                                     self._maybe_broadcast_guard_thanks(event)
@@ -1234,7 +1252,7 @@ class BiliLiveClient:
                                         if not is_command:
                                             m = re.fullmatch(r"礼物特效测试(\d+)", content)
                                             if m and get_gift_effect_test_enabled(self.room_id):
-                                                trigger_gift_vap_test(self.room_id, int(m.group(1)))
+                                                trigger_gift_vap(self.room_id, int(m.group(1)), source="test")
                                                 is_command = True
 
                                         # 昵称指令
