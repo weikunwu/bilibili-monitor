@@ -62,14 +62,18 @@ def try_trigger_entry_effect(room_id: int, uid: int) -> bool:
     try:
         effect = get_entry_effect_for_user(room_id, uid)
         if not effect:
+            log.info(f"[entry-effect] room={room_id} uid={uid} 未绑定，跳过")
             return False
         key = (room_id, uid)
         now = time.monotonic()
         last = _last_trigger.get(key, 0.0)
         if now - last < ENTRY_EFFECT_COOLDOWN_SEC:
+            remain = int(ENTRY_EFFECT_COOLDOWN_SEC - (now - last))
+            log.info(f"[entry-effect] room={room_id} uid={uid} 冷却中（剩 {remain}s），跳过")
             return False
         _last_trigger[key] = now
         q = _pending_queues[room_id]
+        kind_label = f"preset={effect.get('preset_key')}" if effect.get("preset_key") else f"video={effect.get('video_filename')}"
         q.append({
             "kind": "user",
             "id": effect["id"],
@@ -80,7 +84,10 @@ def try_trigger_entry_effect(room_id: int, uid: int) -> bool:
         })
         while len(q) > _MAX_QUEUE:
             q.popleft()
-        log.info(f"[entry-effect] room={room_id} uid={uid} 入队 effect id={effect['id']}")
+        log.info(
+            f"[entry-effect] room={room_id} uid={uid} user={effect.get('user_name')!r} "
+            f"入队 effect id={effect['id']} {kind_label}（队列长 {len(q)}）"
+        )
         return True
     except Exception as e:
         log.warning(f"[entry-effect] trigger failed room={room_id} uid={uid}: {e}")
@@ -184,9 +191,14 @@ async def upload_effect(
         room_id, uid, (user_name or "").strip(),
         video_filename=new_filename, preset_key="", size_bytes=len(data),
     )
+    log.info(
+        f"[entry-effect] room={room_id} uid={uid} user={user_name!r} "
+        f"上传视频 {new_filename}（{len(data) // 1024}KB）"
+    )
     if old and old.get("video_filename") and old["video_filename"] != new_filename:
         try:
             (room_dir / old["video_filename"]).unlink(missing_ok=True)
+            log.info(f"[entry-effect] room={room_id} uid={uid} 清掉旧文件 {old['video_filename']}")
         except Exception as e:
             log.warning(f"[entry-effect] 旧文件删除失败 {old['video_filename']}: {e}")
     return row
@@ -215,9 +227,11 @@ async def upload_preset_effect(
         room_id, uid, user_name,
         video_filename="", preset_key=preset_key, size_bytes=0,
     )
+    log.info(f"[entry-effect] room={room_id} uid={uid} user={user_name!r} 绑定预设 {preset_key}")
     if old and old.get("video_filename"):
         try:
             (ENTRY_EFFECT_ROOT / str(room_id) / old["video_filename"]).unlink(missing_ok=True)
+            log.info(f"[entry-effect] room={room_id} uid={uid} 清掉旧文件 {old['video_filename']}")
         except Exception as e:
             log.warning(f"[entry-effect] 旧文件删除失败 {old['video_filename']}: {e}")
     return row
@@ -227,7 +241,9 @@ async def upload_preset_effect(
 async def remove_effect(room_id: int, effect_id: int, _=Depends(require_room_access)):
     filename = delete_entry_effect(room_id, effect_id)
     if filename is None:
+        log.info(f"[entry-effect] room={room_id} 删除 id={effect_id} 失败：记录不存在")
         raise HTTPException(404, "记录不存在")
+    log.info(f"[entry-effect] room={room_id} 删除 id={effect_id} 文件={filename!r}")
     if filename:
         try:
             _effect_video_path(room_id, filename).unlink(missing_ok=True)
@@ -246,13 +262,21 @@ async def serve_effect_auth(room_id: int, effect_id: int, _=Depends(require_room
 @router.get("/api/overlay/{room_id}/effects/queue")
 async def overlay_queue(room_id: int, token: str = Query(...)):
     if not verify_overlay_token(room_id, token):
+        log.warning(f"[overlay-queue] room={room_id} token 无效（前缀 {token[:6]!r}…），返回 403")
         raise HTTPException(403, "token 无效")
     if is_room_expired(room_id):
+        log.info(f"[overlay-queue] room={room_id} 房间已到期，返回 410")
         raise HTTPException(410, "房间已到期")
     q = _pending_queues[room_id]
     pending: list[dict] = []
     while q:
         pending.append(q.popleft())
+    if pending:
+        kinds = ",".join(
+            f"{e.get('kind')}({e.get('preset_key') or e.get('id')})"
+            for e in pending
+        )
+        log.info(f"[overlay-queue] room={room_id} 出队 {len(pending)} 条 [{kinds}]")
     return {"events": pending, "sound_on": get_entry_effect_sound_on(room_id)}
 
 

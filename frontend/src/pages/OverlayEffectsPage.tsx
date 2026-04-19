@@ -69,36 +69,60 @@ export function OverlayEffectsPage() {
   useEffect(() => {
     if (!roomId || !token) return
     let cancelled = false
+    console.log(`[overlay] mount room=${roomId} 开始轮询，间隔 ${POLL_MS}ms`)
 
     async function poll() {
       try {
         const r = await fetch(`/api/overlay/${roomId}/effects/queue?token=${encodeURIComponent(token)}`)
         if (r.status === 410) {
           // 房间到期，停轮询；URL 留着，续费后用户刷一下页面就能恢复
+          console.warn(`[overlay] room=${roomId} 410 房间已到期，停止轮询`)
           cancelled = true
           clearInterval(pollRef.current)
           return
         }
-        if (!r.ok) return
+        if (r.status === 403) {
+          console.error(`[overlay] room=${roomId} 403 token 无效；检查 URL 上的 token 是否还有效`)
+          return
+        }
+        if (!r.ok) {
+          console.warn(`[overlay] room=${roomId} poll 返回 HTTP ${r.status}`)
+          return
+        }
         const d = await r.json()
         if (cancelled) return
         setSoundOn(!!d.sound_on)
         const events: QueuedEvent[] = Array.isArray(d.events) ? d.events : []
         if (events.length) {
+          console.log(`[overlay] 拿到 ${events.length} 条新事件`, events)
           queueRef.current.push(...events)
           // 如果当前没在播，立刻从队首开播
           if (!currentRef.current) pumpNext()
+          else console.log(`[overlay] 当前在播 id=${currentRef.current.id}，等播完再切（待播 ${queueRef.current.length}）`)
         }
-      } catch { /* ignore */ }
+      } catch (e) {
+        console.warn(`[overlay] poll 异常`, e)
+      }
     }
 
     function pumpNext() {
       const next = queueRef.current.shift() || null
       currentRef.current = next
+      if (next) {
+        const desc = next.kind === 'gift_vap'
+          ? `gift_vap mp4=${next.mp4_url}`
+          : next.preset_key
+            ? `preset=${next.preset_key} user=${next.user_name}`
+            : `user-video id=${next.id} user=${next.user_name}`
+        console.log(`[overlay] ▶ 开播 ${desc}`)
+      } else {
+        console.log(`[overlay] 队列空，等下一个事件`)
+      }
       setCurrent(next)
     }
 
     function onVideoDone() {
+      console.log(`[overlay] ⏹ 播完，下一个`)
       pumpNext()
     }
 
@@ -109,6 +133,7 @@ export function OverlayEffectsPage() {
     return () => {
       cancelled = true
       clearInterval(pollRef.current)
+      console.log(`[overlay] unmount room=${roomId} 停止轮询`)
     }
   }, [roomId, token])
 
@@ -145,7 +170,10 @@ export function OverlayEffectsPage() {
           muted={!soundOn}
           playsInline
           onEnded={onDone}
-          onError={onDone}
+          onError={(e) => {
+            console.warn(`[overlay] 视频播放出错 id=${current.id}`, e.currentTarget.error)
+            onDone()
+          }}
           style={{ maxWidth: '100%', maxHeight: '100%' }}
         />
       )}
