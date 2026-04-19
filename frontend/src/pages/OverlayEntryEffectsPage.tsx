@@ -4,7 +4,7 @@ import { useParams, useSearchParams } from 'react-router-dom'
 /** 进场特效 OBS 叠加页：轮询队列接口，拉到事件按顺序播一段视频。
  * 同一时间只播一个；播放中进来的新事件排队等前一个播完。 */
 
-const POLL_MS = 1500
+const POLL_MS = 3000
 
 interface QueuedEvent {
   id: number

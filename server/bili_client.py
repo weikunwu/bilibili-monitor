@@ -507,18 +507,10 @@ class BiliLiveClient:
         进场特效视频，push 到 overlay 队列。冷却逻辑在路由模块里。
         用 self.room_id (用户侧的 display ID) 而不是 real_room_id：前端 URL
         /api/rooms/{room_id}/entry-effects 里就是 display，DB 也以 display 存的。"""
-        mt = data.get("msg_type")
-        if mt != 1:
+        if data.get("msg_type") != 1:
             return
         uid = data.get("uid") or 0
-        if not uid:
-            log.info(f"[entry-effect] room={self.room_id} 收到进场但 uid 空，跳过")
-            return
-        if uid == self.bot_uid:
-            log.info(f"[entry-effect] room={self.room_id} 机器人自己进场，跳过 uid={uid}")
-            return
-        if uid == self.streamer_uid:
-            log.info(f"[entry-effect] room={self.room_id} 主播自己进场，跳过 uid={uid}")
+        if not uid or uid == self.bot_uid or uid == self.streamer_uid:
             return
         from .routes.entry_effects import try_trigger_entry_effect
         try_trigger_entry_effect(self.room_id, int(uid))
