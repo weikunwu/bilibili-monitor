@@ -369,11 +369,12 @@ class RecorderSession:
 
     async def _resolve_playurl(self) -> bool:
         # qn: 80=360p, 150=720p (default high), 250=720p60, 400=1080p, 10000=原画.
-        # Lower is critical on the 256MB VM: 720p ~2Mbps buffered for 35s = 9MB,
-        # 360p ~500Kbps = 2MB.
+        # Compositing moved to the browser (clipCompose.ts)，服务端录屏只做 remux，
+        # 所以分辨率主要受磁盘/带宽制约，不再像以前那样卡 ffmpeg 重编码内存。
+        # 720p ~2Mbps × 35s rolling buffer ≈ 9MB/房间（/tmp 走 tmpfs 要算进 VM 预算）。
         params = {
             "room_id": self.room_id, "protocol": "1", "format": "2",
-            "codec": "0", "qn": 80, "platform": "web", "ptype": 8,
+            "codec": "0", "qn": 150, "platform": "web", "ptype": 8,
         }
         async with self._session.get(PLAYURL_API + "?" + urlencode(params)) as r:
             data = await r.json(content_type=None)
