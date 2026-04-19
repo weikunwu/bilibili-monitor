@@ -141,6 +141,7 @@ def trigger_gift_vap(room_id: int, gift_id: int, source: str = "gift") -> bool:
                 f"id={override['id']}（fan-out {fan} 会话）"
             )
             return True
+        log.info(f"[gift-vap:{source}] room={room_id} gift_id={gift_id} 无自定义覆盖，回退 VAP catalog")
         hit = effect_catalog.get_by_gift(gift_id)
         if not hit:
             log.info(f"[gift-vap:{source}] room={room_id} gift_id={gift_id} 无全屏特效")
