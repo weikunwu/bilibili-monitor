@@ -192,7 +192,7 @@ export function RealtimeGiftsPanel({ roomId }: Props) {
 
         <Section
           isMobile={isMobile}
-          title="OBS 浏览器源链接"
+          title="浏览器源链接"
           description="链接带 token 鉴权，任何人知道 URL 都能看到该房间的礼物聚合。Token 外泄后点「重新生成」让旧链接失效。"
         >
           <InputGroup size="sm" inside>

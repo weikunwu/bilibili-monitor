@@ -625,8 +625,9 @@ def delete_entry_effect(room_id: int, effect_id: int) -> Optional[str]:
 
 
 def get_entry_effect_sound_on(room_id: int) -> bool:
-    """OBS 进场特效是否开声，房间级设置，存在 rooms.settings_json.entry_effect_sound_on。"""
-    return bool(get_room_settings(room_id).get("entry_effect_sound_on", True))
+    """进场特效是否开声，房间级设置，存在 rooms.settings_json.entry_effect_sound_on。
+    默认静音 — 浏览器源大多禁用音频自动播放，开声反而坏体验。"""
+    return bool(get_room_settings(room_id).get("entry_effect_sound_on", False))
 
 
 def set_entry_effect_sound_on(room_id: int, on: bool) -> None:

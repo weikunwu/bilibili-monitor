@@ -514,7 +514,7 @@ export interface EffectSettings {
 
 export async function fetchEffectSettings(roomId: number): Promise<EffectSettings> {
   const res = await fetch(`/api/rooms/${roomId}/effects/settings`)
-  if (!res.ok) return { sound_on: true, gift_effect_test_enabled: true }
+  if (!res.ok) return { sound_on: false, gift_effect_test_enabled: true }
   return res.json()
 }
 

@@ -158,6 +158,39 @@ def purge_stale_cooldowns() -> None:
         log.info(f"[overlay-session] 清掉 {len(stale_sess)} 个离线会话")
 
 
+def purge_orphan_effect_files() -> int:
+    """扫 ENTRY_EFFECT_ROOT/<room>/ 删 DB 里没记录的孤儿文件。
+    覆盖 unlink 之前进程崩了 / 改名失败 / 旧 schema 等残留。返回清掉的文件数。"""
+    if not ENTRY_EFFECT_ROOT.exists():
+        return 0
+    deleted = 0
+    for room_dir in ENTRY_EFFECT_ROOT.iterdir():
+        if not room_dir.is_dir():
+            continue
+        try:
+            room_id = int(room_dir.name)
+        except ValueError:
+            continue
+        try:
+            valid = {
+                r["video_filename"] for r in list_entry_effects(room_id)
+                if r.get("video_filename")
+            }
+        except Exception as e:
+            log.warning(f"[entry-effect] 扫孤儿时读 DB 失败 room={room_id}: {e}")
+            continue
+        for f in room_dir.iterdir():
+            if not f.is_file() or f.name in valid:
+                continue
+            try:
+                f.unlink()
+                deleted += 1
+                log.info(f"[entry-effect] 孤儿文件清理 room={room_id} {f.name}")
+            except Exception as e:
+                log.warning(f"[entry-effect] 清理失败 {f}: {e}")
+    return deleted
+
+
 # ── 已登录房主 API ──
 
 @router.get("/api/rooms/{room_id}/effects/entries")

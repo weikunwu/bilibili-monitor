@@ -16,7 +16,10 @@ from .db import (
 )
 from .auth import AuthMiddleware, get_session_user, get_user_allowed_rooms, handle_login, handle_logout, handle_change_password, handle_send_register_code, handle_register, handle_send_reset_code, handle_reset_password, purge_stale_rate_limits as purge_auth_rate_limits
 from .routes.rooms import purge_stale_rate_limits as purge_room_rate_limits
-from .routes.effects import purge_stale_cooldowns as purge_entry_effect_cooldowns
+from .routes.effects import (
+    purge_stale_cooldowns as purge_entry_effect_cooldowns,
+    purge_orphan_effect_files,
+)
 from . import turnstile
 from .manager import manager
 from . import recorder, effect_catalog, gift_catalog
@@ -221,12 +224,18 @@ async def _periodic_memory_cleanup():
 
 
 async def _periodic_clip_cleanup():
-    """Delete clips older than 24h every hour."""
+    """Delete clips older than 24h every hour. Also sweep orphan entry-effect files."""
     while True:
         try:
             recorder.cleanup_old_clips(max_age_hours=24)
         except Exception as e:
             log.warning(f"[clip cleanup] {e}")
+        try:
+            n = purge_orphan_effect_files()
+            if n:
+                log.info(f"[entry-effect orphan] 总共清掉 {n} 个孤儿文件")
+        except Exception as e:
+            log.warning(f"[entry-effect orphan] {e}")
         await asyncio.sleep(3600)
 
 

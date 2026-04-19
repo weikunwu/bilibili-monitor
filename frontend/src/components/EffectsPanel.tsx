@@ -101,7 +101,7 @@ export function EffectsPanel({ roomId }: Props) {
   }
 
   async function rotate() {
-    if (!await confirmDialog({ message: '重新生成 token 会让该房间所有 OBS 叠加链接（礼物流 / 进场特效）失效，确认？', danger: true, okText: '重新生成' })) return
+    if (!await confirmDialog({ message: '重新生成 token 会让该房间所有叠加链接（礼物流 / 进场特效）失效，确认？', danger: true, okText: '重新生成' })) return
     setRotating(true)
     try {
       const t = await rotateOverlayToken(roomId)
@@ -126,8 +126,8 @@ export function EffectsPanel({ roomId }: Props) {
 
         <Section
           isMobile={isMobile}
-          title="OBS 浏览器源链接"
-          description="把此链接作为 OBS 浏览器源，观众进直播间时若匹配到已绑定 UID，自动播放对应视频。同一用户 5 分钟冷却一次。注意在 OBS 里取消静音才能听到声音。"
+          title="浏览器源链接"
+          description="把此链接作为浏览器源，观众进直播间时若匹配到已绑定 UID，自动播放对应视频。同一用户 5 分钟冷却一次。注意在浏览器里取消静音才能听到声音。"
         >
           <InputGroup size="sm" inside>
             <Input readOnly value={url} placeholder="加载中…" />
@@ -145,16 +145,16 @@ export function EffectsPanel({ roomId }: Props) {
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <Toggle size="sm" checked={soundOn} onChange={handleToggleSound} />
-            <span style={{ fontSize: 13, color: '#ccc' }}>OBS 里播放声音</span>
+            <span style={{ fontSize: 13, color: '#ccc' }}>播放声音</span>
             <span style={{ fontSize: 12, color: '#666' }}>
-              （默认静音；需 OBS 允许音频自动播放）
+              （默认静音；需浏览器允许音频自动播放）
             </span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <Toggle size="sm" checked={giftTestOn} onChange={handleToggleGiftTest} />
             <span style={{ fontSize: 13, color: '#ccc' }}>礼物特效测试</span>
             <span style={{ fontSize: 12, color: '#666' }}>
-              （打开后，任意人发弹幕「礼物特效测试&lt;gift_id&gt;」，如「礼物特效测试35560」，OBS 叠加页会播放该礼物的全屏 VAP）
+              （打开后，任意人发弹幕「礼物特效测试&lt;gift_id&gt;」，如「礼物特效测试35560」，叠加页会播放该礼物的全屏 VAP）
             </span>
           </div>
         </Section>
