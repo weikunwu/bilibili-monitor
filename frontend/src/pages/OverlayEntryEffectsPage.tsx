@@ -236,7 +236,7 @@ function VapPlayer({
       }) | null
       if (rvfcId && v?.cancelVideoFrameCallback) v.cancelVideoFrameCallback(rvfcId)
     }
-  }, [roomId, token, mp4Url, jsonUrl, soundOn, onDone])
+  }, [mp4Url, jsonUrl, soundOn, onDone])
 
   return (
     <>
