@@ -25,6 +25,7 @@ const GROUPS: Group[] = [
     items: [
       { type: TAB_LIVE, label: '直播流', icon: <Radio size={16} /> },
       { type: TAB_REALTIME, label: '实时礼物流', icon: <Gift size={16} /> },
+      { type: TAB_ENTRY_EFFECTS, label: '进场特效', icon: <Sparkles size={16} /> },
     ],
   },
   {
@@ -40,7 +41,6 @@ const GROUPS: Group[] = [
       { type: TAB_REACTIVE, label: '互动回复', icon: <MessageCircle size={16} /> },
       { type: TAB_AUTOMATION, label: '指令 & 高级', icon: <Wrench size={16} /> },
       { type: TAB_NICKNAMES, label: '昵称管理', icon: <Tag size={16} /> },
-      { type: TAB_ENTRY_EFFECTS, label: '进场特效', icon: <Sparkles size={16} /> },
     ],
   },
 ]

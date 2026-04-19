@@ -1,28 +1,58 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Button, InputPicker, Modal, Table, IconButton, Input, Message, useToaster } from 'rsuite'
+import {
+  Input, InputGroup, InputPicker, Button, Modal, Table, IconButton, Message, useToaster,
+} from 'rsuite'
+import CopyIcon from '@rsuite/icons/Copy'
+import VisibleIcon from '@rsuite/icons/Visible'
+import ReloadIcon from '@rsuite/icons/Reload'
 import TrashIcon from '@rsuite/icons/Trash'
 import PlusIcon from '@rsuite/icons/Plus'
 import {
   fetchEntryEffects, uploadEntryEffect, deleteEntryEffect, fetchRoomUsers,
-  fetchOverlayToken, type EntryEffect,
+  fetchOverlayToken, rotateOverlayToken, type EntryEffect,
 } from '../api/client'
+import { useIsMobile } from '../hooks/useIsMobile'
 import { confirmDialog } from '../lib/confirm'
+
+interface Props {
+  roomId: number
+}
 
 const { Column, HeaderCell, Cell } = Table
 
 const MAX_BYTES = 10 * 1024 * 1024
 const ALLOWED_EXT = ['.mp4', '.webm']
 
-interface Props {
-  roomId: number
+function Section({
+  title, description, children, isMobile,
+}: { title: string; description?: string; children: React.ReactNode; isMobile: boolean }) {
+  return (
+    <div
+      style={{
+        background: '#1a1a2e', border: '1px solid #2a2a4a', borderRadius: 10,
+        padding: isMobile ? '14px 14px' : '16px 20px',
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, marginBottom: description ? 4 : 12 }}>
+        <div style={{ fontSize: 15, fontWeight: 600, color: '#e8e8e8' }}>{title}</div>
+      </div>
+      {description && (
+        <div style={{ fontSize: 12, color: '#888', lineHeight: 1.6, marginBottom: 12 }}>{description}</div>
+      )}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>{children}</div>
+    </div>
+  )
 }
 
 export function EntryEffectsPanel({ roomId }: Props) {
   const toaster = useToaster()
+  const isMobile = useIsMobile()
   const [rows, setRows] = useState<EntryEffect[]>([])
   const [loading, setLoading] = useState(false)
   const [showAdd, setShowAdd] = useState(false)
-  const [overlayUrl, setOverlayUrl] = useState('')
+  const [token, setToken] = useState('')
+  const [copied, setCopied] = useState(false)
+  const [rotating, setRotating] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -32,10 +62,30 @@ export function EntryEffectsPanel({ roomId }: Props) {
   useEffect(() => { load() }, [load])
 
   useEffect(() => {
-    fetchOverlayToken(roomId).then((token) => {
-      if (token) setOverlayUrl(`${window.location.origin}/overlay/${roomId}/entry-effects?token=${token}`)
-    }).catch(() => {})
+    let cancelled = false
+    fetchOverlayToken(roomId).then((t) => { if (!cancelled) setToken(t) }).catch(() => {})
+    return () => { cancelled = true }
   }, [roomId])
+
+  const url = token ? `${window.location.origin}/overlay/${roomId}/entry-effects?token=${token}` : ''
+
+  async function copy() {
+    if (!url) return
+    try {
+      await navigator.clipboard.writeText(url)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch { /* ignore */ }
+  }
+
+  async function rotate() {
+    if (!await confirmDialog({ message: '重新生成 token 会让该房间所有 OBS 叠加链接（礼物流 / 进场特效）失效，确认？', danger: true, okText: '重新生成' })) return
+    setRotating(true)
+    try {
+      const t = await rotateOverlayToken(roomId)
+      setToken(t)
+    } finally { setRotating(false) }
+  }
 
   async function handleDelete(r: EntryEffect) {
     if (!await confirmDialog({ message: `删除 ${r.user_name || `UID ${r.uid}`} 的进场特效？`, danger: true, okText: '删除' })) return
@@ -47,79 +97,87 @@ export function EntryEffectsPanel({ roomId }: Props) {
     }
   }
 
-  async function copyOverlayUrl() {
-    if (!overlayUrl) return
-    try {
-      await navigator.clipboard.writeText(overlayUrl)
-      toaster.push(<Message type="success" showIcon closable>链接已复制</Message>, { duration: 2000 })
-    } catch {
-      toaster.push(<Message type="error" showIcon closable>复制失败</Message>, { duration: 2000 })
-    }
-  }
-
   return (
-    <div className="nicknames-panel">
+    <div>
       <div className="panel-title">进场特效</div>
-      <div className="nicknames-controls">
-        <Button size="sm" appearance="primary" startIcon={<PlusIcon />} onClick={() => setShowAdd(true)}>
-          新增
-        </Button>
-        <span className="nicknames-hint">
-          给指定 UID 绑定一段视频（最多 10MB，mp4/webm）。该观众进入直播间时，OBS 叠加页会播放一次（5 分钟冷却）。
-        </span>
+      <div style={{ padding: isMobile ? '0 12px 20px' : '0 24px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+        <Section
+          isMobile={isMobile}
+          title="OBS 浏览器源链接"
+          description="把此链接作为 OBS 浏览器源，观众进直播间时若匹配到已绑定 UID，自动播放对应视频。同一用户 5 分钟冷却一次。注意在 OBS 里取消静音才能听到声音。"
+        >
+          <InputGroup size="sm" inside>
+            <Input readOnly value={url} placeholder="加载中…" />
+            <InputGroup.Button onClick={copy} disabled={!url} title="复制链接">
+              <CopyIcon style={{ fontSize: 14 }} /> {copied ? '已复制' : '复制'}
+            </InputGroup.Button>
+            <InputGroup.Button onClick={() => url && window.open(url, '_blank')} disabled={!url} title="打开预览">
+              <VisibleIcon style={{ fontSize: 14 }} /> 预览
+            </InputGroup.Button>
+          </InputGroup>
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <Button appearance="subtle" size="sm" startIcon={<ReloadIcon />} onClick={rotate} loading={rotating}>
+              重新生成 token
+            </Button>
+          </div>
+        </Section>
+
+        <Section
+          isMobile={isMobile}
+          title="绑定列表"
+          description="每个 UID 仅保留一个视频（再次上传会覆盖）。文件限 10MB、mp4/webm。"
+        >
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <Button size="sm" appearance="primary" startIcon={<PlusIcon />} onClick={() => setShowAdd(true)}>
+              新增
+            </Button>
+          </div>
+          <Table data={rows} autoHeight loading={loading} rowKey="id" rowHeight={96}>
+            <Column flexGrow={2}>
+              <HeaderCell>用户</HeaderCell>
+              <Cell>
+                {(r: EntryEffect) => <span>{r.user_name || `UID ${r.uid}`}</span>}
+              </Cell>
+            </Column>
+            <Column flexGrow={1}>
+              <HeaderCell>UID</HeaderCell>
+              <Cell dataKey="uid" />
+            </Column>
+            <Column flexGrow={1}>
+              <HeaderCell>大小</HeaderCell>
+              <Cell>
+                {(r: EntryEffect) => <span>{(r.size_bytes / 1024 / 1024).toFixed(2)} MB</span>}
+              </Cell>
+            </Column>
+            <Column flexGrow={2}>
+              <HeaderCell>预览</HeaderCell>
+              <Cell style={{ padding: 4 }}>
+                {(r: EntryEffect) => (
+                  <video
+                    src={`/api/rooms/${r.room_id}/entry-effects/${r.id}/video`}
+                    controls
+                    preload="none"
+                    style={{ maxHeight: 80, maxWidth: 160, background: '#000', borderRadius: 4 }}
+                  />
+                )}
+              </Cell>
+            </Column>
+            <Column flexGrow={2}>
+              <HeaderCell>上传时间</HeaderCell>
+              <Cell dataKey="created_at" />
+            </Column>
+            <Column width={80}>
+              <HeaderCell>操作</HeaderCell>
+              <Cell>
+                {(r: EntryEffect) => (
+                  <IconButton size="xs" icon={<TrashIcon />} onClick={() => handleDelete(r)} />
+                )}
+              </Cell>
+            </Column>
+          </Table>
+        </Section>
       </div>
-
-      {overlayUrl && (
-        <div style={{ marginBottom: 12, padding: 10, background: '#14141f', border: '1px solid #2a2a4a', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 12, color: '#888', whiteSpace: 'nowrap' }}>OBS 链接：</span>
-          <code style={{ flex: 1, fontSize: 12, color: '#ffd54f', wordBreak: 'break-all' }}>{overlayUrl}</code>
-          <Button size="xs" appearance="subtle" onClick={copyOverlayUrl}>复制</Button>
-        </div>
-      )}
-
-      <Table data={rows} autoHeight loading={loading} rowKey="id">
-        <Column flexGrow={2}>
-          <HeaderCell>用户</HeaderCell>
-          <Cell>
-            {(r: EntryEffect) => <span>{r.user_name || `UID ${r.uid}`}</span>}
-          </Cell>
-        </Column>
-        <Column flexGrow={1}>
-          <HeaderCell>UID</HeaderCell>
-          <Cell dataKey="uid" />
-        </Column>
-        <Column flexGrow={1}>
-          <HeaderCell>大小</HeaderCell>
-          <Cell>
-            {(r: EntryEffect) => <span>{(r.size_bytes / 1024 / 1024).toFixed(2)} MB</span>}
-          </Cell>
-        </Column>
-        <Column flexGrow={2}>
-          <HeaderCell>预览</HeaderCell>
-          <Cell>
-            {(r: EntryEffect) => (
-              <video
-                src={`/api/rooms/${r.room_id}/entry-effects/${r.id}/video`}
-                controls
-                style={{ maxHeight: 80, maxWidth: 160 }}
-                preload="none"
-              />
-            )}
-          </Cell>
-        </Column>
-        <Column flexGrow={2}>
-          <HeaderCell>上传时间</HeaderCell>
-          <Cell dataKey="created_at" />
-        </Column>
-        <Column width={80}>
-          <HeaderCell>操作</HeaderCell>
-          <Cell>
-            {(r: EntryEffect) => (
-              <IconButton size="xs" icon={<TrashIcon />} onClick={() => handleDelete(r)} />
-            )}
-          </Cell>
-        </Column>
-      </Table>
 
       {showAdd && (
         <AddModal
