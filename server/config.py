@@ -56,6 +56,11 @@ AFDIAN_PLANS: dict[str, int] = {
 }
 AFDIAN_QUERY_ORDER_API = "https://afdian.com/api/open/query-order"
 
+# 盲盒爆出查询门槛：单次爆出价值（电池）大于此才算"稀有爆出"。
+# gift_catalog 和 handle_rare_blind_by_gift 共用这个阈值，保证入缓存的礼物
+# 一定能被查到；不然会出现 "本月<低价礼物>" 命中缓存但查询结果永远是 0。
+RARE_BLIND_MIN_PRICE = 10000
+
 
 # ── B站 API ──
 DANMU_CONF_API = "https://api.live.bilibili.com/room/v1/Danmu/getConf"

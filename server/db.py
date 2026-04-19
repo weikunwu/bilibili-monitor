@@ -7,7 +7,7 @@ import sqlite3
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
-from .config import DB_PATH, DEFAULT_COMMANDS, log
+from .config import DB_PATH, DEFAULT_COMMANDS, RARE_BLIND_MIN_PRICE, log
 from .crypto import hash_password
 from . import gift_catalog
 
@@ -700,9 +700,12 @@ def save_event(event: dict):
     )
     conn.commit()
     conn.close()
-    # 增量补进盲盒礼物名缓存（用于 rare_blind_query 校验）
+    # 增量补进稀有盲盒礼物名缓存：只收 > RARE_BLIND_MIN_PRICE 的爆出，
+    # 和查询 SQL 的门槛一致，避免假命中。
     extra = event.get("extra") or {}
-    if event.get("event_type") == "gift" and extra.get("blind_name"):
+    if (event.get("event_type") == "gift"
+            and extra.get("blind_name")
+            and int(extra.get("price") or 0) > RARE_BLIND_MIN_PRICE):
         gift_catalog.add(extra.get("gift_name") or "")
 
 

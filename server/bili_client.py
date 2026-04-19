@@ -16,7 +16,8 @@ import aiohttp
 from .config import (
     HEADERS, DANMU_CONF_API, DANMU_INFO_API, ROOM_INFO_API,
     MASTER_INFO_API, FINGER_SPI_API, NAV_API, SEND_GIFT_API, SEND_MSG_API,
-    WS_OP_AUTH, WS_OP_HEARTBEAT, PERIOD_LABELS, DANMU_PERIOD_MAP, DB_PATH, log,
+    WS_OP_AUTH, WS_OP_HEARTBEAT, PERIOD_LABELS, DANMU_PERIOD_MAP, DB_PATH,
+    RARE_BLIND_MIN_PRICE, log,
 )
 from .protocol import make_packet, parse_packets, handle_message, build_guard_event
 from .bili_api import get_wbi_key, wbi_sign, fetch_user_avatar
@@ -1423,10 +1424,6 @@ class BiliLiveClient:
             await asyncio.sleep(2)
             await self.send_danmu(f"{name}{b['count']}个，{fmt_profit(b['value'] - b['cost'])}")
 
-    # 单个盲盒爆出价值 > 这个阈值（电池）才计入"稀有爆出"查询。
-    # 10000 电池 = 1000 元。
-    RARE_BLIND_MIN_PRICE = 10000
-
     async def handle_rare_blind_by_gift(self, gift_name: str, user_name: str | None = None, user_id: int = 0):
         """本月盲盒里爆出 gift_name 的次数（单次价值 > RARE_BLIND_MIN_PRICE）。
         user_id 非 0 → 只统计该观众自己的；user_id=0（主播触发）→ 全房间汇总。"""
@@ -1443,7 +1440,7 @@ class BiliLiveClient:
             "AND json_extract(extra_json, '$.gift_name') = ? "
             "AND COALESCE(json_extract(extra_json, '$.price'), 0) > ?"
         )
-        params: list = [self.real_room_id, utc_start, utc_end, gift_name, self.RARE_BLIND_MIN_PRICE]
+        params: list = [self.real_room_id, utc_start, utc_end, gift_name, RARE_BLIND_MIN_PRICE]
         if user_id:
             sql += " AND user_id=?"
             params.append(user_id)
