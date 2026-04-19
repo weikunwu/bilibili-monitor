@@ -152,6 +152,25 @@ def _check_user_mutation_rate(user_id: int, bucket: str):
     q.append(now)
 
 
+def purge_stale_rate_limits() -> None:
+    """清理已失效的限流记录：deque 内会自动 trim 旧时间戳，但 user_id 级别
+    的 key 永远不会被删；长跑后 key 越积越多。按 bucket 的窗口扫一遍。"""
+    now = time.time()
+    for bucket, (_, window) in _ROOM_MUTATION_LIMIT.items():
+        cutoff = now - window
+        m = _user_mutation_buckets.get(bucket) or {}
+        for uid in list(m.keys()):
+            q = m[uid]
+            while q and q[0] < cutoff:
+                q.popleft()
+            if not q:
+                m.pop(uid, None)
+    # 兑换码尝试：超过窗口即可清
+    stale = [uid for uid, (_, ts) in _redeem_attempts.items() if now - ts > _REDEEM_WINDOW_SECONDS]
+    for uid in stale:
+        _redeem_attempts.pop(uid, None)
+
+
 async def _room_exists_on_bili(room_id: int) -> bool:
     """向 B站 校验房间号是否有效。网络异常视为 False（宁缺毋滥）。"""
     try:

@@ -82,6 +82,29 @@ def require_admin_or_staff(request: Request):
         raise HTTPException(status_code=403, detail="需要管理员或员工权限")
 
 
+def purge_stale_rate_limits() -> None:
+    """清理限流相关 dict 里已经失效的 key。由 app.py 定时任务调用。
+    三个 dict 都是以 IP / email / user_id 为 key，长跑后 key 会无限增长；
+    即使值不再影响判定，dict 占用的内存不会回收。"""
+    now = time.time()
+    # _login_attempts: 过了锁定窗口就没用了
+    stale = [k for k, (_, ts) in _login_attempts.items() if now - ts > _LOGIN_LOCKOUT_SECONDS]
+    for k in stale:
+        _login_attempts.pop(k, None)
+    # _pwchange_attempts: 过了窗口就没用了
+    stale = [k for k, (_, ts) in _pwchange_attempts.items() if now - ts > _PWCHANGE_WINDOW_SECONDS]
+    for k in stale:
+        _pwchange_attempts.pop(k, None)
+    # _ip_send_log: 过滤每个 list 里的过期时间戳；空了就删 key
+    cutoff = now - _IP_SEND_WINDOW_SEC
+    for ip in list(_ip_send_log.keys()):
+        fresh = [t for t in _ip_send_log[ip] if t > cutoff]
+        if fresh:
+            _ip_send_log[ip] = fresh
+        else:
+            _ip_send_log.pop(ip, None)
+
+
 def require_room_access(request: Request, room_id: int = None):
     """FastAPI Depends: 检查当前用户是否有该房间的权限"""
     allowed = getattr(request.state, "allowed_rooms", None)

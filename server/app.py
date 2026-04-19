@@ -14,7 +14,8 @@ from .db import (
     init_db, cleanup_old_events,
     get_expired_active_rooms, get_expired_rooms_for_reminder, incr_expired_reminder_count,
 )
-from .auth import AuthMiddleware, get_session_user, get_user_allowed_rooms, handle_login, handle_logout, handle_change_password, handle_send_register_code, handle_register, handle_send_reset_code, handle_reset_password
+from .auth import AuthMiddleware, get_session_user, get_user_allowed_rooms, handle_login, handle_logout, handle_change_password, handle_send_register_code, handle_register, handle_send_reset_code, handle_reset_password, purge_stale_rate_limits as purge_auth_rate_limits
+from .routes.rooms import purge_stale_rate_limits as purge_room_rate_limits
 from . import turnstile
 from .manager import manager
 from . import recorder, effect_catalog, gift_catalog
@@ -192,9 +193,27 @@ async def main(port: int):
         server.serve(),
         _periodic_clip_cleanup(),
         _periodic_expiration_check(),
+        _periodic_memory_cleanup(),
         effect_catalog.run_periodic(),
         *run_tasks,
     )
+
+
+async def _periodic_memory_cleanup():
+    """每 5 分钟扫一次，清掉限流 dict / 欢迎去重 dict 里已失效的 key。
+    这些 dict 的值本身到期不影响判定，但 key 不会被自动回收，长跑会涨。"""
+    while True:
+        await asyncio.sleep(300)
+        try:
+            purge_auth_rate_limits()
+            purge_room_rate_limits()
+            total = 0
+            for client in list(manager.all_clients().values()):
+                total += client.purge_stale_welcome()
+            if total:
+                log.debug(f"[mem cleanup] purged {total} stale welcome entries")
+        except Exception as e:
+            log.warning(f"[mem cleanup] {e}")
 
 
 async def _periodic_clip_cleanup():

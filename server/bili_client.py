@@ -501,6 +501,15 @@ class BiliLiveClient:
     WELCOME_PER_USER_COOLDOWN = 5 * 60
     WELCOME_GLOBAL_COOLDOWN = 10
 
+    def purge_stale_welcome(self) -> int:
+        """清理 _welcome_sent 里已过冷却期的 uid。长跑直播间独立观众
+        几万是常态，不清会把 dict 涨满。返回删掉的条目数。"""
+        cutoff = time.time() - self.WELCOME_PER_USER_COOLDOWN
+        stale = [uid for uid, ts in self._welcome_sent.items() if ts < cutoff]
+        for uid in stale:
+            self._welcome_sent.pop(uid, None)
+        return len(stale)
+
     def _maybe_welcome(self, data: dict):
         """Welcome a user on INTERACT_WORD msg_type=1 (enter). Deduped per
         uid (30min) and globally throttled (10s) to avoid flooding."""
