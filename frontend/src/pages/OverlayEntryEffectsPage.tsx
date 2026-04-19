@@ -109,8 +109,6 @@ export function OverlayEntryEffectsPage() {
       {current.kind === 'gift_vap' && current.mp4_url && current.json_url ? (
         <VapPlayer
           key={key}
-          roomId={roomId!}
-          token={token}
           mp4Url={current.mp4_url}
           jsonUrl={current.json_url}
           soundOn={soundOn}
@@ -136,10 +134,8 @@ export function OverlayEntryEffectsPage() {
  * 这里用隐藏 <video> 逐帧绘到 canvas：RGB 半边做颜色，alpha 半边灰度值
  * 写到 RGB 半边的 A 通道，得到真正带透明度的帧。 */
 function VapPlayer({
-  roomId, token, mp4Url, jsonUrl, soundOn, onDone,
+  mp4Url, jsonUrl, soundOn, onDone,
 }: {
-  roomId: string
-  token: string
   mp4Url: string
   jsonUrl: string
   soundOn: boolean
@@ -154,12 +150,11 @@ function VapPlayer({
     let rvfcId = 0
 
     async function start() {
-      // mp4 直连 B站 CDN（CORS * 放行）；json 走服务器代理——CDN 对 json 查 Referer，
-      // 浏览器 fetch 必带 Origin 就 403，只有服务端无 Origin 的请求能通过。
+      // mp4 / json 都直连 B站 CDN — CDN 校验的是 Referer（非 bilibili 域或非空均 403），
+      // 用 referrerPolicy:'no-referrer' 让浏览器不发 Referer 就能放行。
       let info: VapInfo
       try {
-        const proxied = `/api/overlay/proxy-image/${roomId}?token=${encodeURIComponent(token)}&url=${encodeURIComponent(jsonUrl)}`
-        const jsonResp = await fetch(proxied)
+        const jsonResp = await fetch(jsonUrl, { referrerPolicy: 'no-referrer' })
         if (!jsonResp.ok) throw new Error('json fetch fail')
         const j = await jsonResp.json()
         info = (j.info || j) as VapInfo
@@ -184,6 +179,8 @@ function VapPlayer({
       if (!tmpCtx) { onDone(); return }
 
       video.crossOrigin = 'anonymous'
+      // HTMLVideoElement 在 TS lib 里没 referrerPolicy 字段，但浏览器认 HTML 属性。
+      video.setAttribute('referrerpolicy', 'no-referrer')
       video.src = mp4Url
       video.muted = !soundOn
       video.playsInline = true
