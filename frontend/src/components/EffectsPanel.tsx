@@ -22,7 +22,7 @@ interface Props {
 
 const { Column, HeaderCell, Cell } = Table
 
-const MAX_BYTES = 10 * 1024 * 1024
+const MAX_BYTES = 100 * 1024 * 1024
 const ALLOWED_EXT = ['.mp4', '.webm']
 
 function Section({
@@ -374,7 +374,7 @@ function AddModal({
             </div>
           ) : (
             <div>
-              <div style={{ fontSize: 12, color: '#888', marginBottom: 4 }}>视频文件（mp4/webm，≤ 10MB）</div>
+              <div style={{ fontSize: 12, color: '#888', marginBottom: 4 }}>视频文件（mp4/webm，≤ 100MB）</div>
               <input ref={fileRef} type="file" accept=".mp4,.webm,video/mp4,video/webm" onChange={onPick} />
               {file && <div style={{ fontSize: 12, color: '#aaa', marginTop: 4 }}>已选：{file.name}（{(file.size / 1024 / 1024).toFixed(2)}MB）</div>}
             </div>

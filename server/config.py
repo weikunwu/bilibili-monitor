@@ -65,7 +65,7 @@ RARE_BLIND_MIN_PRICE = 10000
 # 视频文件存 DATA_DIR/entry_effects/<room_id>/<filename>。
 ENTRY_EFFECT_ROOT = DATA_DIR / "entry_effects"
 ENTRY_EFFECT_ROOT.mkdir(parents=True, exist_ok=True)
-ENTRY_EFFECT_MAX_BYTES = 10 * 1024 * 1024   # 10 MB
+ENTRY_EFFECT_MAX_BYTES = 100 * 1024 * 1024   # 100 MB
 ENTRY_EFFECT_ALLOWED_EXT = {".mp4", ".webm"}
 ENTRY_EFFECT_COOLDOWN_SEC = 5 * 60          # 同一个 uid 每 5 分钟最多触发一次
 
