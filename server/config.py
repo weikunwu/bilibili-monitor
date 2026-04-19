@@ -48,10 +48,11 @@ PROTO_BROTLI = 3
 
 # ── 爱发电（ifdian）── plan_id → 续费月数。改定价时只改这张表。
 AFDIAN_PLANS: dict[str, int] = {
-    "6dc211fc3a4e11f1b03a5254001e7c00": 1,
-    "7bb78d823a4e11f1aa9352540025c377": 3,
-    "922b9cca3a4e11f1a98752540025c377": 12,
-    "d1cf395a3b8811f1a5e45254001e7c00": 1,  # 测试方案
+    "6cf0cfe23b8a11f1af005254001e7c00": 1,   # 月卡
+    "5953ff0a3b8e11f18c7252540025c377": 3,   # 季卡
+    "8174f0ca3b8e11f1ac5d52540025c377": 6,   # 半年卡
+    "8e50689c3b8e11f1840f52540025c377": 12,  # 年卡
+    "c59457283b8e11f1afbc52540025c377": 1,   # 测试卡
 }
 AFDIAN_QUERY_ORDER_API = "https://afdian.com/api/open/query-order"
 

@@ -257,10 +257,12 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
           </div>
           <Stack direction="column" spacing={8} alignItems="stretch">
             {[
-              { plan: '6dc211fc3a4e11f1b03a5254001e7c00', label: '月卡 · 1 个月' },
-              { plan: '7bb78d823a4e11f1aa9352540025c377', label: '季卡 · 3 个月' },
-              { plan: '922b9cca3a4e11f1a98752540025c377', label: '年卡 · 12 个月' },
-              { plan: 'd1cf395a3b8811f1a5e45254001e7c00', label: '测试方案 · 1 个月' },
+              // 统一走商品 (product_type=1)，每档一个 SKU。
+              { plan: '6cf0cfe23b8a11f1af005254001e7c00', sku: '6cf9a4aa3b8a11f1b4095254001e7c00', label: '月卡 · 1 个月' },
+              { plan: '5953ff0a3b8e11f18c7252540025c377', sku: '595c3ee03b8e11f1bb8052540025c377', label: '季卡 · 3 个月' },
+              { plan: '8174f0ca3b8e11f1ac5d52540025c377', sku: '817d9df63b8e11f1bccc52540025c377', label: '半年卡 · 6 个月' },
+              { plan: '8e50689c3b8e11f1840f52540025c377', sku: '8e5907fe3b8e11f18e2952540025c377', label: '年卡 · 12 个月' },
+              { plan: 'c59457283b8e11f1afbc52540025c377', sku: 'c59ea8cc3b8e11f1a76d52540025c377', label: '测试卡 · 1 个月' },
             ].map((opt) => (
               <Button
                 key={opt.plan}
@@ -268,7 +270,8 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
                 color="orange"
                 onClick={() => {
                   if (!afdianTarget) return
-                  const url = `https://ifdian.net/order/create?plan_id=${opt.plan}&product_type=0&custom_order_id=${afdianTarget.room_id}`
+                  const sku = encodeURIComponent(JSON.stringify([{ sku_id: opt.sku, count: 1 }]))
+                  const url = `https://ifdian.net/order/create?product_type=1&plan_id=${opt.plan}&sku=${sku}&custom_order_id=${afdianTarget.room_id}`
                   window.open(url, '_blank', 'noopener,noreferrer')
                 }}
               >{opt.label}</Button>
