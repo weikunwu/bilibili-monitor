@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import {
-  Input, InputGroup, InputPicker, Button, Modal, Table, IconButton, Message, useToaster,
+  Input, InputGroup, InputPicker, Button, Modal, Table, Toggle, IconButton, Message, useToaster,
 } from 'rsuite'
 import CopyIcon from '@rsuite/icons/Copy'
 import VisibleIcon from '@rsuite/icons/Visible'
@@ -53,6 +53,7 @@ export function EntryEffectsPanel({ roomId }: Props) {
   const [token, setToken] = useState('')
   const [copied, setCopied] = useState(false)
   const [rotating, setRotating] = useState(false)
+  const [soundOn, setSoundOn] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -67,7 +68,9 @@ export function EntryEffectsPanel({ roomId }: Props) {
     return () => { cancelled = true }
   }, [roomId])
 
-  const url = token ? `${window.location.origin}/overlay/${roomId}/entry-effects?token=${token}` : ''
+  const url = token
+    ? `${window.location.origin}/overlay/${roomId}/entry-effects?token=${token}${soundOn ? '&sound=1' : ''}`
+    : ''
 
   async function copy() {
     if (!url) return
@@ -116,7 +119,14 @@ export function EntryEffectsPanel({ roomId }: Props) {
               <VisibleIcon style={{ fontSize: 14 }} /> 预览
             </InputGroup.Button>
           </InputGroup>
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Toggle size="sm" checked={soundOn} onChange={setSoundOn} />
+              <span style={{ fontSize: 13, color: '#ccc' }}>OBS 里播放声音</span>
+              <span style={{ fontSize: 12, color: '#666' }}>
+                （默认静音；开启后 URL 带 sound=1，OBS 需允许音频自动播放）
+              </span>
+            </div>
             <Button appearance="subtle" size="sm" startIcon={<ReloadIcon />} onClick={rotate} loading={rotating}>
               重新生成 token
             </Button>

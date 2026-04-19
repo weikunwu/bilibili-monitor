@@ -504,15 +504,16 @@ class BiliLiveClient:
 
     def _maybe_trigger_entry_effect(self, data: dict) -> None:
         """观众进场 (INTERACT_WORD msg_type=1) 时，如果主播给这个 UID 配了
-        进场特效视频，push 到 overlay 队列。冷却逻辑在路由模块里，
-        这里只管 msg_type 过滤 + 排除机器人/主播自己。"""
+        进场特效视频，push 到 overlay 队列。冷却逻辑在路由模块里。
+        用 self.room_id (用户侧的 display ID) 而不是 real_room_id：前端 URL
+        /api/rooms/{room_id}/entry-effects 里就是 display，DB 也以 display 存的。"""
         if data.get("msg_type") != 1:
             return
         uid = data.get("uid") or 0
         if not uid or uid == self.bot_uid or uid == self.streamer_uid:
             return
         from .routes.entry_effects import try_trigger_entry_effect
-        try_trigger_entry_effect(self.real_room_id, int(uid))
+        try_trigger_entry_effect(self.room_id, int(uid))
 
     def purge_stale_welcome(self) -> int:
         """清理 _welcome_sent 里已过冷却期的 uid。长跑直播间独立观众

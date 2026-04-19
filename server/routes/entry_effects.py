@@ -72,6 +72,7 @@ def try_trigger_entry_effect(room_id: int, uid: int) -> bool:
         })
         while len(q) > _MAX_QUEUE:
             q.popleft()
+        log.info(f"[entry-effect] room={room_id} uid={uid} queued effect id={effect['id']} (queue={len(q)})")
         return True
     except Exception as e:
         log.warning(f"[entry-effect] trigger failed room={room_id} uid={uid}: {e}")

@@ -17,6 +17,8 @@ export function OverlayEntryEffectsPage() {
   const { roomId } = useParams()
   const [searchParams] = useSearchParams()
   const token = searchParams.get('token') || ''
+  // 默认静音：autoplay-with-sound 浏览器/OBS 都可能拦。URL 带 &sound=1 才开声。
+  const soundOn = searchParams.get('sound') === '1'
   const [current, setCurrent] = useState<QueuedEvent | null>(null)
   const queueRef = useRef<QueuedEvent[]>([])
   const pollRef = useRef<number>(0)
@@ -88,7 +90,7 @@ export function OverlayEntryEffectsPage() {
         key={`${current.id}-${current.enqueued_at}`}
         src={videoUrl}
         autoPlay
-        muted={false}
+        muted={!soundOn}
         playsInline
         onEnded={() => (window as unknown as { __entry_effect_done: () => void }).__entry_effect_done()}
         onError={() => (window as unknown as { __entry_effect_done: () => void }).__entry_effect_done()}
