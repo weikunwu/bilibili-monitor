@@ -21,11 +21,16 @@ interface Group {
 
 const GROUPS: Group[] = [
   {
+    label: '插件',
+    items: [
+      { type: TAB_REALTIME, label: '实时礼物截图', icon: <Gift size={16} /> },
+      { type: TAB_EFFECTS, label: '进场&礼物特效', icon: <Sparkles size={16} /> },
+    ],
+  },
+  {
     label: '实时',
     items: [
       { type: TAB_LIVE, label: '直播流', icon: <Radio size={16} /> },
-      { type: TAB_REALTIME, label: '实时礼物流', icon: <Gift size={16} /> },
-      { type: TAB_EFFECTS, label: '进场&礼物特效', icon: <Sparkles size={16} /> },
     ],
   },
   {
