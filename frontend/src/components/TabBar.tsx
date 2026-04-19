@@ -24,7 +24,7 @@ const GROUPS: Group[] = [
     label: '插件',
     items: [
       { type: TAB_REALTIME, label: '实时礼物截图', icon: <Gift size={16} /> },
-      { type: TAB_EFFECTS, label: '进场&礼物特效', icon: <Sparkles size={16} /> },
+      { type: TAB_EFFECTS, label: '进场 & 礼物特效', icon: <Sparkles size={16} /> },
     ],
   },
   {
@@ -44,7 +44,7 @@ const GROUPS: Group[] = [
     label: '配置',
     items: [
       { type: TAB_REACTIVE, label: '互动回复', icon: <MessageCircle size={16} /> },
-      { type: TAB_AUTOMATION, label: '指令 & 高级', icon: <Wrench size={16} /> },
+      { type: TAB_AUTOMATION, label: '指令 & 功能', icon: <Wrench size={16} /> },
       { type: TAB_NICKNAMES, label: '昵称管理', icon: <Tag size={16} /> },
     ],
   },

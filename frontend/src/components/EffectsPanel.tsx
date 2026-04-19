@@ -143,7 +143,7 @@ export function EffectsPanel({ roomId }: Props) {
 
   return (
     <div>
-      <div className="panel-title">进场&礼物特效</div>
+      <div className="panel-title">进场 & 礼物特效</div>
       <div style={{ padding: isMobile ? '0 12px 20px' : '0 24px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
         <Section
