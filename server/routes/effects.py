@@ -31,7 +31,7 @@ from ..db import (
     list_entry_effects, get_entry_effect_for_user, upsert_entry_effect, delete_entry_effect,
     get_entry_effect_sound_on, set_entry_effect_sound_on,
     get_gift_effect_test_enabled, set_gift_effect_test_enabled,
-    verify_overlay_token,
+    verify_overlay_token, is_room_expired,
 )
 
 router = APIRouter()
@@ -208,6 +208,8 @@ async def serve_effect_auth(room_id: int, effect_id: int, _=Depends(require_room
 async def overlay_queue(room_id: int, token: str = Query(...)):
     if not verify_overlay_token(room_id, token):
         raise HTTPException(403, "token 无效")
+    if is_room_expired(room_id):
+        raise HTTPException(410, "房间已到期")
     q = _pending_queues[room_id]
     pending: list[dict] = []
     while q:

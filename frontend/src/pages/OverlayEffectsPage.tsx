@@ -71,6 +71,12 @@ export function OverlayEffectsPage() {
     async function poll() {
       try {
         const r = await fetch(`/api/overlay/${roomId}/effects/queue?token=${encodeURIComponent(token)}`)
+        if (r.status === 410) {
+          // 房间到期，停轮询；URL 留着，续费后用户刷一下页面就能恢复
+          cancelled = true
+          clearInterval(pollRef.current)
+          return
+        }
         if (!r.ok) return
         const d = await r.json()
         if (cancelled) return

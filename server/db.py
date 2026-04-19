@@ -414,6 +414,14 @@ def get_room_expires_at(room_id: int) -> Optional[str]:
     return row[0] if row and row[0] else None
 
 
+def is_room_expired(room_id: int) -> bool:
+    """expires_at 是 UTC 字符串，字典序 = 时间序，直接和 now 字符串比即可。"""
+    exp = get_room_expires_at(room_id)
+    if not exp:
+        return False
+    return exp <= datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+
 def set_room_expires_at(room_id: int, iso_utc: Optional[str]):
     """写入到期时间，同时把到期提醒计数重置为 0（续费场景）。"""
     conn = sqlite3.connect(str(DB_PATH))

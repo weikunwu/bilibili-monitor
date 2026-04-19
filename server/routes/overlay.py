@@ -13,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, HTTPException, Query, Request
 
 from ..config import DB_PATH
-from ..db import verify_overlay_token, get_overlay_settings, get_live_started_at
+from ..db import verify_overlay_token, get_overlay_settings, get_live_started_at, is_room_expired
 
 
 router = APIRouter()
@@ -171,6 +171,8 @@ async def overlay_gifts(
     _check_rate(request, "gifts")
     if not verify_overlay_token(room_id, token):
         raise HTTPException(status_code=403, detail="invalid overlay token")
+    if is_room_expired(room_id):
+        raise HTTPException(status_code=410, detail="房间已到期")
     settings = get_overlay_settings(room_id)
     max_events = int(settings.get("max_events") or 10)
     max_events = min(max(max_events, 1), MAX_EVENTS)

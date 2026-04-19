@@ -40,9 +40,17 @@ export function OverlayGiftsPage() {
     if (!roomId) return
     if (!token) { setError('缺少 token'); return }
     let cancelled = false
+    let iv = 0
     async function poll() {
       try {
         const r = await fetch(`/api/overlay/gifts/${roomId}?token=${encodeURIComponent(token)}`)
+        if (r.status === 410) {
+          // 房间到期，停轮询
+          setError('房间已到期')
+          cancelled = true
+          clearInterval(iv)
+          return
+        }
         if (!r.ok) throw new Error(`HTTP ${r.status}`)
         const d = await r.json()
         if (!cancelled) {
@@ -54,7 +62,7 @@ export function OverlayGiftsPage() {
       }
     }
     poll()
-    const iv = setInterval(poll, POLL_MS)
+    iv = window.setInterval(poll, POLL_MS)
     return () => { cancelled = true; clearInterval(iv) }
   }, [roomId, token])
 
