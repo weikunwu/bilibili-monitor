@@ -83,13 +83,15 @@ def try_trigger_entry_effect(room_id: int, uid: int) -> bool:
         return False
 
 
-def trigger_gift_vap_test(room_id: int, gift_id: int) -> bool:
-    """弹幕测试命令触发：从 effect_catalog 查 gift_id 的 VAP mp4，入同一条 OBS 队列。
-    命中返回 True；无对应特效或异常返回 False（不走冷却，测试场景允许多发）。"""
+def trigger_gift_vap(room_id: int, gift_id: int, source: str = "gift") -> bool:
+    """从 effect_catalog 查 gift_id 的 VAP mp4，入 OBS 队列。
+    source 用于日志区分来源（"gift" 真实送礼 / "test" 弹幕测试命令）。
+    命中返回 True；无对应特效或异常返回 False。无冷却 — 真实送礼按事件来，
+    测试场景允许多发；上限靠 _MAX_QUEUE 兜底。"""
     try:
         hit = effect_catalog.get_by_gift(gift_id)
         if not hit:
-            log.info(f"[gift-vap-test] room={room_id} gift_id={gift_id} 无全屏特效")
+            log.info(f"[gift-vap:{source}] room={room_id} gift_id={gift_id} 无全屏特效")
             return False
         mp4_url, json_url = hit
         q = _pending_queues[room_id]
@@ -102,10 +104,10 @@ def trigger_gift_vap_test(room_id: int, gift_id: int) -> bool:
         })
         while len(q) > _MAX_QUEUE:
             q.popleft()
-        log.info(f"[gift-vap-test] room={room_id} gift_id={gift_id} 入队")
+        log.info(f"[gift-vap:{source}] room={room_id} gift_id={gift_id} 入队")
         return True
     except Exception as e:
-        log.warning(f"[gift-vap-test] failed room={room_id} gift_id={gift_id}: {e}")
+        log.warning(f"[gift-vap:{source}] failed room={room_id} gift_id={gift_id}: {e}")
         return False
 
 
