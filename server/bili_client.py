@@ -530,7 +530,6 @@ class BiliLiveClient:
             log.debug(f"[entry-effect] room={self.room_id} 跳过：msg_type={mt}")
             return
         uid = data.get("uid") or 0
-        uname = data.get("uname") or ""
         if not uid:
             log.debug(f"[entry-effect] room={self.room_id} 跳过：uid 为空")
             return
@@ -540,7 +539,6 @@ class BiliLiveClient:
         if uid == self.streamer_uid:
             log.debug(f"[entry-effect] room={self.room_id} uid={uid} 是主播，跳过")
             return
-        log.info(f"[entry-effect] room={self.room_id} 进场触发 uid={uid} user={uname!r}")
         try_trigger_entry_effect(self.room_id, int(uid))
 
     def purge_stale_welcome(self) -> int:
