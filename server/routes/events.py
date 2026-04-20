@@ -201,10 +201,11 @@ def _build_gift_users_from_agg(rows: list[tuple], sort_by: str = "value") -> dic
             }
         gname = gift_name or "?"
         u["gifts"][gname] = num_sum or 0
-        # 大航海礼物按等级映射到模板色（总督=金/提督=紫/舰长=蓝），
-        # 用 gift_coins 的阈值「借位」：≥10000=金、≥1000=紫、<1000=蓝。
-        # total_coin 保留真实金瓜子数，不受影响。
-        if guard_level:
+        # 大航海礼物按等级映射到模板色：总督=金/提督=紫/舰长=蓝。
+        # 只有礼物本身是 舰长/提督/总督 时才按等级上色；送礼人自己是
+        # 舰长/提督/总督 不影响其它礼物的卡片颜色。
+        is_guard_buy = gname in ("舰长", "提督", "总督")
+        if is_guard_buy and guard_level:
             u["gift_coins"][gname] = 10000 if guard_level == 1 else (1000 if guard_level == 2 else 0)
         else:
             u["gift_coins"][gname] = coin_sum or 0
