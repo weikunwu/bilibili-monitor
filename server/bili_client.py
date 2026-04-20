@@ -388,6 +388,9 @@ class BiliLiveClient:
         et = event.get("event_type")
         if et not in ("gift", "guard"):
             return
+        if self.live_status != 1:
+            log.debug(f"[gift-vap] room={self.room_id} 未开播 (live_status={self.live_status})，跳过 et={et}")
+            return
         extra = event.get("extra") or {}
         gift_id = int(extra.get("gift_id") or 0)
         if et == "guard" and not gift_id:
@@ -538,6 +541,9 @@ class BiliLiveClient:
             return
         if uid == self.streamer_uid:
             log.debug(f"[entry-effect] room={self.room_id} uid={uid} 是主播，跳过")
+            return
+        if self.live_status != 1:
+            log.debug(f"[entry-effect] room={self.room_id} 未开播 (live_status={self.live_status})，跳过")
             return
         try_trigger_entry_effect(self.room_id, int(uid))
 
