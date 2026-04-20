@@ -101,11 +101,11 @@ def _row_to_gift_user(
     blind_name = extra.get("blind_name", "")
     action_str = f"{blind_name} 爆出" if blind_name else action
     guard_level = extra.get("guard_level", 0)
-    # 若礼物流里夹带大航海（guard_level>0），也按等级映射模板色
-    if guard_level:
-        tier_coin = 10000 if guard_level == 1 else (1000 if guard_level == 2 else 0)
-    else:
-        tier_coin = total_coin
+    # 卡片颜色按本次事件的价值（total_coin）决定。extra.guard_level 是送礼
+    # 用户当前的舰队等级，只是身份信息，不参与颜色计算 —— 之前用 guard_level
+    # 覆盖过，导致提督送高价礼物变成紫卡。大航海购买走 event_type=="guard"
+    # 分支，不会进到这里。
+    tier_coin = total_coin
     return {
         "type": "gift",
         "event_id": event_id,
