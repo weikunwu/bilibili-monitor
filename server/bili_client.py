@@ -1721,11 +1721,14 @@ class BiliLiveClient:
         total = int(row[0] or 0)
         display_name = (self._nickname_for(user_id) or user_name) if user_name else ""
         prefix = f"{display_name}，" if display_name else ""
-        scope = "本月" if not user_name else "本月你"
+        # 主播触发=房间维度（收到）；观众触发=该观众送给本房的（送出）
+        is_viewer = bool(user_name)
+        scope = "本月你" if is_viewer else "本月"
+        verb = "送出" if is_viewer else "收到"
         if total == 0:
-            await self.send_danmu(f"{prefix}{scope}暂无收到 {gift_name}")
+            await self.send_danmu(f"{prefix}{scope}暂无{verb} {gift_name}")
         else:
-            await self.send_danmu(f"{prefix}{scope}共收到 {gift_name} {total} 个")
+            await self.send_danmu(f"{prefix}{scope}共{verb} {gift_name} {total} 个")
 
     def stop(self):
         self._running = False
