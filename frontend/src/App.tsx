@@ -6,13 +6,14 @@ import { useWebSocket } from './hooks/useWebSocket'
 import { useLocalStorage } from './hooks/useLocalStorage'
 import { localToUTC, fmtDate } from './lib/formatters'
 import { confirmDialog } from './lib/confirm'
-import { MAX_EVENTS, TAB_LIVE, TAB_REALTIME, TAB_EVENTS, TAB_BLINDBOX, TAB_REACTIVE, TAB_AUTOMATION, TAB_NICKNAMES, TAB_EFFECTS } from './lib/constants'
+import { MAX_EVENTS, TAB_LIVE, TAB_REALTIME, TAB_EVENTS, TAB_BLINDBOX, TAB_DANMU, TAB_REACTIVE, TAB_AUTOMATION, TAB_NICKNAMES, TAB_EFFECTS } from './lib/constants'
 import { TabSidebar } from './components/TabBar'
 
 import { EventList } from './components/EventList'
 import { EventsPanel } from './components/EventsPanel'
 import { ReactiveToolsPanel, AutomationToolsPanel } from './components/ToolsPanel'
 import { BlindBoxPanel } from './components/BlindBoxPanel'
+import { DanmuPanel } from './components/DanmuPanel'
 import { NicknamesPanel } from './components/NicknamesPanel'
 import { EffectsPanel } from './components/EffectsPanel'
 import { RealtimeGiftsPanel } from './components/RealtimeGiftsPanel'
@@ -37,7 +38,7 @@ function todayRange(): DateRange {
   ]
 }
 
-const VALID_TABS: TabType[] = [TAB_LIVE, TAB_REALTIME, TAB_EVENTS, TAB_BLINDBOX, TAB_REACTIVE, TAB_AUTOMATION, TAB_NICKNAMES, TAB_EFFECTS]
+const VALID_TABS: TabType[] = [TAB_LIVE, TAB_REALTIME, TAB_EVENTS, TAB_BLINDBOX, TAB_DANMU, TAB_REACTIVE, TAB_AUTOMATION, TAB_NICKNAMES, TAB_EFFECTS]
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null)
@@ -208,6 +209,9 @@ function RoomPage({ rooms, currentUser, onRoomsChanged }: {
   function renderContent() {
     if (activeTab === TAB_BLINDBOX) {
       return <BlindBoxPanel roomId={roomId} />
+    }
+    if (activeTab === TAB_DANMU) {
+      return <DanmuPanel roomId={roomId} />
     }
     if (activeTab === TAB_REACTIVE) {
       return <ReactiveToolsPanel roomId={roomId} />

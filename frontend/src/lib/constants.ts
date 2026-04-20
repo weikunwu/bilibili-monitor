@@ -12,6 +12,7 @@ export const TAB_LIVE = 'live' as const           // 直播流（原 TAB_ALL）
 export const TAB_REALTIME = 'realtime' as const   // 实时礼物榜
 export const TAB_EVENTS = 'events' as const       // 事件查询（合并 danmu/gift/guard/superchat）
 export const TAB_BLINDBOX = 'blindbox' as const
+export const TAB_DANMU = 'danmu_history' as const  // 弹幕历史（独立 tab）
 export const TAB_REACTIVE = 'reactive' as const   // 互动回复（AI/欢迎/感谢/潜水）
 export const TAB_AUTOMATION = 'automation' as const // 主动 & 高级（定时/打个有效/自动剪辑）
 export const TAB_NICKNAMES = 'nicknames' as const

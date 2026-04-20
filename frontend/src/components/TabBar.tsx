@@ -1,8 +1,8 @@
 import { Sidenav, Nav } from 'rsuite'
-import { Radio, Gift, Image, BarChart3, MessageCircle, Wrench, Tag, Sparkles } from 'lucide-react'
+import { Radio, Gift, Image, BarChart3, MessageCircle, MessageSquare, Wrench, Tag, Sparkles } from 'lucide-react'
 import type { TabType } from '../types'
 import {
-  TAB_LIVE, TAB_REALTIME, TAB_EVENTS, TAB_BLINDBOX,
+  TAB_LIVE, TAB_REALTIME, TAB_EVENTS, TAB_BLINDBOX, TAB_DANMU,
   TAB_REACTIVE, TAB_AUTOMATION, TAB_NICKNAMES, TAB_EFFECTS,
 } from '../lib/constants'
 import { useIsMobile } from '../hooks/useIsMobile'
@@ -38,6 +38,7 @@ const GROUPS: Group[] = [
     items: [
       { type: TAB_EVENTS, label: '礼物截图', icon: <Image size={16} /> },
       { type: TAB_BLINDBOX, label: '盲盒统计', icon: <BarChart3 size={16} /> },
+      { type: TAB_DANMU, label: '弹幕历史', icon: <MessageSquare size={16} /> },
     ],
   },
   {
