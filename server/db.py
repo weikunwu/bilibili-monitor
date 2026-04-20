@@ -224,16 +224,24 @@ def init_db():
 
     # 一次性 migration：早期 broadcast_pk_start 模版迭代过几版（"PK对面"、人气
     # 字段进出），把所有房间 commands_config 里这条 override 删掉，让它们
-    # fall back 到 DEFAULT_COMMANDS 里的最新模版。已经在 UI 里手动改过的
-    # 也会被重置——可接受，因为旧模版字段大概率已经不兼容当前 fields。
+    # fall back 到 DEFAULT_COMMANDS 里的最新模版；同时把 enabled 状态也清掉，
+    # 让所有房间回到 default_enabled=False，避免老用户在 UI 不可见时不小心
+    # 留着开启状态。
     for room_id, settings_json in conn.execute("SELECT room_id, settings_json FROM rooms").fetchall():
         try:
             settings = json.loads(settings_json or "{}")
         except json.JSONDecodeError:
             continue
+        changed = False
         cfgs = settings.get("commands_config") or {}
         if "broadcast_pk_start" in cfgs:
             cfgs.pop("broadcast_pk_start", None)
+            changed = True
+        states = settings.get("commands") or {}
+        if "broadcast_pk_start" in states:
+            states.pop("broadcast_pk_start", None)
+            changed = True
+        if changed:
             conn.execute(
                 "UPDATE rooms SET settings_json=? WHERE room_id=?",
                 (json.dumps(settings, ensure_ascii=False), room_id),
