@@ -332,6 +332,8 @@ export interface OverlaySettings {
   show_guard: boolean
   show_superchat: boolean
   time_range: 'today' | 'week' | 'live'
+  scroll_enabled: boolean  // 是否开启溢出循环滚动
+  scroll_speed: number     // 百分比 0–100，scroll_enabled=true 时生效
   cleared_at: string
 }
 

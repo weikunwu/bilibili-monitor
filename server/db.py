@@ -53,6 +53,8 @@ OVERLAY_DEFAULTS: dict = {
     "show_guard": 1,
     "show_superchat": 1,
     "time_range": "today",  # today / week / live
+    "scroll_enabled": 1,  # 是否开启溢出循环滚动
+    "scroll_speed": 40,   # 百分比 0–100，scroll_enabled=1 时生效
     "cleared_at": "",
 }
 
@@ -63,7 +65,8 @@ def get_overlay_settings(room_id: int) -> dict:
     conn.row_factory = sqlite3.Row
     row = conn.execute(
         "SELECT max_events, min_price, max_price, price_mode, "
-        "show_gift, show_blind, show_guard, show_superchat, time_range, cleared_at "
+        "show_gift, show_blind, show_guard, show_superchat, time_range, "
+        "scroll_enabled, scroll_speed, cleared_at "
         "FROM overlay_settings WHERE room_id=?",
         (room_id,),
     ).fetchone()
@@ -71,7 +74,7 @@ def get_overlay_settings(room_id: int) -> dict:
     if not row:
         return dict(OVERLAY_DEFAULTS)
     d = dict(row)
-    for k in ("show_gift", "show_blind", "show_guard", "show_superchat"):
+    for k in ("show_gift", "show_blind", "show_guard", "show_superchat", "scroll_enabled"):
         d[k] = bool(d[k])
     if d.get("time_range") not in ("today", "week", "live"):
         d["time_range"] = "today"
@@ -83,7 +86,7 @@ def update_overlay_settings(room_id: int, patch: dict) -> dict:
     allowed = {
         "max_events", "min_price", "max_price", "price_mode",
         "show_gift", "show_blind", "show_guard", "show_superchat",
-        "time_range",
+        "time_range", "scroll_enabled", "scroll_speed",
     }
     current = get_overlay_settings(room_id)
     for k in allowed:
@@ -97,22 +100,32 @@ def update_overlay_settings(room_id: int, patch: dict) -> dict:
     tr = current.get("time_range") or "today"
     if tr not in ("today", "week", "live"):
         tr = "today"
+    # scroll_speed 是百分比 0–100
+    try:
+        speed = int(current.get("scroll_speed") or 40)
+    except (TypeError, ValueError):
+        speed = 40
+    speed = max(0, min(100, speed))
+    scroll_enabled = int(bool(current.get("scroll_enabled", True)))
     conn = sqlite3.connect(str(DB_PATH))
     conn.execute(
         "INSERT INTO overlay_settings "
         "(room_id, max_events, min_price, max_price, price_mode, "
-        "show_gift, show_blind, show_guard, show_superchat, time_range, cleared_at) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?) "
+        "show_gift, show_blind, show_guard, show_superchat, time_range, "
+        "scroll_enabled, scroll_speed, cleared_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) "
         "ON CONFLICT(room_id) DO UPDATE SET "
         "max_events=excluded.max_events, min_price=excluded.min_price, "
         "max_price=excluded.max_price, price_mode=excluded.price_mode, "
         "show_gift=excluded.show_gift, show_blind=excluded.show_blind, "
         "show_guard=excluded.show_guard, show_superchat=excluded.show_superchat, "
-        "time_range=excluded.time_range",
+        "time_range=excluded.time_range, "
+        "scroll_enabled=excluded.scroll_enabled, scroll_speed=excluded.scroll_speed",
         (
             room_id, int(current["max_events"]), int(current["min_price"]),
             int(current["max_price"]), str(current["price_mode"]),
-            show_gift, show_blind, show_guard, show_superchat, tr, current.get("cleared_at") or "",
+            show_gift, show_blind, show_guard, show_superchat, tr,
+            scroll_enabled, speed, current.get("cleared_at") or "",
         ),
     )
     conn.commit()
@@ -325,9 +338,17 @@ def init_db():
             show_guard INTEGER NOT NULL DEFAULT 1,
             show_superchat INTEGER NOT NULL DEFAULT 1,
             time_range TEXT NOT NULL DEFAULT 'today',
+            scroll_enabled INTEGER NOT NULL DEFAULT 1,
+            scroll_speed INTEGER NOT NULL DEFAULT 40,
             cleared_at TEXT NOT NULL DEFAULT ''
         )
     """)
+    # Migration: overlay_settings 加 scroll_speed / scroll_enabled 列（老库没有）
+    overlay_cols = {row[1] for row in conn.execute("PRAGMA table_info(overlay_settings)").fetchall()}
+    if "scroll_speed" not in overlay_cols:
+        conn.execute("ALTER TABLE overlay_settings ADD COLUMN scroll_speed INTEGER NOT NULL DEFAULT 40")
+    if "scroll_enabled" not in overlay_cols:
+        conn.execute("ALTER TABLE overlay_settings ADD COLUMN scroll_enabled INTEGER NOT NULL DEFAULT 1")
     # 管理员手动生成的续费码。每条一码一用，成功兑换后写入 used_* 字段。
     conn.execute("""
         CREATE TABLE IF NOT EXISTS renewal_tokens (

@@ -251,6 +251,10 @@ async def overlay_gifts(
         if len(items) >= max_events:
             break
     # 字段名保留 "users" 向后兼容（老 overlay 页面里的 key），前端只认 item.type。
-    return {"room_id": room_id, "users": items}
+    return {
+        "room_id": room_id, "users": items,
+        "scroll_enabled": bool(settings.get("scroll_enabled", True)),
+        "scroll_speed": int(settings.get("scroll_speed") or 40),
+    }
 
 

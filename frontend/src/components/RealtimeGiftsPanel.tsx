@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
   Input, InputGroup, Button, Checkbox, CheckboxGroup,
-  RadioGroup, Radio, Message, Tag, useToaster,
+  RadioGroup, Radio, Message, Slider, Tag, Toggle, useToaster,
 } from 'rsuite'
 import CopyIcon from '@rsuite/icons/Copy'
 import VisibleIcon from '@rsuite/icons/Visible'
@@ -29,6 +29,8 @@ const DEFAULTS: OverlaySettings = {
   show_guard: true,
   show_superchat: true,
   time_range: 'today',
+  scroll_enabled: true,
+  scroll_speed: 40,
   cleared_at: '',
 }
 
@@ -141,6 +143,8 @@ export function RealtimeGiftsPanel({ roomId }: Props) {
         show_guard: draft.show_guard,
         show_superchat: draft.show_superchat,
         time_range: draft.time_range,
+        scroll_enabled: draft.scroll_enabled,
+        scroll_speed: draft.scroll_speed,
       })
       setCommitted(s)
       setDraft(s)
@@ -177,6 +181,8 @@ export function RealtimeGiftsPanel({ roomId }: Props) {
     || draft.show_guard !== committed.show_guard
     || draft.show_superchat !== committed.show_superchat
     || draft.time_range !== committed.time_range
+    || draft.scroll_enabled !== committed.scroll_enabled
+    || draft.scroll_speed !== committed.scroll_speed
   )
 
   const shownTypes: string[] = []
@@ -311,6 +317,31 @@ export function RealtimeGiftsPanel({ roomId }: Props) {
             </InputGroup>
             <span style={{ color: '#888', fontSize: 12 }}>0 表示不限</span>
           </Row>
+
+          <Row label="循环滚动" isMobile={isMobile}>
+            <Toggle
+              checked={draft.scroll_enabled}
+              onChange={(v) => setDraft({ ...draft, scroll_enabled: v })}
+            />
+            <span style={{ color: '#888', fontSize: 12 }}>
+              {draft.scroll_enabled
+                ? '卡片超出窗口时从下往上循环滚动'
+                : '超出窗口的卡片直接裁掉'}
+            </span>
+          </Row>
+
+          {draft.scroll_enabled && (
+            <Row label="滚动速度" isMobile={isMobile}>
+              <div style={{ width: isMobile ? '100%' : 260, padding: '6px 4px 0' }}>
+                <Slider
+                  min={1} max={100} step={1}
+                  value={Math.max(1, draft.scroll_speed)}
+                  onChange={(v) => setDraft({ ...draft, scroll_speed: v })}
+                />
+              </div>
+              <span style={{ color: '#888', fontSize: 12 }}>{draft.scroll_speed}%</span>
+            </Row>
+          )}
         </Section>
 
         <div
