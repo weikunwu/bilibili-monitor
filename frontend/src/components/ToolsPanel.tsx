@@ -26,7 +26,7 @@ const REACTIVE_IDS = new Set([
   'ai_reply', 'broadcast_welcome', 'broadcast_thanks', 'lurker_mention', 'broadcast_pk_start', 'scheduled_danmu',
 ])
 const AUTOMATION_IDS = new Set([
-  'auto_gift', 'rare_blind_query',
+  'auto_gift', 'blind_box_query', 'rare_blind_query',
 ])
 
 const BLIND_DEFAULT_TEMPLATE = '感谢{name}的{count}个盲盒，{verdict}'

@@ -263,6 +263,14 @@ DEFAULT_COMMANDS = [
         "config": {},
     },
     {
+        "id": "blind_box_query",
+        "name": "盲盒查询",
+        "type": "user_danmu",
+        "description": '主播或观众发"我的盲盒 / 本月盲盒 / 今月盲盒 / 今日盲盒 / 昨日盲盒 / 本周盲盒 / 上月盲盒 / N月盲盒"，机器人回复对应时段的盲盒开启数和盈亏。主播查全员汇总，观众查自己。',
+        "default_enabled": True,
+        "config": {},
+    },
+    {
         "id": "rare_blind_query",
         "name": "高价礼物查询",
         "type": "user_danmu",

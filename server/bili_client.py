@@ -1498,23 +1498,25 @@ class BiliLiveClient:
                                                     asyncio.create_task(self.handle_set_nickname(uid, uname, content[2:].strip()))
                                                     is_command = True
 
-                                        # 盲盒查询：主播查全员 / 观众查自己，所有别名一致
-                                        period = None
-                                        if content in DANMU_PERIOD_MAP:
-                                            period = DANMU_PERIOD_MAP[content]
-                                        else:
-                                            mm = re.fullmatch(r"(\d{1,2})月盲盒", content)
-                                            if mm and 1 <= int(mm.group(1)) <= 12:
-                                                period = f"month:{int(mm.group(1))}"
-                                        if period:
-                                            is_command = True
-                                            if self.bot_uid:
-                                                is_streamer = (uid == self.streamer_uid)
-                                                asyncio.create_task(self.handle_blind_box_query(
-                                                    None if is_streamer else uname,
-                                                    period,
-                                                    user_id=None if is_streamer else uid,
-                                                ))
+                                        # 盲盒查询：主播查全员 / 观众查自己，所有别名一致；受 blind_box_query 开关控制
+                                        blind_cmd = get_command(self.real_room_id, "blind_box_query")
+                                        if blind_cmd and blind_cmd["enabled"]:
+                                            period = None
+                                            if content in DANMU_PERIOD_MAP:
+                                                period = DANMU_PERIOD_MAP[content]
+                                            else:
+                                                mm = re.fullmatch(r"(\d{1,2})月盲盒", content)
+                                                if mm and 1 <= int(mm.group(1)) <= 12:
+                                                    period = f"month:{int(mm.group(1))}"
+                                            if period:
+                                                is_command = True
+                                                if self.bot_uid:
+                                                    is_streamer = (uid == self.streamer_uid)
+                                                    asyncio.create_task(self.handle_blind_box_query(
+                                                        None if is_streamer else uname,
+                                                        period,
+                                                        user_id=None if is_streamer else uid,
+                                                    ))
 
                                         # 盲盒爆出查询："本月<礼物名>"/"今月<礼物名>"
                                         # → 本月单次爆出价值 > 10000 电池的该礼物数量。
