@@ -160,6 +160,9 @@ class BiliLiveClient:
         # 保证相邻两条之间至少 DANMU_MIN_INTERVAL 秒，避免被 B 站限流。
         self._send_danmu_lock = asyncio.Lock()
         self._last_send_danmu_ts: float = 0.0
+        # 已播报过的 pk_id；PRE_NEW 可能被 B站 重发，用这个去重（偶发性的
+        # 匹配取消没进入 START_NEW 会带来 <1% 的空播报，业务上可接受）。
+        self._pk_broadcasted: set[int] = set()
 
     def _make_cookie_header(self) -> dict:
         headers = dict(HEADERS)
@@ -400,6 +403,194 @@ class BiliLiveClient:
         num = max(1, int(extra.get("num") or 1))
         for _ in range(num):
             trigger_gift_vap(self.room_id, gift_id, source=et)
+
+    def _maybe_broadcast_pk_start(self, pkt: dict) -> None:
+        """PK_BATTLE_PRE_NEW 触发：此时 data 里 uname/uid/face/room_id 齐全。
+        10 秒倒计时后才真正 START_NEW，用 PRE_NEW 给抓数据+发弹幕留出时间。
+        同 pk_id 只播一次。"""
+        try:
+            pk_id = int(pkt.get("pk_id") or 0)
+            d = pkt.get("data") or {}
+            if not pk_id or not d.get("uid") or pk_id in self._pk_broadcasted:
+                return
+            if self.live_status != 1:
+                return
+            if not self.cookies.get("SESSDATA"):
+                return
+            cmd = get_command(self.real_room_id, "broadcast_pk_start")
+            if not cmd or not cmd.get("enabled"):
+                return
+            opp = {
+                "uname": d.get("uname") or "",
+                "uid": int(d.get("uid") or 0),
+                "face": d.get("face") or "",
+                "room_id": int(d.get("room_id") or 0),
+            }
+            self._pk_broadcasted.add(pk_id)
+            # 简单防膨胀：超过 200 条裁到 100 条
+            if len(self._pk_broadcasted) > 200:
+                self._pk_broadcasted = set(list(self._pk_broadcasted)[-100:])
+            asyncio.create_task(self._do_pk_broadcast(opp, cmd.get("config") or {}))
+        except Exception as e:
+            log.warning(f"[pk-broadcast] dispatch failed: {e}")
+
+    async def _fetch_pk_opponent_stats(self, opp: dict) -> dict:
+        """并发聚合对面主播的：粉丝数、总舰队、总督/提督/舰长分解、
+        本场 TOP100 金瓜子贡献。PRE_NEW 给的 room_id 就是真实 room_id，
+        三个请求同时开。"""
+        uid = int(opp.get("uid") or 0)
+        room = int(opp.get("room_id") or 0)
+        headers = self._make_cookie_header()
+
+        async def _followers(session):
+            if not uid:
+                return -1
+            try:
+                async with session.get(MASTER_INFO_API, params={"uid": uid}, timeout=aiohttp.ClientTimeout(total=5)) as r:
+                    j = await r.json(content_type=None)
+                    if j.get("code") == 0:
+                        return int(j["data"].get("follower_num") or 0)
+            except Exception as e:
+                log.debug(f"[pk-broadcast] master info fail: {e}")
+            return -1
+
+        async def _guards(session):
+            if not (uid and room):
+                return (-1, -1, -1, -1)
+            return await self._fetch_opponent_guard_counts(session, room, uid)
+
+        async def _gold(session):
+            if not (uid and room):
+                return -1
+            try:
+                params = {
+                    "ruid": uid, "room_id": room,
+                    "page": 1, "page_size": 100,
+                    "type": "gold", "switch": "contribution_rank", "platform": "web",
+                }
+                async with session.get(self.ONLINE_RANK_API, params=params, timeout=aiohttp.ClientTimeout(total=6)) as r:
+                    d = (await r.json(content_type=None)).get("data") or {}
+                    items = d.get("item") or d.get("list") or []
+                    # 金瓜子 → 元：1000 金瓜子 = 1 元
+                    return sum(int(u.get("score") or 0) for u in items) // 1000
+            except Exception as e:
+                log.debug(f"[pk-broadcast] contrib rank fail: {e}")
+            return -1
+
+        async with aiohttp.ClientSession(headers=headers) as session:
+            followers, guards, gold_yuan = await asyncio.gather(
+                _followers(session), _guards(session), _gold(session),
+            )
+        guard_total, gov, adm, cap_cnt = guards
+        return {
+            "followers": followers,
+            "guard_total": guard_total, "governor": gov, "admiral": adm, "captain": cap_cnt,
+            "gold": gold_yuan,
+        }
+
+    async def _fetch_opponent_guard_counts(self, session: aiohttp.ClientSession, room_id: int, ruid: int, page_cap: int = 6) -> tuple[int, int, int, int]:
+        """返回 (total, 总督, 提督, 舰长)。
+        total 取 info.num；分级逐页累计，超过 page_cap 的剩余全部计入舰长
+        （总督/提督总在 top 排位，不会被截断；舰长基本不会超 300 个）。"""
+        total = 0
+        gov = adm = cap_cnt = 0
+        seen: set[int] = set()
+        url = "https://api.live.bilibili.com/xlive/app-room/v2/guardTab/topList"
+        for page in range(1, page_cap + 1):
+            params = {"roomid": room_id, "ruid": ruid, "page": page, "page_size": 29}
+            try:
+                async with session.get(url, params=params, timeout=aiohttp.ClientTimeout(total=5)) as r:
+                    d = (await r.json(content_type=None)).get("data") or {}
+            except Exception as e:
+                log.debug(f"[pk-broadcast] guard page {page} fail: {e}")
+                break
+            if page == 1:
+                total = int((d.get("info") or {}).get("num") or 0)
+                for u in d.get("top3") or []:
+                    uid = u.get("uid")
+                    if uid and uid not in seen:
+                        seen.add(uid)
+                        lv = u.get("guard_level") or 0
+                        if lv == 1: gov += 1
+                        elif lv == 2: adm += 1
+                        elif lv == 3: cap_cnt += 1
+            lst = d.get("list") or []
+            if not lst:
+                break
+            for u in lst:
+                uid = u.get("uid")
+                if uid and uid not in seen:
+                    seen.add(uid)
+                    lv = u.get("guard_level") or 0
+                    if lv == 1: gov += 1
+                    elif lv == 2: adm += 1
+                    elif lv == 3: cap_cnt += 1
+            if len(lst) < 29:
+                break
+        # 若因 page_cap 截断，剩余全部计入舰长（总督/提督早在前几页都看完了）
+        counted = gov + adm + cap_cnt
+        if total > counted:
+            cap_cnt += total - counted
+        return total, gov, adm, cap_cnt
+
+    async def _do_pk_broadcast(self, opp: dict, cfg: dict) -> None:
+        """抓对手信息 → 套模版 → 发弹幕。"""
+        try:
+            stats = await self._fetch_pk_opponent_stats(opp)
+        except Exception as e:
+            log.warning(f"[pk-broadcast] fetch stats failed: {e}")
+            stats = {}
+
+        def _n(v) -> int | None:
+            return None if v is None or v == -1 else int(v)
+
+        def _big(v) -> str:
+            """大数字缩写：>=1亿 1.2亿；>=1万 1.2万；否则原值。失败 '?'"""
+            n = _n(v)
+            if n is None:
+                return "?"
+            if n >= 100_000_000:
+                return f"{n / 100_000_000:.1f}亿"
+            if n >= 10_000:
+                return f"{n / 10_000:.1f}万"
+            return str(n)
+
+        def _guard_brief() -> str:
+            total = _n(stats.get("guard_total"))
+            if total is None:
+                return "?"
+            if total == 0:
+                return "暂无"
+            gov = _n(stats.get("governor")) or 0
+            adm = _n(stats.get("admiral")) or 0
+            cap = _n(stats.get("captain")) or 0
+            # 无总督/提督时简化成 "N舰长"
+            if gov == 0 and adm == 0:
+                return f"{total}舰长"
+            return f"{total}(督{gov}提{adm}长{cap})"
+
+        fields = {
+            "name": opp.get("uname") or "对面主播",
+            "followers": _big(stats.get("followers")),
+            "guard_total": _big(stats.get("guard_total")),
+            "governor": _big(stats.get("governor")),
+            "admiral": _big(stats.get("admiral")),
+            "captain": _big(stats.get("captain")),
+            "gold": _big(stats.get("gold")),
+            "guard_brief": _guard_brief(),
+        }
+        templates = cfg.get("templates") or [
+            "PK对面 {name}！粉丝{followers} 舰队{guard_brief} 本场贡献{gold}元"
+        ]
+        idx = self._tpl_idx.get("broadcast_pk_start", 0)
+        self._tpl_idx["broadcast_pk_start"] = idx + 1
+        tpl = templates[idx % len(templates)]
+        try:
+            msg = tpl.format(**fields)
+        except Exception:
+            msg = tpl
+        log.info(f"[pk-broadcast] room={self.real_room_id} opp={opp.get('uname')!r} stats={stats} → {msg!r}")
+        await self.send_danmu(msg)
 
     def _maybe_broadcast_blind(self, event: dict):
         """Accumulate a user's blind-box events and emit one summary danmu
@@ -1217,6 +1408,8 @@ class BiliLiveClient:
                                     except Exception:
                                         raw = str(pkt)
                                     log.info(f"[pk-raw] room={self.real_room_id} cmd={cmd} {raw[:2000]}")
+                                    if base_cmd == "PK_BATTLE_PRE_NEW":
+                                        self._maybe_broadcast_pk_start(pkt)
                                 if base_cmd in (
                                     "ANCHOR_LOT_END", "ANCHOR_LOT_AWARD",
                                     "POPULARITY_RED_POCKET_WINNER_LIST",
