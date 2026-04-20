@@ -72,8 +72,11 @@ def get_overlay_settings(room_id: int) -> dict:
     ).fetchone()
     conn.close()
     if not row:
-        return dict(OVERLAY_DEFAULTS)
-    d = dict(row)
+        d = dict(OVERLAY_DEFAULTS)
+    else:
+        d = dict(row)
+    # DB 和 OVERLAY_DEFAULTS 都用 1/0 存，对外 JSON 统一转 bool，避免
+    # rsuite Toggle 严格比较 `checked === true` 时把 1 当成关。
     for k in ("show_gift", "show_blind", "show_guard", "show_superchat", "scroll_enabled"):
         d[k] = bool(d[k])
     if d.get("time_range") not in ("today", "week", "live"):

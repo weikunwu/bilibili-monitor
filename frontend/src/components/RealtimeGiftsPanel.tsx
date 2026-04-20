@@ -105,7 +105,12 @@ export function RealtimeGiftsPanel({ roomId }: Props) {
     let cancelled = false
     fetchOverlayToken(roomId).then((t) => { if (!cancelled) setToken(t) }).catch(() => {})
     fetchOverlaySettings(roomId).then((s) => {
-      if (!cancelled) { setCommitted(s); setDraft(s) }
+      // 老后端可能没返新加的字段（如 scroll_enabled），跟 DEFAULTS 合并避免
+      // Toggle / Slider 收到 undefined 渲染成关。
+      if (!cancelled) {
+        const merged = { ...DEFAULTS, ...s }
+        setCommitted(merged); setDraft(merged)
+      }
     }).catch(() => {})
     return () => { cancelled = true }
   }, [roomId])
@@ -146,8 +151,9 @@ export function RealtimeGiftsPanel({ roomId }: Props) {
         scroll_enabled: draft.scroll_enabled,
         scroll_speed: draft.scroll_speed,
       })
-      setCommitted(s)
-      setDraft(s)
+      const merged = { ...DEFAULTS, ...s }
+      setCommitted(merged)
+      setDraft(merged)
       toaster.push(<Message type="success" showIcon closable>已保存</Message>, { duration: 2000 })
     } catch (e) {
       toaster.push(<Message type="error" showIcon closable>{(e as Error).message}</Message>, { duration: 3000 })
@@ -159,8 +165,9 @@ export function RealtimeGiftsPanel({ roomId }: Props) {
     setClearing(true)
     try {
       const s = await clearOverlayHistory(roomId)
-      setCommitted(s)
-      setDraft(s)
+      const merged = { ...DEFAULTS, ...s }
+      setCommitted(merged)
+      setDraft(merged)
       toaster.push(<Message type="success" showIcon closable>已清除</Message>, { duration: 2000 })
     } catch (e) {
       toaster.push(<Message type="error" showIcon closable>{(e as Error).message}</Message>, { duration: 3000 })
