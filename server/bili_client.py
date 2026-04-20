@@ -436,11 +436,30 @@ class BiliLiveClient:
 
     async def _fetch_pk_opponent_stats(self, opp: dict) -> dict:
         """并发聚合对面主播的：粉丝数、总舰队、总督/提督/舰长分解、
-        本场 TOP100 金瓜子贡献。PRE_NEW 给的 room_id 就是真实 room_id，
-        三个请求同时开。"""
+        当前人气（B站 叫 online）、本场 TOP100 金瓜子贡献。
+        PRE_NEW 给的 room_id 就是真实 room_id，四个请求同时开。"""
         uid = int(opp.get("uid") or 0)
         room = int(opp.get("room_id") or 0)
         headers = self._make_cookie_header()
+
+        async def _online(session):
+            """在线贡献榜（戴对面粉丝牌 + 当前在线互动的观众）条数，比 ROOM_INFO
+            返回的人气值更贴近真实活跃人数。"""
+            if not (uid and room):
+                return -1
+            try:
+                params = {
+                    "ruid": uid, "room_id": room,
+                    "page": 1, "page_size": 100,
+                    "type": "online_rank", "switch": "contribution_rank", "platform": "web",
+                }
+                async with session.get(self.ONLINE_RANK_API, params=params, timeout=aiohttp.ClientTimeout(total=6)) as r:
+                    d = (await r.json(content_type=None)).get("data") or {}
+                    items = d.get("item") or d.get("list") or []
+                    return len(items)
+            except Exception as e:
+                log.debug(f"[pk-broadcast] online rank fail: {e}")
+            return -1
 
         async def _followers(session):
             if not uid:
@@ -478,12 +497,12 @@ class BiliLiveClient:
             return -1
 
         async with aiohttp.ClientSession(headers=headers) as session:
-            followers, guards, gold_yuan = await asyncio.gather(
-                _followers(session), _guards(session), _gold(session),
+            online, followers, guards, gold_yuan = await asyncio.gather(
+                _online(session), _followers(session), _guards(session), _gold(session),
             )
         guard_total, gov, adm, cap_cnt = guards
         return {
-            "followers": followers,
+            "followers": followers, "online": online,
             "guard_total": guard_total, "governor": gov, "admiral": adm, "captain": cap_cnt,
             "gold": gold_yuan,
         }
@@ -572,6 +591,7 @@ class BiliLiveClient:
         fields = {
             "name": opp.get("uname") or "对面主播",
             "followers": _big(stats.get("followers")),
+            "online": _big(stats.get("online")),
             "guard_total": _big(stats.get("guard_total")),
             "governor": _big(stats.get("governor")),
             "admiral": _big(stats.get("admiral")),
@@ -580,7 +600,7 @@ class BiliLiveClient:
             "guard_brief": _guard_brief(),
         }
         templates = cfg.get("templates") or [
-            "PK对面 {name}！粉丝{followers} 舰队{guard_brief} 本场贡献{gold}元"
+            "PK对手 {name}！\n粉丝{followers} 舰队{guard_brief}\n当前在线人数{online}，本场高能贡献{gold}元"
         ]
         idx = self._tpl_idx.get("broadcast_pk_start", 0)
         self._tpl_idx["broadcast_pk_start"] = idx + 1
@@ -590,7 +610,11 @@ class BiliLiveClient:
         except Exception:
             msg = tpl
         log.info(f"[pk-broadcast] room={self.real_room_id} opp={opp.get('uname')!r} stats={stats} → {msg!r}")
-        await self.send_danmu(msg)
+        # 模版里 \n 代表分条发送，每条走一次 send_danmu（独立排队 + 限流）
+        for line in msg.split("\n"):
+            line = line.strip()
+            if line:
+                await self.send_danmu(line)
 
     def _maybe_broadcast_blind(self, event: dict):
         """Accumulate a user's blind-box events and emit one summary danmu

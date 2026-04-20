@@ -23,7 +23,7 @@ interface Props {
 // 按 category 归属每个 cmd.id。broadcast_thanks 的子项在 render 里被 ThanksGroup 吃掉，
 // 这里只列出"会在顶层 map 里判断是否保留"的 id。
 const REACTIVE_IDS = new Set([
-  'ai_reply', 'broadcast_welcome', 'broadcast_thanks', 'lurker_mention', 'scheduled_danmu',
+  'ai_reply', 'broadcast_welcome', 'broadcast_thanks', 'lurker_mention', 'broadcast_pk_start', 'scheduled_danmu',
 ])
 const AUTOMATION_IDS = new Set([
   'auto_gift', 'rare_blind_query',
@@ -106,6 +106,67 @@ function LurkerEditor({
     </div>
   )
 }
+const PK_DEFAULT_TEMPLATE = 'PK对手 {name}！\n粉丝{followers} 舰队{guard_brief}\n当前在线人数{online}，本场高能贡献{gold}元'
+
+// PK 播报：单模版，支持 \n 分多条弹幕。
+function PkBroadcastEditor({
+  roomId, cmdId, initialTemplate, onSaved, onCommitEnabled, onRestoreEnabled,
+}: {
+  roomId: number | null
+  cmdId: string
+  initialTemplate: string
+  onSaved: (config: { templates: string[] }) => void
+  onCommitEnabled?: () => Promise<void>
+  onRestoreEnabled?: () => void
+}) {
+  const [tpl, setTpl] = useState(initialTemplate || PK_DEFAULT_TEMPLATE)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+
+  async function persist(template: string) {
+    if (!roomId) return
+    const t = template.trim() || PK_DEFAULT_TEMPLATE
+    setSaving(true)
+    try {
+      if (onCommitEnabled) await onCommitEnabled()
+      await saveCommandConfig(roomId, cmdId, { templates: [t] })
+      onSaved({ templates: [t] })
+      setSaved(true); setTimeout(() => setSaved(false), 1500)
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ fontSize: 12, color: '#888' }}>
+        占位符：<code>{'{name}'}</code> 对面主播名，<code>{'{followers}'}</code> 粉丝数，
+        <code>{'{online}'}</code> 当前在线人数，<code>{'{guard_brief}'}</code> 舰队摘要，
+        <code>{'{gold}'}</code> 本场高能贡献（元）。回车换行会拆成多条弹幕发。
+      </div>
+      <Input
+        size="sm"
+        as="textarea"
+        rows={3}
+        value={tpl}
+        onChange={setTpl}
+        placeholder={PK_DEFAULT_TEMPLATE}
+      />
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
+        <Button
+          appearance="subtle" size="sm" style={{ width: 88 }}
+          onClick={() => { setTpl(PK_DEFAULT_TEMPLATE); onRestoreEnabled?.() }}
+        >恢复默认</Button>
+        <Button
+          appearance="primary" size="sm" style={{ width: 88 }}
+          onClick={() => persist(tpl)}
+          disabled={saving}
+        >
+          {saving ? '保存中…' : saved ? '已保存' : '保存'}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 const WELCOME_DEFAULT_TEMPLATE = '欢迎{name}进入直播间'
 
 // 感谢弹幕分组：礼物/大航海/盲盒/关注/点赞 共用同一个总开关和保存/恢复默认按钮。
@@ -817,6 +878,20 @@ export function ToolsPanel({ roomId, category }: Props) {
                 cmdId={cmd.id}
                 initialTemplate={(cmd.config?.template as string) || ''}
                 initialWaitSec={Number(cmd.config?.wait_sec || 900)}
+                onCommitEnabled={() => commitEnabled([cmd.id])}
+                onRestoreEnabled={() => setDraftEnabled([cmd.id], true)}
+                onSaved={(config) => {
+                  setCommands((prev) => prev.map((c) => (
+                    c.id === cmd.id ? { ...c, config: { ...c.config, ...config } } : c
+                  )))
+                }}
+              />
+            )}
+            {cmd.id === 'broadcast_pk_start' && (
+              <PkBroadcastEditor
+                roomId={roomId}
+                cmdId={cmd.id}
+                initialTemplate={((cmd.config?.templates as string[]) || [])[0] || ''}
                 onCommitEnabled={() => commitEnabled([cmd.id])}
                 onRestoreEnabled={() => setDraftEnabled([cmd.id], true)}
                 onSaved={(config) => {
