@@ -1137,7 +1137,6 @@ class BiliLiveClient:
             "max_tokens": 300,
             "temperature": 0.8,
         }
-        log.info(f"[AI回复] room={self.real_room_id} {'命中' if mentioned else '随机'} 触发={uname}({uid}) 请求 model={model}")
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
@@ -1176,7 +1175,6 @@ class BiliLiveClient:
             return
         try:
             await self.send_danmu(reply_text)
-            log.info(f"[AI回复] room={self.real_room_id} {'命中' if mentioned else '随机'} 触发={uname}({uid}) msg={reply_text!r}")
         except Exception as e:
             log.warning(f"[AI回复] 发送失败: {e}")
 

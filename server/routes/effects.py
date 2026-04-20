@@ -95,8 +95,10 @@ def try_trigger_entry_effect(room_id: int, uid: int) -> bool:
             return False
         key = (room_id, uid)
         now = time.monotonic()
-        last = _last_trigger.get(key, 0.0)
-        if now - last < ENTRY_EFFECT_COOLDOWN_SEC:
+        last = _last_trigger.get(key)
+        # 必须用 None 检查，不能 default 0.0：time.monotonic() 在进程启动时
+        # 从 0 开始，重启后前 300 秒所有 bound 用户都会被误判成"冷却中"。
+        if last is not None and now - last < ENTRY_EFFECT_COOLDOWN_SEC:
             remain = int(ENTRY_EFFECT_COOLDOWN_SEC - (now - last))
             log.info(f"[entry-effect] room={room_id} uid={uid} 冷却中（剩 {remain}s），跳过")
             return False
