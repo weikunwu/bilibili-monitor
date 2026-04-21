@@ -235,17 +235,31 @@ export function AdminPanel({ rooms, onRoomsChanged, role: currentRole }: Props) 
           </Stack>
         </form>
         {roomError && <Message type="error" showIcon style={{ marginBottom: 12 }}>{roomError}</Message>}
-        {rooms.map((r) => (
-          <div key={r.room_id} className="cmd-item">
-            <div className="cmd-info">
-              <div className="cmd-name">{r.streamer_name || r.room_id}</div>
-              <div className="cmd-desc">房间号: {r.room_id}{r.real_room_id !== r.room_id ? ` (真实ID: ${r.real_room_id})` : ''}</div>
+        <div className="admin-grid">
+          {rooms.map((r) => (
+            <div key={r.room_id} className="admin-card">
+              <div className="admin-card-head">
+                <div className="admin-card-title" title={r.streamer_name || String(r.room_id)}>
+                  {r.streamer_name || r.room_id}
+                </div>
+              </div>
+              <div className="admin-card-meta">
+                房间号: {r.room_id}
+                {r.real_room_id !== r.room_id && <> · 真实 ID: {r.real_room_id}</>}
+                <br />
+                机器人: {r.bot_uid ? `${r.bot_name || 'Unknown'} (UID ${r.bot_uid})` : '未绑定'}
+              </div>
+              <div className="admin-card-actions">
+                <Button color="red" appearance="ghost" size="xs" onClick={() => handleRemoveRoom(r.room_id)}>
+                  删除
+                </Button>
+              </div>
             </div>
-            <Button color="red" appearance="ghost" size="xs" onClick={() => handleRemoveRoom(r.room_id)}>
-              删除
-            </Button>
-          </div>
-        ))}
+          ))}
+          {rooms.length === 0 && (
+            <div className="admin-card-meta" style={{ gridColumn: '1 / -1' }}>暂无房间</div>
+          )}
+        </div>
 
         <Divider style={{ borderColor: '#2a2a4a' }} />
 
@@ -284,38 +298,60 @@ export function AdminPanel({ rooms, onRoomsChanged, role: currentRole }: Props) 
         </form>
         {error && <Message type="error" showIcon style={{ marginBottom: 12 }}>{error}</Message>}
 
-        {users.map((u) => (
-          <div key={u.id} className="cmd-item admin-user-item">
-            <div className="cmd-info">
-              <div className="cmd-name">{u.email}</div>
-              <div className="cmd-desc">
-                {roleLabel(u.role)}
-                {u.role === 'admin'
-                  ? ' (全部房间)'
-                  : ` | 房间: ${u.rooms.length > 0 ? u.rooms.join(', ') : '无'}`}
+        <div className="admin-grid">
+          {users.map((u) => (
+            <div key={u.id} className="admin-card">
+              <div className="admin-card-head">
+                <div className="admin-card-title" title={u.email}>{u.email}</div>
+                <span className={`admin-card-badge ${u.role}`}>{roleLabel(u.role)}</span>
+              </div>
+              <div className="admin-card-meta">
+                {u.role === 'admin' ? (
+                  '可见全部房间'
+                ) : u.rooms.length > 0 ? (
+                  <>
+                    <div style={{ marginBottom: 6 }}>绑定房间 ({u.rooms.length})</div>
+                    <div className="admin-room-tags">
+                      {u.rooms.map((rid) => {
+                        const r = rooms.find((x) => x.room_id === rid)
+                        const name = r?.streamer_name || ''
+                        return (
+                          <span key={rid} className="admin-room-tag" title={name ? `${name} (${rid})` : String(rid)}>
+                            {name ? `${name} · ${rid}` : rid}
+                          </span>
+                        )
+                      })}
+                    </div>
+                  </>
+                ) : (
+                  '绑定房间：无'
+                )}
+              </div>
+              <div className="admin-card-actions">
+                <SelectPicker
+                  data={roleData}
+                  value={u.role}
+                  onChange={(v) => v && v !== u.role && handleChangeRole(u.id, v)}
+                  size="sm"
+                  searchable={false}
+                  cleanable={false}
+                  className="admin-user-role"
+                />
+                {u.role !== 'admin' && (
+                  <Button appearance="ghost" size="xs" onClick={() => startEditRooms(u)}>
+                    分配房间
+                  </Button>
+                )}
+                <Button color="red" appearance="ghost" size="xs" onClick={() => handleDelete(u.id)}>
+                  删除
+                </Button>
               </div>
             </div>
-            <SelectPicker
-              data={roleData}
-              value={u.role}
-              onChange={(v) => v && v !== u.role && handleChangeRole(u.id, v)}
-              size="sm"
-              searchable={false}
-              cleanable={false}
-              className="admin-user-role"
-            />
-            <div className="admin-user-actions">
-              {u.role !== 'admin' && (
-                <Button appearance="ghost" size="xs" onClick={() => startEditRooms(u)}>
-                  分配房间
-                </Button>
-              )}
-              <Button color="red" appearance="ghost" size="xs" onClick={() => handleDelete(u.id)}>
-                删除
-              </Button>
-            </div>
-          </div>
-        ))}
+          ))}
+          {users.length === 0 && (
+            <div className="admin-card-meta" style={{ gridColumn: '1 / -1' }}>暂无用户</div>
+          )}
+        </div>
       </>}
 
       {/* Edit rooms modal */}
