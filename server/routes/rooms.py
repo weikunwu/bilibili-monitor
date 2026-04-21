@@ -19,6 +19,7 @@ from ..db import (
     count_user_rooms,
     get_overlay_settings, update_overlay_settings, clear_overlay_history,
     get_room_expires_at, redeem_renewal_token,
+    get_bot_status,
 )
 from ..auth import require_room_access
 from ..config import ROOM_INFO_API, H5_ROOM_INFO_API, MASTER_INFO_API, HEADERS
@@ -118,6 +119,7 @@ async def get_rooms(request: Request):
                 "active": c._running,
                 "save_danmu": get_room_save_danmu(room_id),
                 "expires_at": get_room_expires_at(room_id),
+                "bot_status": get_bot_status(room_id),
             })
         else:
             # No client in memory — fetch basic info from Bilibili API
@@ -125,6 +127,7 @@ async def get_rooms(request: Request):
             info["active"] = bool(active)
             info["save_danmu"] = get_room_save_danmu(room_id)
             info["expires_at"] = get_room_expires_at(room_id)
+            info["bot_status"] = get_bot_status(room_id)
             result.append(info)
     return result
 

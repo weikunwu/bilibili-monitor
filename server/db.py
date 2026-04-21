@@ -4,6 +4,7 @@ import json
 import os
 import secrets
 import sqlite3
+import time
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
@@ -191,9 +192,14 @@ def init_db():
             active INTEGER NOT NULL DEFAULT 0,
             live_started_at TEXT,
             expires_at TEXT,
-            expired_reminder_count INTEGER NOT NULL DEFAULT 0
+            expired_reminder_count INTEGER NOT NULL DEFAULT 0,
+            bot_status TEXT
         )
     """)
+    # Migration: 老库 rooms 没有 bot_status；用来记录该 bot 的风控/重登态。
+    rooms_cols = {row[1] for row in conn.execute("PRAGMA table_info(rooms)").fetchall()}
+    if "bot_status" not in rooms_cols:
+        conn.execute("ALTER TABLE rooms ADD COLUMN bot_status TEXT")
     conn.execute("""
         CREATE TABLE IF NOT EXISTS commands (
             id TEXT PRIMARY KEY,
@@ -1107,3 +1113,46 @@ def set_room_auto_clip(room_id: int, enabled: bool):
     settings = get_room_settings(room_id)
     settings["auto_clip"] = enabled
     save_room_settings(room_id, settings)
+
+
+# ── Bot 风控/登录态 ──────────────────────────────────────────────────────────
+# rooms.bot_status 存 JSON：
+#   {status: "ok"|"needs_relogin"|"risk_control",
+#    code, message, triggered_at, cooldown_until?, trigger_count?}
+# 没记录或 status=="ok" 都视为正常。
+
+def get_bot_status(room_id: int) -> dict:
+    try:
+        conn = sqlite3.connect(str(DB_PATH))
+        row = conn.execute("SELECT bot_status FROM rooms WHERE room_id=?", (room_id,)).fetchone()
+        conn.close()
+        if row and row[0]:
+            data = json.loads(row[0])
+            if isinstance(data, dict):
+                return data
+    except Exception:
+        pass
+    return {"status": "ok"}
+
+
+def set_bot_status(room_id: int, status: Optional[dict]):
+    payload = json.dumps(status, ensure_ascii=False) if status else None
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.execute("UPDATE rooms SET bot_status=? WHERE room_id=?", (payload, room_id))
+    conn.commit()
+    conn.close()
+
+
+def clear_bot_status(room_id: int):
+    set_bot_status(room_id, None)
+
+
+def is_bot_blocked(room_id: int) -> bool:
+    """风控冷却中或需要重登 → 应当跳过敏感操作。"""
+    st = get_bot_status(room_id)
+    s = st.get("status")
+    if s == "needs_relogin":
+        return True
+    if s == "risk_control":
+        return time.time() < float(st.get("cooldown_until") or 0)
+    return False

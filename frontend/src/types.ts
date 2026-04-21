@@ -75,6 +75,16 @@ export interface EventExtra {
   medal_v2?: MedalV2 | null
 }
 
+export interface BotStatus {
+  status: 'ok' | 'needs_relogin' | 'risk_control'
+  code?: number
+  message?: string
+  op?: string
+  triggered_at?: number  // unix seconds
+  cooldown_until?: number  // unix seconds，仅 risk_control
+  trigger_count?: number
+}
+
 export interface Room {
   room_id: number
   real_room_id: number
@@ -93,6 +103,7 @@ export interface Room {
   active: boolean
   save_danmu: boolean
   expires_at: string | null  // UTC 'YYYY-MM-DD HH:MM:SS'，null 表示永不过期
+  bot_status?: BotStatus
 }
 
 export interface Stats {

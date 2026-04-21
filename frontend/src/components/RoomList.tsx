@@ -7,7 +7,7 @@ import ChangeListIcon from '@rsuite/icons/ChangeList'
 import TrashIcon from '@rsuite/icons/Trash'
 import { botLogout, bindRoomSelf, unbindRoomSelf, redeemRoomToken } from '../api/client'
 import { confirmDialog } from '../lib/confirm'
-import type { Room } from '../types'
+import type { Room, BotStatus } from '../types'
 
 // Per-tab cache of fresh streamer-info so 切来切去不重复打 B站。
 interface StreamerInfo { streamer_name: string; streamer_avatar: string; followers: number }
@@ -41,6 +41,34 @@ function formatFans(n: number): string {
 
 /** 到期时间：DB 存 UTC 'YYYY-MM-DD HH:MM:SS'，渲染成本地时间。
  *  未到期附带"剩余 N 天"，不足 1 天显示小时；已到期显示红色"已到期"。 */
+function BotStatusBadge({ status }: { status?: BotStatus }) {
+  if (!status || status.status === 'ok') return null
+  if (status.status === 'needs_relogin') {
+    const code = status.code ? ` (${status.code})` : ''
+    return (
+      <span className="rc-bot-warning danger" title={status.message || '账号未登录或 csrf 失效，请重新扫码绑定'}>
+        需重新登录{code}
+      </span>
+    )
+  }
+  // risk_control
+  const remainSec = Math.max(0, Math.ceil(((status.cooldown_until || 0) * 1000 - Date.now()) / 1000))
+  const remainText = remainSec >= 3600
+    ? `${Math.ceil(remainSec / 3600)}h`
+    : remainSec >= 60
+      ? `${Math.ceil(remainSec / 60)}min`
+      : `${remainSec}s`
+  const expired = remainSec <= 0
+  return (
+    <span
+      className={expired ? 'rc-bot-warning' : 'rc-bot-warning danger'}
+      title={`${status.message || 'B站 风控'} (code=${status.code ?? '?'})`}
+    >
+      {expired ? '风控已恢复' : `风控冷却中 ${remainText}`}
+    </span>
+  )
+}
+
 function ExpiresRow({ expiresAt }: { expiresAt: string | null }) {
   if (!expiresAt) return null
   const d = new Date(expiresAt.replace(' ', 'T') + 'Z')
@@ -356,6 +384,7 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
                   ) : (
                     <span className="rc-bot-status">未绑定</span>
                   )}
+                  <BotStatusBadge status={r.bot_status} />
                 </div>
                 <ExpiresRow expiresAt={r.expires_at} />
               </div>

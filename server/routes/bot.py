@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from ..config import DB_PATH, QR_GENERATE_API, QR_POLL_API, HEADERS, log
 from ..crypto import save_cookies
+from ..db import clear_bot_status
 from ..auth import require_room_access
 from ..manager import manager
 
@@ -44,6 +45,7 @@ async def bot_logout(room_id: int = Query(...), _=Depends(require_room_access)):
     conn.execute("UPDATE rooms SET bot_cookie=NULL WHERE room_id=?", (room_id,))
     conn.commit()
     conn.close()
+    clear_bot_status(room_id)
     client = manager.get(room_id)
     if client:
         client.cookies = {}
@@ -95,6 +97,8 @@ async def bot_poll(request: Request, qrcode_key: str):
         if "refresh_token=" in url_str:
             cookies["refresh_token"] = url_str.split("refresh_token=")[-1].split("&")[0]
         save_cookies(cookies, target_room_id)
+        # 重新绑定意味着上一次的"需要重登"/"风控"标记不再适用，清掉。
+        clear_bot_status(target_room_id)
         uid = int(cookies.get("DedeUserID", 0))
         client = manager.get(target_room_id)
         if client:

@@ -351,6 +351,22 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 .rc-footer-actions .rs-btn-toolbar { display: inline-flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
 .rc-bot-status { font-size: 13px; color: #666; }
 .rc-bot-status.active { color: #4caf50; }
+.rc-bot-warning {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.5;
+  background: #fff4e5;
+  color: #b26a00;
+  border: 1px solid #ffd591;
+}
+.rc-bot-warning.danger {
+  background: #fdecea;
+  color: #b71c1c;
+  border-color: #f5c6cb;
+}
 
 
 

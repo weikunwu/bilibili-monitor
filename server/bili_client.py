@@ -26,6 +26,7 @@ from .db import (
     save_event, get_command, get_room_save_danmu, get_room_auto_clip,
     get_nickname, upsert_nickname, delete_nickname,
     set_live_started_at, get_gift_effect_test_enabled,
+    get_bot_status, set_bot_status, clear_bot_status, is_bot_blocked,
 )
 from .routes.effects import trigger_gift_vap, try_trigger_entry_effect
 from .time_utils import beijing_time_range
@@ -778,6 +779,10 @@ class BiliLiveClient:
             return
         if not self.cookies.get("SESSDATA"):
             return
+        # 风控/需重登期间直接 bail，避免把 _welcome_sent[uid] 占掉，让恢复后这位
+        # 观众再进场时还能正常欢迎一次。
+        if is_bot_blocked(self.room_id):
+            return
         if time.time() < self._welcome_pause_until:
             return  # 天选/红包期间不刷欢迎
         cmd_cfg = get_command(self.real_room_id, "broadcast_welcome")
@@ -1248,6 +1253,7 @@ class BiliLiveClient:
                     and messages
                     and self.cookies.get("SESSDATA")
                     and self.live_status == 1
+                    and not is_bot_blocked(self.room_id)
                 ):
                     raw = messages[idx % len(messages)]
                     idx += 1
@@ -1543,9 +1549,77 @@ class BiliLiveClient:
                 finally:
                     hb_task.cancel()
 
+    # 已知会让账号"半失效"的 B站 业务码：
+    #   -101 账号未登录、-111 csrf 失效 → 需要主播重新扫码绑定
+    #   -352 / -799 / 1024 / -401 → 风控/限频，进退避冷却避免越踩越深
+    RELOGIN_CODES = {-101, -111}
+    RISK_CODES = {-352, -799, 1024, -401}
+    # 退避：30min × 2^(count-1)，封顶 12h
+    RISK_BASE_COOLDOWN = 30 * 60
+    RISK_MAX_COOLDOWN = 12 * 3600
+
+    def _handle_bili_response(self, code: int, message: str, op: str) -> None:
+        """根据 B 站返回的 code 维护 bot_status：
+        - 命中 RELOGIN_CODES → needs_relogin（不会自动恢复，等扫码）
+        - 命中 RISK_CODES → risk_control + 指数退避
+        - 其它非 0 码不动状态，调用方自己 log
+        - code==0 时若先前在 risk_control 中，认为已恢复，清状态
+        """
+        try:
+            if code in self.RELOGIN_CODES:
+                set_bot_status(self.room_id, {
+                    "status": "needs_relogin",
+                    "code": code, "message": message, "op": op,
+                    "triggered_at": time.time(),
+                })
+                log.warning(f"[bot-status] room {self.room_id} 需要重新登录 op={op} code={code} msg={message}")
+                return
+            if code in self.RISK_CODES:
+                prev = get_bot_status(self.room_id)
+                count = int(prev.get("trigger_count") or 0) + 1 if prev.get("status") == "risk_control" else 1
+                cooldown = min(self.RISK_BASE_COOLDOWN * (2 ** (count - 1)), self.RISK_MAX_COOLDOWN)
+                now = time.time()
+                set_bot_status(self.room_id, {
+                    "status": "risk_control",
+                    "code": code, "message": message, "op": op,
+                    "triggered_at": now, "cooldown_until": now + cooldown,
+                    "trigger_count": count,
+                })
+                log.warning(
+                    f"[bot-status] room {self.room_id} 命中风控 op={op} code={code} msg={message} "
+                    f"count={count} cooldown={cooldown}s"
+                )
+                return
+            if code == 0:
+                cur = get_bot_status(self.room_id)
+                if cur.get("status") == "risk_control":
+                    clear_bot_status(self.room_id)
+                    log.info(f"[bot-status] room {self.room_id} 风控状态自动恢复 op={op}")
+        except Exception as e:
+            log.warning(f"[bot-status] 写入失败: {e}")
+
+    def _bot_blocked_log(self, op: str) -> bool:
+        """敏感操作前的统一拦截。被拦时打日志说明原因。"""
+        st = get_bot_status(self.room_id)
+        s = st.get("status")
+        if s == "needs_relogin":
+            log.info(f"[bot-status] room {self.room_id} 跳过 {op}：需要重新登录 (code={st.get('code')})")
+            return True
+        if s == "risk_control":
+            until = float(st.get("cooldown_until") or 0)
+            if time.time() < until:
+                log.info(
+                    f"[bot-status] room {self.room_id} 跳过 {op}：风控冷却中 "
+                    f"剩余 {int(until - time.time())}s (code={st.get('code')})"
+                )
+                return True
+        return False
+
     async def send_gift(self, config: dict):
         if not self.cookies.get("SESSDATA") or not self.streamer_uid:
             log.warning("未绑定机器人或无主播信息，无法自动送礼")
+            return
+        if self._bot_blocked_log("send_gift"):
             return
         gift_id = config.get("gift_id", 31036)
         gift_num = config.get("gift_num", 1)
@@ -1568,7 +1642,10 @@ class BiliLiveClient:
                     except Exception:
                         log.warning(f"[自动送礼] 非JSON响应: {text[:500]}")
                         return
-                    if data.get("code") == 0:
+                    code = int(data.get("code", -1))
+                    msg = str(data.get("message") or data.get("msg") or "")
+                    self._handle_bili_response(code, msg, "send_gift")
+                    if code == 0:
                         log.info(f"[自动送礼] 房间 {self.room_id} 送出礼物 gift_id={gift_id} x{gift_num}")
                     else:
                         log.warning(f"[自动送礼] 失败: {data}")
@@ -1581,6 +1658,8 @@ class BiliLiveClient:
 
     async def send_danmu(self, msg: str, reply_uid: int = 0, reply_uname: str = ""):
         if not self.cookies.get("SESSDATA"):
+            return
+        if self._bot_blocked_log("send_danmu"):
             return
         csrf = self.cookies.get("bili_jct", "")
         # B站弹幕限制40字，超长分段发送
@@ -1607,13 +1686,24 @@ class BiliLiveClient:
                             payload["reply_mid"] = reply_uid
                             payload["reply_uname"] = reply_uname
                             payload["reply_attr"] = 0
+                        last_code = -1
+                        last_msg = ""
                         for attempt in range(3):
                             async with session.post(SEND_MSG_API, data=payload) as resp:
                                 data = await resp.json(content_type=None)
-                                if data.get("code") == 0:
+                                last_code = int(data.get("code", -1))
+                                last_msg = str(data.get("message") or data.get("msg") or "")
+                                if last_code == 0:
                                     break
-                                log.warning(f"[发弹幕] 第{attempt+1}次失败: {data.get('message', data.get('msg', ''))}")
+                                log.warning(f"[发弹幕] 第{attempt+1}次失败: {last_msg}")
+                                # 风控/失效码无需重试，立刻退出由 _handle_bili_response 标记
+                                if last_code in self.RELOGIN_CODES or last_code in self.RISK_CODES:
+                                    break
                                 await asyncio.sleep(2)
+                        self._handle_bili_response(last_code, last_msg, "send_danmu")
+                        # 命中风控/需要重登后，剩余分段也别再发，避免接连撞墙
+                        if last_code in self.RELOGIN_CODES or last_code in self.RISK_CODES:
+                            break
                         # 多段消息之间也遵守同样间隔
                         if i < len(chunks) - 1:
                             await asyncio.sleep(self.DANMU_MIN_INTERVAL)
