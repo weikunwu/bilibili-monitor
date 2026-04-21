@@ -1100,7 +1100,7 @@ def list_room_users(room_id: int, search: str = "") -> list[dict]:
 
 def get_room_auto_clip(room_id: int) -> bool:
     settings = get_room_settings(room_id)
-    return settings.get("auto_clip", False)
+    return settings.get("auto_clip", True)
 
 
 def set_room_auto_clip(room_id: int, enabled: bool):
