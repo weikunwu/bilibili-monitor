@@ -129,7 +129,7 @@ DEFAULT_COMMANDS = [
         "id": "ai_reply",
         "name": "AI 机器人",
         "type": "user_danmu",
-        "description": "观众发弹幕时，机器人按概率自动回复；若弹幕中带了机器人名称，则必定回复（忽略概率和冷却）。",
+        "description": "观众发弹幕时，机器人按概率自动回复；若弹幕中带了机器人名称，则忽略概率必定回复（仍受同房间冷却限制）。",
         "default_enabled": True,
         "config": {
             "probability": 10,  # 0–50
@@ -163,7 +163,7 @@ DEFAULT_COMMANDS = [
         "id": "broadcast_follow",
         "name": "关注感谢",
         "type": "auto_broadcast",
-        "description": "观众在本场直播关注主播后，机器人按模版感谢一次（同一用户一次）",
+        "description": "观众关注主播后，机器人按模版感谢；全局 30 秒内最多感谢一次关注，防刷屏",
         "default_enabled": True,
         "config": {
             "templates": [
@@ -179,7 +179,7 @@ DEFAULT_COMMANDS = [
         "id": "broadcast_like",
         "name": "点赞感谢",
         "type": "auto_broadcast",
-        "description": "观众在本场直播首次点赞后，机器人按模版感谢一次（同一用户一次）",
+        "description": "观众点赞后，机器人按模版感谢；全局 30 秒内最多感谢一次点赞，防连击刷屏",
         "default_enabled": True,
         "config": {
             "templates": [
@@ -195,7 +195,7 @@ DEFAULT_COMMANDS = [
         "id": "broadcast_share",
         "name": "分享感谢",
         "type": "auto_broadcast",
-        "description": "观众分享直播间后，机器人按模版感谢一次（同一用户一次）",
+        "description": "观众分享直播间后，机器人按模版感谢；全局 30 秒内最多感谢一次分享",
         "default_enabled": True,
         "config": {
             "templates": [
@@ -211,7 +211,7 @@ DEFAULT_COMMANDS = [
         "id": "broadcast_gift",
         "name": "礼物感谢",
         "type": "auto_broadcast",
-        "description": "用户送出付费礼物（盲盒除外）后，机器人按模版自动发弹幕感谢。同种礼物连送会合并数量，不同礼物各自独立计时。",
+        "description": "用户送出付费礼物（盲盒除外）后，机器人按模版自动发弹幕感谢",
         "default_enabled": True,
         "config": {
             "templates": [
@@ -306,7 +306,7 @@ DEFAULT_COMMANDS = [
         "id": "scheduled_danmu",
         "name": "定时弹幕",
         "type": "scheduled",
-        "description": "开播期间，机器人按设定间隔依次发送以下弹幕（轮播）",
+        "description": "开播期间，机器人按设定间隔从下列弹幕中随机挑一条发送",
         "default_enabled": True,
         "config": {
             "interval_sec": 300,

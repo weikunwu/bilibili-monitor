@@ -149,7 +149,7 @@ export function EffectsPanel({ roomId }: Props) {
         <Section
           isMobile={isMobile}
           title="浏览器源链接"
-          description="把此链接作为浏览器源，观众进直播间时若匹配到已绑定 UID，自动播放对应视频。同一用户 5 分钟冷却一次。注意在浏览器里取消静音才能听到声音。"
+          description="把本房间的进场特效 / 礼物特效播放页叠加到直播画面：观众进房且其 UID 已在下方「进场特效」里绑了视频时自动全屏播放；「礼物特效覆盖」生效时，对应礼物的全屏 VAP 会被替换成自定义视频。用 OBS 等直播工具添加「浏览器源」粘贴此链接即可生效，同一用户 5 分钟冷却一次防刷屏；浏览器需允许音频自动播放才能出声。"
         >
           <InputGroup size="sm" inside>
             <Input readOnly value={url} placeholder="加载中…" />

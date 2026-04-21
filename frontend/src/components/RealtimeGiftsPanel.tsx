@@ -206,7 +206,7 @@ export function RealtimeGiftsPanel({ roomId }: Props) {
         <Section
           isMobile={isMobile}
           title="浏览器源链接"
-          description="链接带 token 鉴权，任何人知道 URL 都能看到该房间的礼物聚合。Token 外泄后点「重新生成」让旧链接失效。"
+          description="把本房间的礼物 / 盲盒 / 大航海 / 醒目留言实时汇总成一个页面，用 OBS 等直播工具添加「浏览器源」粘贴此链接即可叠加到直播画面，下方「展示设置」可过滤类型/金额/时间范围并控制滚动。链接带 token 鉴权，外泄后点「重新生成」让旧链接立即失效。"
         >
           <InputGroup size="sm" inside>
             <Input readOnly value={url} placeholder="加载中…" />
