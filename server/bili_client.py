@@ -25,7 +25,7 @@ from .bili_api import get_wbi_key, wbi_sign, fetch_user_avatar
 from . import recorder, gift_catalog
 from .db import (
     save_event, get_command, get_room_save_danmu, get_room_auto_clip,
-    get_nickname, upsert_nickname, delete_nickname,
+    get_nickname, upsert_nickname, delete_nickname, nickname_is_banned,
     set_live_started_at, get_gift_effect_test_enabled,
     get_bot_buvid, save_bot_buvid,
     get_relogin_alerted, set_relogin_alerted,
@@ -1815,6 +1815,10 @@ class BiliLiveClient:
             return
         if len(nickname) > 6:
             await self.send_danmu(f"{user_name}，昵称过长（最多6字）")
+            return
+        hit = nickname_is_banned(self.real_room_id, nickname)
+        if hit:
+            await self.send_danmu(f"{user_name}，昵称含违禁词「{hit}」，不能使用")
             return
         upsert_nickname(self.real_room_id, user_id, user_name, nickname)
         await self.send_danmu(f"好的，{nickname}")

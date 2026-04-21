@@ -460,6 +460,38 @@ export async function fetchRoomUsers(
   return res.json()
 }
 
+export interface BannedNicknameWord {
+  id: number
+  word: string
+  created_at: string
+}
+
+export async function fetchBannedNicknameWords(roomId: number): Promise<BannedNicknameWord[]> {
+  const res = await fetch(`/api/rooms/${roomId}/banned-nickname-words`)
+  if (!res.ok) return []
+  return res.json()
+}
+
+export async function addBannedNicknameWord(
+  roomId: number, word: string,
+): Promise<BannedNicknameWord | null> {
+  const res = await fetch(`/api/rooms/${roomId}/banned-nickname-words`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ word }),
+  })
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({} as { detail?: string }))
+    toast(d.detail || '添加失败', 'error')
+    return null
+  }
+  return res.json()
+}
+
+export async function deleteBannedNicknameWord(roomId: number, wordId: number): Promise<void> {
+  await fetch(`/api/rooms/${roomId}/banned-nickname-words/${wordId}`, { method: 'DELETE' })
+}
+
 export interface EntryEffect {
   id: number
   room_id: number

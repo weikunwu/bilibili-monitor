@@ -298,6 +298,19 @@ def init_db():
         )
     """)
     conn.execute("""
+        CREATE TABLE IF NOT EXISTS banned_nickname_words (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            room_id INTEGER NOT NULL,
+            word TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            UNIQUE(room_id, word)
+        )
+    """)
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_banned_nickname_words_room "
+        "ON banned_nickname_words(room_id)"
+    )
+    conn.execute("""
         CREATE TABLE IF NOT EXISTS sessions (
             token TEXT PRIMARY KEY,
             user_id INTEGER NOT NULL,
@@ -1118,6 +1131,68 @@ def delete_nickname(room_id: int, user_id: int):
     conn.execute("DELETE FROM nicknames WHERE room_id=? AND user_id=?", (room_id, user_id))
     conn.commit()
     conn.close()
+
+
+def list_banned_nickname_words(room_id: int) -> list[dict]:
+    conn = sqlite3.connect(str(DB_PATH))
+    rows = conn.execute(
+        "SELECT id, word, created_at FROM banned_nickname_words "
+        "WHERE room_id=? ORDER BY created_at DESC",
+        (room_id,),
+    ).fetchall()
+    conn.close()
+    return [{"id": r[0], "word": r[1], "created_at": r[2]} for r in rows]
+
+
+def add_banned_nickname_word(room_id: int, word: str) -> Optional[dict]:
+    word = (word or "").strip()
+    if not word:
+        return None
+    conn = sqlite3.connect(str(DB_PATH))
+    try:
+        cur = conn.execute(
+            "INSERT INTO banned_nickname_words (room_id, word) VALUES (?,?)",
+            (room_id, word),
+        )
+        conn.commit()
+        row = conn.execute(
+            "SELECT id, word, created_at FROM banned_nickname_words WHERE id=?",
+            (cur.lastrowid,),
+        ).fetchone()
+        conn.close()
+        return {"id": row[0], "word": row[1], "created_at": row[2]}
+    except sqlite3.IntegrityError:
+        conn.close()
+        return None
+
+
+def delete_banned_nickname_word(room_id: int, word_id: int) -> bool:
+    conn = sqlite3.connect(str(DB_PATH))
+    cur = conn.execute(
+        "DELETE FROM banned_nickname_words WHERE id=? AND room_id=?",
+        (word_id, room_id),
+    )
+    conn.commit()
+    deleted = cur.rowcount > 0
+    conn.close()
+    return deleted
+
+
+def nickname_is_banned(room_id: int, nickname: str) -> Optional[str]:
+    """Return the matching banned word if `nickname` contains any (case-insensitive), else None."""
+    if not nickname:
+        return None
+    conn = sqlite3.connect(str(DB_PATH))
+    rows = conn.execute(
+        "SELECT word FROM banned_nickname_words WHERE room_id=?",
+        (room_id,),
+    ).fetchall()
+    conn.close()
+    lower = nickname.lower()
+    for (w,) in rows:
+        if w and w.lower() in lower:
+            return w
+    return None
 
 
 def list_room_users(room_id: int, search: str = "") -> list[dict]:

@@ -99,6 +99,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 .nicknames-controls { display: flex; align-items: center; gap: 12px; padding: 0 24px 12px; }
 .nicknames-hint { color: #888; font-size: 13px; }
 .nicknames-panel .rs-table { padding: 0 24px; }
+.banned-words-section { margin-top: 24px; border-top: 1px solid #2a2a4a; padding-top: 16px; }
+.banned-words-list { padding: 0 24px; display: flex; flex-wrap: wrap; }
 
 /* Nickname cards (mobile) */
 .nickname-cards { display: flex; flex-direction: column; gap: 8px; padding: 0 12px; }
@@ -484,4 +486,5 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
   .nicknames-controls { flex-direction: column; align-items: stretch; gap: 8px; padding: 0 12px 12px; }
   .nicknames-controls .rs-btn { align-self: flex-start; }
   .nicknames-hint { font-size: 12px; line-height: 1.5; }
+  .banned-words-list { padding: 0 12px; }
 }

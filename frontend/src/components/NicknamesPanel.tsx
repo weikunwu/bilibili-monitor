@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Button, Input, InputPicker, Modal, Table, IconButton, Toggle } from 'rsuite'
+import { Button, Input, InputPicker, Modal, Table, IconButton, Toggle, Tag, InputGroup } from 'rsuite'
 import TrashIcon from '@rsuite/icons/Trash'
 import EditIcon from '@rsuite/icons/Edit'
 import PlusIcon from '@rsuite/icons/Plus'
 import {
   fetchNicknames, saveNickname, deleteNickname, fetchRoomUsers,
   fetchCommands, toggleCommand,
-  type Nickname,
+  fetchBannedNicknameWords, addBannedNicknameWord, deleteBannedNicknameWord,
+  type Nickname, type BannedNicknameWord,
 } from '../api/client'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { confirmDialog } from '../lib/confirm'
@@ -143,6 +144,78 @@ export function NicknamesPanel({ roomId }: Props) {
           onSaved={() => { setShowAdd(false); load() }}
         />
       )}
+
+      <BannedWordsSection roomId={roomId} />
+    </div>
+  )
+}
+
+function BannedWordsSection({ roomId }: { roomId: number }) {
+  const [words, setWords] = useState<BannedNicknameWord[]>([])
+  const [input, setInput] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const load = useCallback(async () => {
+    setWords(await fetchBannedNicknameWords(roomId))
+  }, [roomId])
+
+  useEffect(() => { load() }, [load])
+
+  async function handleAdd() {
+    const w = input.trim()
+    if (!w || saving) return
+    setSaving(true)
+    try {
+      const res = await addBannedNicknameWord(roomId, w)
+      if (res) {
+        setInput('')
+        await load()
+      }
+    } finally { setSaving(false) }
+  }
+
+  async function handleDelete(w: BannedNicknameWord) {
+    if (!await confirmDialog({ message: `删除违禁词「${w.word}」？`, danger: true, okText: '删除' })) return
+    await deleteBannedNicknameWord(roomId, w.id)
+    await load()
+  }
+
+  return (
+    <div className="banned-words-section">
+      <div className="panel-title">违禁词管理</div>
+      <div className="nicknames-controls">
+        <InputGroup inside size="sm" style={{ maxWidth: 320 }}>
+          <Input
+            value={input}
+            onChange={(v) => setInput(v.slice(0, 20))}
+            placeholder="输入违禁词后回车或点新增（最多20字）"
+            maxLength={20}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleAdd() }}
+          />
+          <InputGroup.Button onClick={handleAdd} disabled={!input.trim() || saving}>
+            <PlusIcon />
+          </InputGroup.Button>
+        </InputGroup>
+        <span className="nicknames-hint">
+          观众用"叫我 xxx"设置昵称时，若昵称含这些词会被拒绝
+        </span>
+      </div>
+      <div className="banned-words-list">
+        {words.length === 0 ? (
+          <div className="empty" style={{ padding: '0 24px', color: '#888', fontSize: 13 }}>
+            暂无违禁词
+          </div>
+        ) : words.map((w) => (
+          <Tag
+            key={w.id}
+            closable
+            onClose={() => handleDelete(w)}
+            style={{ marginRight: 8, marginBottom: 8 }}
+          >
+            {w.word}
+          </Tag>
+        ))}
+      </div>
     </div>
   )
 }

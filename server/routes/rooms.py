@@ -14,6 +14,8 @@ from ..db import (
     get_room_commands, save_command_state, save_command_config, get_command, get_all_rooms,
     get_room_save_danmu, set_room_save_danmu, get_room_auto_clip, set_room_auto_clip,
     list_nicknames, upsert_nickname, delete_nickname, list_room_users,
+    list_banned_nickname_words, add_banned_nickname_word, delete_banned_nickname_word,
+    nickname_is_banned,
     get_or_create_overlay_token, rotate_overlay_token,
     add_room as db_add_room, add_user_room, remove_user_room, is_room_claimed,
     count_user_rooms,
@@ -509,6 +511,32 @@ async def remove_nickname(room_id: int, user_id: int, _=Depends(require_room_acc
 @router.get("/api/rooms/{room_id}/users")
 async def get_room_users(room_id: int, search: str = Query(""), _=Depends(require_room_access)):
     return list_room_users(room_id, search)
+
+
+@router.get("/api/rooms/{room_id}/banned-nickname-words")
+async def get_banned_nickname_words(room_id: int, _=Depends(require_room_access)):
+    return list_banned_nickname_words(room_id)
+
+
+@router.post("/api/rooms/{room_id}/banned-nickname-words")
+async def post_banned_nickname_word(room_id: int, request: Request, _=Depends(require_room_access)):
+    body = await request.json()
+    word = (body.get("word") or "").strip()
+    if not word:
+        raise HTTPException(400, "违禁词不能为空")
+    if len(word) > 20:
+        raise HTTPException(400, "违禁词过长（最多20字）")
+    result = add_banned_nickname_word(room_id, word)
+    if not result:
+        raise HTTPException(400, "违禁词已存在")
+    return result
+
+
+@router.delete("/api/rooms/{room_id}/banned-nickname-words/{word_id}")
+async def remove_banned_nickname_word(room_id: int, word_id: int, _=Depends(require_room_access)):
+    if not delete_banned_nickname_word(room_id, word_id):
+        raise HTTPException(404, "违禁词不存在")
+    return {"ok": True}
 
 
 @router.post("/api/commands/{cmd_id}/toggle")
