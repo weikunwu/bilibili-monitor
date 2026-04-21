@@ -149,8 +149,6 @@ class BiliLiveClient:
         # V2 带 fans_medal (V1 被 B站 剥光)；优先 V2，V2 不来才回退 V1。
         self._seen_v2_interact: bool = False
         self._seen_v2_red_pocket: bool = False
-        # Per-command round-robin index for multi-template broadcasts.
-        self._tpl_idx: dict[str, int] = {}
         # 关注/点赞/分享感谢：每类各自一个冷却时间戳，防止瞬间多人触发刷屏。
         self._last_follow_thanks_ts: float = 0.0
         self._last_like_thanks_ts: float = 0.0
@@ -620,9 +618,7 @@ class BiliLiveClient:
         templates = cfg.get("templates") or [
             "PK对手 {name}！\n粉丝{followers} 舰队{guard_brief}\n当前在线人数{online}，本场高能贡献{gold}元"
         ]
-        idx = self._tpl_idx.get("broadcast_pk_start", 0)
-        self._tpl_idx["broadcast_pk_start"] = idx + 1
-        tpl = templates[idx % len(templates)]
+        tpl = random.choice(templates)
         try:
             msg = tpl.format(**fields)
         except Exception:
@@ -686,7 +682,6 @@ class BiliLiveClient:
         # Template: {name}/{昵称}、{count}/{数量}、{verdict}/{结果}
         cmd = get_command(self.real_room_id, "broadcast_blind") or {}
         tpl = self._pick_template(
-            "broadcast_blind",
             cmd.get("config") or {},
             "感谢{name}的{count}个盲盒，{verdict}",
         )
@@ -734,8 +729,8 @@ class BiliLiveClient:
             buf["task"].cancel()
         buf["task"] = asyncio.create_task(self._flush_gift_burst(uid, name))
 
-    def _pick_template(self, cmd_id: str, cfg: dict, default: str) -> str:
-        """Pick the next template from a multi-template config, round-robin.
+    def _pick_template(self, cfg: dict, default: str) -> str:
+        """Pick a random template from a multi-template config.
         Accepts new key `templates` (list) and legacy `template` (string)."""
         raw = cfg.get("templates")
         if isinstance(raw, list):
@@ -748,9 +743,7 @@ class BiliLiveClient:
                 tpls = [legacy]
         if not tpls:
             return default
-        idx = self._tpl_idx.get(cmd_id, 0)
-        self._tpl_idx[cmd_id] = idx + 1
-        return tpls[idx % len(tpls)]
+        return random.choice(tpls)
 
     # 同一用户多久内不重复欢迎 / 全局多久内最多欢迎一次 (秒)
     WELCOME_PER_USER_COOLDOWN = 5 * 60
@@ -835,13 +828,11 @@ class BiliLiveClient:
         self._welcome_sent[uid] = now
         self._last_welcome_ts = now
         display_name = self._nickname_for(uid) or uname
-        # 按类别轮播模版 (索引 key 区分，避免三类共用一个 idx)
+        # 按类别随机挑模版 (三类：normal / medal / guard 各自独立)
         tpls = [t for t in (cfg.get(templates_key) or []) if isinstance(t, str) and t.strip()]
         if not tpls:
             return
-        idx = self._tpl_idx.get(f"broadcast_welcome:{category}", 0)
-        self._tpl_idx[f"broadcast_welcome:{category}"] = idx + 1
-        tpl = tpls[idx % len(tpls)]
+        tpl = random.choice(tpls)
         # 大航海类别额外支持 {guard}/{舰长}: 1=总督 2=提督 3=舰长
         guard_name = {1: "总督", 2: "提督", 3: "舰长"}.get(guard_level, "")
         msg = (
@@ -982,7 +973,7 @@ class BiliLiveClient:
             return
         setattr(self, ts_attr, now)
         display_name = self._nickname_for(uid) or uname
-        tpl = self._pick_template(cmd_id, cmd_cfg.get("config") or {}, default_tpl)
+        tpl = self._pick_template(cmd_cfg.get("config") or {}, default_tpl)
         msg = (
             tpl.replace("{name}", display_name).replace("{昵称}", display_name)
                .replace("{streamer}", self.streamer_name or "").replace("{主播}", self.streamer_name or "")
@@ -1009,7 +1000,6 @@ class BiliLiveClient:
         content = event.get("content") or "开通"  # "开通" or "续费"
         num = extra.get("num") or 1
         tpl = self._pick_template(
-            "broadcast_guard",
             cmd_cfg.get("config") or {},
             "感谢{name}{content}了{num}个月{guard}",
         )
@@ -1040,7 +1030,6 @@ class BiliLiveClient:
         # extra.price 单位是电池（= 元 × 10）
         price = int(extra.get("price") or 0)
         tpl = self._pick_template(
-            "broadcast_superchat",
             cmd_cfg.get("config") or {},
             "感谢{name}的醒目留言",
         )
@@ -1209,7 +1198,6 @@ class BiliLiveClient:
         gift_count = gift_name if c == 1 else f"{gift_name} x{c}"
         cmd_cfg = get_command(self.real_room_id, "broadcast_gift") or {}
         tpl = self._pick_template(
-            "broadcast_gift",
             cmd_cfg.get("config") or {},
             "感谢{name}的 {gift_count}",
         )
@@ -1248,11 +1236,10 @@ class BiliLiveClient:
         return max(30.0, base * factor)
 
     async def _run_scheduled_danmu(self):
-        """Cycle through user-configured danmu on a fixed interval while the
-        stream is live. Reads the command config every loop so edits take
-        effect without a restart. Safe no-op when disabled / no messages /
+        """Randomly pick a message from the user-configured pool on each tick
+        while the stream is live. Reads the command config every loop so edits
+        take effect without a restart. Safe no-op when disabled / no messages /
         bot not bound / offline."""
-        idx = 0
         # 首轮等 30%~100% 的 interval，既避免部署/重连立即发，
         # 也让多房间同时启动时首条弹幕自动错峰，不再同秒对齐。
         cmd0 = get_command(self.real_room_id, "scheduled_danmu") or {}
@@ -1275,8 +1262,7 @@ class BiliLiveClient:
                     and self.cookies.get("SESSDATA")
                     and self.live_status == 1
                 ):
-                    raw = messages[idx % len(messages)]
-                    idx += 1
+                    raw = random.choice(messages)
                     # 模板占位符：{主播}/{streamer} → 主播名
                     msg = (
                         raw.replace("{主播}", self.streamer_name or "")
@@ -1305,8 +1291,11 @@ class BiliLiveClient:
                 if not self._reconnect:
                     log.error(f"连接断开: {e}")
             if self._running:
-                wait = 1 if self._reconnect else 5
-                log.info(f"{wait} 秒后重连...")
+                # 加随机抖动：Fly 重启 / B 站机房抖动时多房间容易同秒齐发
+                # 认证包，给 B 站一个"同 IP 多账号齐发"的明显信号。
+                # 手动重连 1~3s；自然重连 5~10s，把峰值打散。
+                wait = random.uniform(1, 3) if self._reconnect else random.uniform(5, 10)
+                log.info(f"{wait:.1f} 秒后重连...")
                 await asyncio.sleep(wait)
 
     async def _connect_and_listen(self):

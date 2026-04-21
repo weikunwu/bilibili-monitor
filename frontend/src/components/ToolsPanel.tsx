@@ -29,13 +29,65 @@ const AUTOMATION_IDS = new Set([
   'auto_gift', 'blind_box_query', 'rare_blind_query',
 ])
 
-const BLIND_DEFAULT_TEMPLATE = '感谢{name}的{count}个盲盒，{verdict}'
-const GIFT_DEFAULT_TEMPLATE = '感谢{name}的 {gift_count}'
-const GUARD_DEFAULT_TEMPLATE = '感谢{name}{content}了{num}个月{guard}'
-const FOLLOW_DEFAULT_TEMPLATE = '感谢{name}的关注~'
-const LIKE_DEFAULT_TEMPLATE = '感谢{name}的点赞~'
-const SHARE_DEFAULT_TEMPLATE = '感谢{name}的分享~'
-const SUPERCHAT_DEFAULT_TEMPLATE = '感谢{name}的醒目留言'
+// 与后端 server/config.py DEFAULT_COMMANDS 对齐：每类感谢默认 5 条，
+// "恢复默认"按钮直接把这 5 条写回，避免退化成单条。
+const BLIND_DEFAULT_TEMPLATES = [
+  '感谢{name}的{count}个盲盒，{verdict}',
+  '{name}开了{count}个盲盒，{verdict}',
+  '{name}的{count}盲盒，{verdict}',
+  '恭喜{name}开{count}个盲盒，{verdict}',
+  '{name}盲盒×{count}，{verdict}~',
+]
+const GIFT_DEFAULT_TEMPLATES = [
+  '感谢{name}的 {gift_count}',
+  '{name}送出 {gift_count}，谢谢老板',
+  '谢谢{name}的 {gift_count}，爱心一个',
+  '收到{name}的 {gift_count}，么么哒',
+  '{name}太豪气啦，{gift_count} 收到',
+]
+const GUARD_DEFAULT_TEMPLATES = [
+  '感谢{name}{content}了{num}个月{guard}',
+  '{name}{content}{guard}{num}个月，感谢大佬',
+  '欢迎{name}加入舰队，{content}{num}月{guard}',
+  '感谢{name}大佬{content}{num}个月{guard}，比心',
+  '{guard}{name}威武，感谢{content}{num}个月',
+]
+const FOLLOW_DEFAULT_TEMPLATES = [
+  '感谢{name}的关注~',
+  '{name}来啦，感谢关注！',
+  '谢谢{name}点了关注，比心',
+  '欢迎{name}常来哦，感谢关注',
+  '{name}关注啦，爱你哟',
+]
+const LIKE_DEFAULT_TEMPLATES = [
+  '感谢{name}的点赞~',
+  '{name}点了赞，谢谢支持',
+  '谢谢{name}的小心心',
+  '{name}点赞超甜的，爱你',
+  '收到{name}的点赞啦，比心',
+]
+const SHARE_DEFAULT_TEMPLATES = [
+  '感谢{name}的分享~',
+  '{name}帮忙分享啦，比心',
+  '谢谢{name}分享直播间',
+  '{name}把直播间分享出去啦，感谢',
+  '谢谢{name}拉人进来，爱你',
+]
+const SUPERCHAT_DEFAULT_TEMPLATES = [
+  '感谢{name}的醒目留言',
+  '{name}的醒目留言收到啦',
+  '谢谢{name}的 SC~',
+  '主播已读{name}的醒目留言',
+  '{name}的 SC 超暖的，感谢',
+]
+// Placeholder / 单值 fallback 用 pool[0]，与后端第一条默认保持一致。
+const BLIND_DEFAULT_TEMPLATE = BLIND_DEFAULT_TEMPLATES[0]
+const GIFT_DEFAULT_TEMPLATE = GIFT_DEFAULT_TEMPLATES[0]
+const GUARD_DEFAULT_TEMPLATE = GUARD_DEFAULT_TEMPLATES[0]
+const FOLLOW_DEFAULT_TEMPLATE = FOLLOW_DEFAULT_TEMPLATES[0]
+const LIKE_DEFAULT_TEMPLATE = LIKE_DEFAULT_TEMPLATES[0]
+const SHARE_DEFAULT_TEMPLATE = SHARE_DEFAULT_TEMPLATES[0]
+const SUPERCHAT_DEFAULT_TEMPLATE = SUPERCHAT_DEFAULT_TEMPLATES[0]
 const LURKER_DEFAULT_TEMPLATE = '说点什么呀~'
 
 function LurkerEditor({
@@ -167,7 +219,35 @@ function PkBroadcastEditor({
   )
 }
 
-const WELCOME_DEFAULT_TEMPLATE = '欢迎{name}进入直播间'
+// 欢迎弹幕三类默认（与后端对齐），pool[0] 留作 placeholder 用。
+const WELCOME_NORMAL_DEFAULTS = [
+  '欢迎{name}进入直播间',
+  '欢迎{name}来了~',
+  '{name}来啦，欢迎欢迎',
+  '欢迎{name}，有缘相遇',
+  '{name}到了，欢迎光临',
+]
+const WELCOME_MEDAL_DEFAULTS = [
+  '欢迎{name}回家~',
+  '亲爱的{name}回家啦',
+  '{name}回家咯，欢迎',
+  '家人{name}上线',
+  '欢迎{name}，终于等到你',
+]
+const WELCOME_GUARD_DEFAULTS = [
+  '{guard}{name}驾到！',
+  '欢迎{guard}{name}~',
+  '{guard}{name}来了，鞠躬',
+  '恭迎{guard}{name}！',
+  '{guard}{name}进场，比心',
+]
+const SCHEDULED_DANMU_DEFAULTS = [
+  '动动手指给{streamer}点点关注',
+  '新来的朋友记得点个关注哦~',
+  '喜欢{streamer}的话，加个关注不迷路',
+  '路过的朋友点个关注再走呗',
+  '关注{streamer}，下次直播不错过',
+]
 
 // 感谢弹幕分组：礼物/大航海/盲盒/关注/点赞 共用同一个总开关和保存/恢复默认按钮。
 // 总开关：任一子项开启即显示开启；关时一键全关，开时一键全开。
@@ -246,13 +326,13 @@ function ThanksGroup({
   }
 
   function restoreDefaults() {
-    setGiftTpls([GIFT_DEFAULT_TEMPLATE])
-    setGuardTpls([GUARD_DEFAULT_TEMPLATE])
-    setBlindTpls([BLIND_DEFAULT_TEMPLATE])
-    setFollowTpls([FOLLOW_DEFAULT_TEMPLATE])
-    setLikeTpls([LIKE_DEFAULT_TEMPLATE])
-    setShareTpls([SHARE_DEFAULT_TEMPLATE])
-    setSuperchatTpls([SUPERCHAT_DEFAULT_TEMPLATE])
+    setGiftTpls([...GIFT_DEFAULT_TEMPLATES])
+    setGuardTpls([...GUARD_DEFAULT_TEMPLATES])
+    setBlindTpls([...BLIND_DEFAULT_TEMPLATES])
+    setFollowTpls([...FOLLOW_DEFAULT_TEMPLATES])
+    setLikeTpls([...LIKE_DEFAULT_TEMPLATES])
+    setShareTpls([...SHARE_DEFAULT_TEMPLATES])
+    setSuperchatTpls([...SUPERCHAT_DEFAULT_TEMPLATES])
     onRestoreEnabled?.()
   }
 
@@ -458,7 +538,7 @@ function ScheduledDanmuEditor({
             appearance="subtle" size="sm"
             style={{ width: 88 }}
             onClick={() => {
-              setMessages(['动动手指给{streamer}点点关注'])
+              setMessages([...SCHEDULED_DANMU_DEFAULTS])
               setInterval('300')
               onRestoreEnabled?.()
             }}
@@ -484,9 +564,9 @@ interface WelcomeCfg {
   guard_enabled: boolean;  guard_templates: string[]
 }
 const WELCOME_DEFAULTS: WelcomeCfg = {
-  normal_enabled: true, normal_templates: [WELCOME_DEFAULT_TEMPLATE],
-  medal_enabled: true,  medal_templates: ['欢迎{name}回家~'],
-  guard_enabled: true,  guard_templates: ['{guard}{name}驾到！'],
+  normal_enabled: true, normal_templates: [...WELCOME_NORMAL_DEFAULTS],
+  medal_enabled: true,  medal_templates: [...WELCOME_MEDAL_DEFAULTS],
+  guard_enabled: true,  guard_templates: [...WELCOME_GUARD_DEFAULTS],
 }
 
 function WelcomeEditor({
