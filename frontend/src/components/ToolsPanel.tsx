@@ -35,7 +35,6 @@ const BLIND_DEFAULT_TEMPLATES = [
   '感谢{name}的{count}个盲盒，{verdict}',
   '{name}开了{count}个盲盒，{verdict}',
   '{name}的{count}盲盒，{verdict}',
-  '恭喜{name}开{count}个盲盒，{verdict}',
   '{name}盲盒×{count}，{verdict}~',
 ]
 const GIFT_DEFAULT_TEMPLATES = [
@@ -224,12 +223,9 @@ const WELCOME_NORMAL_DEFAULTS = [
   '欢迎{name}进入直播间',
   '欢迎{name}来了~',
   '{name}来啦，欢迎欢迎',
-  '欢迎{name}，有缘相遇',
-  '{name}到了，欢迎光临',
 ]
 const WELCOME_MEDAL_DEFAULTS = [
   '欢迎{name}回家~',
-  '亲爱的{name}回家啦',
   '{name}回家咯，欢迎',
   '家人{name}上线',
   '欢迎{name}，终于等到你',
