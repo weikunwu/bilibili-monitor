@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from ..config import DB_PATH, QR_GENERATE_API, QR_POLL_API, HEADERS, log
 from ..crypto import save_cookies
+from ..db import save_bot_buvid
 from ..auth import require_room_access
 from ..manager import manager
 
@@ -97,11 +98,17 @@ async def bot_poll(request: Request, qrcode_key: str):
         if "refresh_token=" in url_str:
             cookies["refresh_token"] = url_str.split("refresh_token=")[-1].split("&")[0]
         save_cookies(cookies, target_room_id)
+        # 绑定新账号：把上一个账号持久化的 buvid 清掉，让下次 get_buvid
+        # 用新 cookies 从 finger/spi 拿一个全新的，避免"同设备指纹换账号"
+        # 的可疑信号。
+        save_bot_buvid(target_room_id, "")
         uid = int(cookies.get("DedeUserID", 0))
         client = manager.get(target_room_id)
         if client:
             client.cookies = cookies
             client.bot_uid = uid
+            # 清掉内存里 per-session 的派生状态（老 buvid / 老用户名 / 老熔断）
+            client.reset_bot_session_state()
             client.request_reconnect()
         _qr_sessions.pop(qrcode_key, None)
         log.info(f"房间 {target_room_id} 扫码绑定成功 (UID: {uid})")

@@ -186,8 +186,7 @@ class BiliLiveClient:
         if saved:
             self.buvid = saved
             return
-        headers = self._make_cookie_header()
-        async with aiohttp.ClientSession(headers=headers) as session:
+        async with aiohttp.ClientSession(headers=self._make_cookie_header()) as session:
             async with session.get(FINGER_SPI_API) as resp:
                 data = await resp.json(content_type=None)
                 if data.get("code") == 0:
@@ -195,13 +194,19 @@ class BiliLiveClient:
                     log.info(f"获取 buvid: {self.buvid[:16]}...")
                     if self.buvid:
                         save_bot_buvid(self.room_id, self.buvid)
-            if self.cookies.get("SESSDATA"):
-                async with session.get(NAV_API) as resp:
-                    data = await resp.json(content_type=None)
-                    if data.get("code") == 0:
-                        self.bot_uid = data["data"].get("mid", 0)
-                        self.bot_name = data["data"].get("uname", "")
-                        log.info(f"已登录用户: {self.bot_name} (UID: {self.bot_uid})")
+
+    async def refresh_bot_identity(self):
+        # 已登录但 bot_name 还没取到时，从 NAV_API 拉一次用户名/UID。
+        # 拿到后常驻内存，重连不会重复请求。
+        if not self.cookies.get("SESSDATA") or self.bot_name:
+            return
+        async with aiohttp.ClientSession(headers=self._make_cookie_header()) as session:
+            async with session.get(NAV_API) as resp:
+                data = await resp.json(content_type=None)
+                if data.get("code") == 0:
+                    self.bot_uid = data["data"].get("mid", 0)
+                    self.bot_name = data["data"].get("uname", "")
+                    log.info(f"已登录用户: {self.bot_name} (UID: {self.bot_uid})")
 
     async def get_room_info(self):
         async with aiohttp.ClientSession(headers=self._make_cookie_header()) as session:
@@ -1216,6 +1221,16 @@ class BiliLiveClient:
         if self._ws and not self._ws.closed:
             asyncio.create_task(self._ws.close())
 
+    def reset_bot_session_state(self):
+        """换绑账号后调用：清掉上一个账号留下的 per-session 派生状态，
+        让下次重连重新拉 buvid / bot_name / 重置熔断。bot_uid 由调用方
+        直接覆盖成新账号的 UID，不在这里清。"""
+        self.buvid = ""
+        self.bot_name = ""
+        self._bot_cooldown_until = 0.0
+        self._bot_cooldown_reason = ""
+        self._bot_cooldown_count = 0
+
     async def run(self):
         self._running = True
         flush_task = asyncio.create_task(self._flush_pending_guards())
@@ -1300,6 +1315,7 @@ class BiliLiveClient:
 
     async def _connect_and_listen(self):
         await self.get_buvid()
+        await self.refresh_bot_identity()
         await self.get_room_info()
         # If we connected mid-stream, no LIVE cmd will fire — start recorder now.
         if self.live_status == 1 and get_room_auto_clip(self.room_id):
