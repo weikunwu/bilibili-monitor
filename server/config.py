@@ -86,6 +86,14 @@ NAV_API = "https://api.bilibili.com/x/web-interface/nav"
 QR_GENERATE_API = "https://passport.bilibili.com/x/passport-login/web/qrcode/generate"
 QR_POLL_API = "https://passport.bilibili.com/x/passport-login/web/qrcode/poll"
 
+# 公用提醒账号：某房间 bot cookie 失效时，用下列 room_id 已绑定的 cookie
+# 去失效房间发一条提醒弹幕。直接复用现有已扫码的 bot，跟随 QR 续期自然刷新，
+# 不用手抄 env var。未配置或 0 则整个功能静默关闭。
+try:
+    FALLBACK_BOT_ROOM_ID = int(os.environ.get("FALLBACK_BOT_ROOM_ID", "0") or "0")
+except ValueError:
+    FALLBACK_BOT_ROOM_ID = 0
+
 GUARD_LEVELS = {1: "总督", 2: "提督", 3: "舰长"}
 
 PERIOD_LABELS = {"today": "今日", "yesterday": "昨日", "this_week": "本周", "this_month": "今月", "last_month": "上月"}

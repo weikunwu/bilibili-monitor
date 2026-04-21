@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from ..config import DB_PATH, QR_GENERATE_API, QR_POLL_API, HEADERS, log
 from ..crypto import save_cookies
-from ..db import save_bot_buvid
+from ..db import save_bot_buvid, set_relogin_alerted
 from ..auth import require_room_access
 from ..manager import manager
 
@@ -44,7 +44,10 @@ async def bot_logout(room_id: int = Query(...), _=Depends(require_room_access)):
     # buvid 必须一并清掉，否则下次绑新账号会沿用旧 buvid，B 站会看到
     # "同一设备指纹换账号"的可疑信号。
     conn = sqlite3.connect(str(DB_PATH))
-    conn.execute("UPDATE rooms SET bot_cookie=NULL, bot_buvid=NULL WHERE room_id=?", (room_id,))
+    conn.execute(
+        "UPDATE rooms SET bot_cookie=NULL, bot_buvid=NULL, relogin_alerted=0 WHERE room_id=?",
+        (room_id,),
+    )
     conn.commit()
     conn.close()
     client = manager.get(room_id)
@@ -100,8 +103,10 @@ async def bot_poll(request: Request, qrcode_key: str):
         save_cookies(cookies, target_room_id)
         # 绑定新账号：把上一个账号持久化的 buvid 清掉，让下次 get_buvid
         # 用新 cookies 从 finger/spi 拿一个全新的，避免"同设备指纹换账号"
-        # 的可疑信号。
+        # 的可疑信号。同时清掉 relogin_alerted 标志，让新账号下次真失效时
+        # 能再次发提醒。
         save_bot_buvid(target_room_id, "")
+        set_relogin_alerted(target_room_id, False)
         uid = int(cookies.get("DedeUserID", 0))
         client = manager.get(target_room_id)
         if client:

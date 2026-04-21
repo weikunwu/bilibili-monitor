@@ -14,7 +14,8 @@ from typing import Optional
 import aiohttp
 
 from .config import (
-    HEADERS, bot_ua_for_uid, DANMU_CONF_API, DANMU_INFO_API, ROOM_INFO_API,
+    HEADERS, bot_ua_for_uid, FALLBACK_BOT_ROOM_ID,
+    DANMU_CONF_API, DANMU_INFO_API, ROOM_INFO_API,
     MASTER_INFO_API, FINGER_SPI_API, NAV_API, SEND_GIFT_API, SEND_MSG_API,
     WS_OP_AUTH, WS_OP_HEARTBEAT, PERIOD_LABELS, DANMU_PERIOD_MAP, DB_PATH,
     RARE_BLIND_MIN_PRICE, log,
@@ -27,9 +28,11 @@ from .db import (
     get_nickname, upsert_nickname, delete_nickname,
     set_live_started_at, get_gift_effect_test_enabled,
     get_bot_buvid, save_bot_buvid,
+    get_relogin_alerted, set_relogin_alerted,
 )
 from .routes.effects import trigger_gift_vap, try_trigger_entry_effect
 from .time_utils import beijing_time_range
+from .crypto import load_cookies
 
 
 def _pb_decode_varint(buf: bytes, off: int) -> tuple[int, int]:
@@ -168,6 +171,9 @@ class BiliLiveClient:
         self._bot_cooldown_reason: str = ""
         self._bot_cooldown_count: int = 0  # 硬风控命中次数，用于指数退避
         self._bot_cooldown_logged_skip: float = 0.0  # 冷却期跳过日志节流
+        # 登录态失效（csrf/SESSDATA 坏）：单独一个标志位，熔断治不了这个，
+        # 必须用户重新扫码才能恢复。前端据此提示"请重新扫码登录"。
+        self._needs_relogin: bool = False
 
     def _make_cookie_header(self) -> dict:
         headers = dict(HEADERS)
@@ -1230,6 +1236,7 @@ class BiliLiveClient:
         self._bot_cooldown_until = 0.0
         self._bot_cooldown_reason = ""
         self._bot_cooldown_count = 0
+        self._needs_relogin = False
 
     async def run(self):
         self._running = True
@@ -1622,15 +1629,19 @@ class BiliLiveClient:
         return random.uniform(self.DANMU_MIN_INTERVAL_LO, self.DANMU_MIN_INTERVAL_HI)
 
     # ----- 风控熔断 -----
-    # 硬风控码：B 站明确的限流/风控/登录态失效，命中就熔断。
-    # "频率过快"这类软提示不做 cooldown——A1/A4 已经把间隔拉开了，
-    # 偶发软限流只丢一条 msg 即可，停整个 bot 5 分钟代价太大。
-    _HARD_RISK_CODES = {-352, -799, 1024, -401, -101, -111}
+    # 真风控码：B 站主动限流/拦截，熔断等退避有意义。
+    # 不含 1024（网关 timeout）和 relogin codes（熔断治不了登录态坏）。
+    _RISK_CODES = {-352, -799}
+    # 登录态失效码：csrf/SESSDATA 坏了，必须重新扫码。熔断等再久也无济于事。
+    _RELOGIN_CODES = {-401, -101, -111}
     # 硬风控走指数退避 30min * 2^(count-1)，上限 12h
     _HARD_COOLDOWN_BASE_SEC = 30 * 60
     _HARD_COOLDOWN_CAP_SEC = 12 * 60 * 60
 
     def _is_bot_cooling(self) -> bool:
+        # 登录态坏了也当成冷却：所有写操作都跳过，等用户重新扫码恢复。
+        if self._needs_relogin:
+            return True
         return time.monotonic() < self._bot_cooldown_until
 
     def _bot_cooldown_remaining(self) -> float:
@@ -1652,13 +1663,60 @@ class BiliLiveClient:
         now = time.monotonic()
         if now - self._bot_cooldown_logged_skip >= 60:
             self._bot_cooldown_logged_skip = now
-            log.info(
-                f"[bot-cooldown] room={self.real_room_id} 跳过 {flow}，"
-                f"剩余 {int(self._bot_cooldown_remaining())}s 原因: {self._bot_cooldown_reason}"
+            if self._needs_relogin:
+                log.info(f"[bot-cooldown] room={self.real_room_id} 跳过 {flow}，需要重新扫码登录")
+            else:
+                log.info(
+                    f"[bot-cooldown] room={self.real_room_id} 跳过 {flow}，"
+                    f"剩余 {int(self._bot_cooldown_remaining())}s 原因: {self._bot_cooldown_reason}"
+                )
+
+    async def _send_relogin_alert(self):
+        """登录失效时用 FALLBACK_BOT_ROOM_ID 已绑定的 cookie 给本房间发一条
+        提醒弹幕，引导主播重新扫码。未配置、配置的是自己、或该房间 cookie
+        不全则静默跳过；发送失败也不影响 bot 主流程。
+        幂等：已发过的跨重启不再重复发，直到用户重新扫码清掉 DB 标志。"""
+        if not FALLBACK_BOT_ROOM_ID or FALLBACK_BOT_ROOM_ID == self.room_id:
+            return
+        if get_relogin_alerted(self.room_id):
+            log.info(f"[relogin-alert] room={self.real_room_id} 已提醒过，跳过（等用户扫码）")
+            return
+        fallback_cookies = load_cookies(FALLBACK_BOT_ROOM_ID)
+        sess = fallback_cookies.get("SESSDATA")
+        jct = fallback_cookies.get("bili_jct")
+        if not sess or not jct:
+            log.warning(
+                f"[relogin-alert] 公用账号 room={FALLBACK_BOT_ROOM_ID} cookie 缺失，"
+                f"无法给 room={self.real_room_id} 发提醒"
             )
+            return
+        msg = "狗狗机器人账号登录已失效"
+        headers = dict(HEADERS)
+        headers["Cookie"] = "; ".join(
+            f"{k}={v}" for k, v in fallback_cookies.items() if k != "refresh_token"
+        )
+        payload = {
+            "bubble": 0, "msg": msg, "color": 16777215,
+            "mode": 1, "fontsize": 25,
+            "rnd": int(time.time() * 1000) + random.randint(0, 999),
+            "roomid": self.real_room_id,
+            "csrf": jct, "csrf_token": jct,
+        }
+        try:
+            async with aiohttp.ClientSession(headers=headers) as session:
+                async with session.post(SEND_MSG_API, data=payload) as resp:
+                    data = await resp.json(content_type=None)
+                    if data.get("code") == 0:
+                        log.info(f"[relogin-alert] room={self.real_room_id} 提醒弹幕已发")
+                        set_relogin_alerted(self.room_id, True)
+                    else:
+                        log.warning(f"[relogin-alert] room={self.real_room_id} 提醒失败: {data}")
+        except Exception as e:
+            log.warning(f"[relogin-alert] room={self.real_room_id} 异常: {e}")
 
     def _react_to_bili_response(self, data: dict, flow: str) -> bool:
-        """检查 B 站响应，命中风控信号就进入冷却。返回是否刚进入了冷却。
+        """检查 B 站响应，命中风控/登录态问题就进入熔断/标记需重新登录。
+        返回是否之后应该跳过后续重试（即 cooling_now）。
 
         flow: 用于日志区分（send_danmu / send_gift）
         """
@@ -1667,10 +1725,22 @@ class BiliLiveClient:
         code = data.get("code")
         msg = str(data.get("message") or data.get("msg") or "")
         if code == 0:
-            # 一次正常成功就清零硬风控退避计数
+            # 一次正常成功就清零硬风控退避计数；登录态坏的标志不在这里清，
+            # 因为 code==0 不可能在登录态坏的情况下出现。
             self._bot_cooldown_count = 0
             return False
-        if code in self._HARD_RISK_CODES:
+        if code in self._RELOGIN_CODES:
+            if not self._needs_relogin:
+                self._needs_relogin = True
+                log.warning(
+                    f"[bot-relogin] room={self.real_room_id} 需重新扫码登录："
+                    f"{flow} code={code} msg={msg!r}"
+                )
+                # 用公用账号给本房间发一条提醒弹幕，让主播看到去重新扫码。
+                # 只在首次翻转标志时触发，避免刷屏。
+                asyncio.create_task(self._send_relogin_alert())
+            return True
+        if code in self._RISK_CODES:
             self._bot_cooldown_count += 1
             backoff = min(
                 self._HARD_COOLDOWN_CAP_SEC,

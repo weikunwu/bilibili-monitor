@@ -198,6 +198,9 @@ def init_db():
     rooms_cols = {row[1] for row in conn.execute("PRAGMA table_info(rooms)").fetchall()}
     if "bot_buvid" not in rooms_cols:
         conn.execute("ALTER TABLE rooms ADD COLUMN bot_buvid TEXT DEFAULT NULL")
+    # Migration: 登录失效提醒是否已发过，跨重启防重复发。重新扫码绑定时清 0。
+    if "relogin_alerted" not in rooms_cols:
+        conn.execute("ALTER TABLE rooms ADD COLUMN relogin_alerted INTEGER NOT NULL DEFAULT 0")
     conn.execute("""
         CREATE TABLE IF NOT EXISTS commands (
             id TEXT PRIMARY KEY,
@@ -480,6 +483,23 @@ def get_bot_buvid(room_id: int) -> str:
 def save_bot_buvid(room_id: int, buvid: str):
     conn = sqlite3.connect(str(DB_PATH))
     conn.execute("UPDATE rooms SET bot_buvid=? WHERE room_id=?", (buvid or None, room_id))
+    conn.commit()
+    conn.close()
+
+
+def get_relogin_alerted(room_id: int) -> bool:
+    conn = sqlite3.connect(str(DB_PATH))
+    row = conn.execute("SELECT relogin_alerted FROM rooms WHERE room_id=?", (room_id,)).fetchone()
+    conn.close()
+    return bool(row and row[0])
+
+
+def set_relogin_alerted(room_id: int, alerted: bool):
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.execute(
+        "UPDATE rooms SET relogin_alerted=? WHERE room_id=?",
+        (1 if alerted else 0, room_id),
+    )
     conn.commit()
     conn.close()
 

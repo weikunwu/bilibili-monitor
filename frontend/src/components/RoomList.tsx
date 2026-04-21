@@ -380,9 +380,50 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
                       onClick={(e) => { e.stopPropagation(); setAfdianTarget(r) }}
                     >爱发电续费</Button>
                   )}
-                  <Button size="sm" appearance="ghost" startIcon={<ChangeListIcon />} style={{ width: 132 }} onClick={(e) => { e.stopPropagation(); onBindBot?.(r.room_id) }}>
-                    {r.bot_uid ? '更换机器人' : '绑定机器人'}
-                  </Button>
+                  {r.needs_relogin ? (
+                    <div style={{ position: 'relative' }}>
+                      <Button
+                        size="sm" color="red" appearance="primary"
+                        startIcon={<ChangeListIcon />} style={{ width: 132 }}
+                        onClick={(e) => { e.stopPropagation(); onBindBot?.(r.room_id) }}
+                      >
+                        重新登录
+                      </Button>
+                      <div style={{
+                        position: 'absolute',
+                        top: 'calc(100% + 8px)',
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        padding: '6px 12px',
+                        background: '#2c2c2c',
+                        color: '#fff',
+                        borderRadius: 4,
+                        fontSize: 13,
+                        lineHeight: 1.4,
+                        whiteSpace: 'nowrap',
+                        boxShadow: '0 2px 6px rgba(0,0,0,0.3)',
+                        pointerEvents: 'none',
+                        zIndex: 1,
+                      }}>
+                        登录已失效，点此重新扫码
+                        <span style={{
+                          position: 'absolute',
+                          bottom: '100%',
+                          left: '50%',
+                          transform: 'translateX(-50%)',
+                          width: 0,
+                          height: 0,
+                          borderLeft: '5px solid transparent',
+                          borderRight: '5px solid transparent',
+                          borderBottom: '5px solid #2c2c2c',
+                        }} />
+                      </div>
+                    </div>
+                  ) : (
+                    <Button size="sm" appearance="ghost" startIcon={<ChangeListIcon />} style={{ width: 132 }} onClick={(e) => { e.stopPropagation(); onBindBot?.(r.room_id) }}>
+                      {r.bot_uid ? '更换机器人' : '绑定机器人'}
+                    </Button>
+                  )}
                   {r.bot_uid ? (
                     <Button
                       size="sm" color="red" appearance="ghost" style={{ width: 132 }}

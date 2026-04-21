@@ -90,6 +90,7 @@ export interface Room {
   announcement: string
   bot_uid: number
   bot_name: string
+  needs_relogin?: boolean  // SESSDATA/csrf 失效，需要用户重新扫码
   active: boolean
   save_danmu: boolean
   expires_at: string | null  // UTC 'YYYY-MM-DD HH:MM:SS'，null 表示永不过期

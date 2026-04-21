@@ -115,6 +115,7 @@ async def get_rooms(request: Request):
                 "announcement": c.announcement,
                 "bot_uid": c.bot_uid if c.cookies.get("SESSDATA") else 0,
                 "bot_name": c.bot_name if c.cookies.get("SESSDATA") else "",
+                "needs_relogin": bool(c._needs_relogin and c.cookies.get("SESSDATA")),
                 "active": c._running,
                 "save_danmu": get_room_save_danmu(room_id),
                 "expires_at": get_room_expires_at(room_id),
