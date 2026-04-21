@@ -194,6 +194,10 @@ def init_db():
             expired_reminder_count INTEGER NOT NULL DEFAULT 0
         )
     """)
+    # Migration: 每账号持久化 buvid，避免每次重连生成新的设备指纹。
+    rooms_cols = {row[1] for row in conn.execute("PRAGMA table_info(rooms)").fetchall()}
+    if "bot_buvid" not in rooms_cols:
+        conn.execute("ALTER TABLE rooms ADD COLUMN bot_buvid TEXT DEFAULT NULL")
     conn.execute("""
         CREATE TABLE IF NOT EXISTS commands (
             id TEXT PRIMARY KEY,
@@ -461,6 +465,21 @@ def remove_room(room_id: int):
 def set_room_active(room_id: int, active: bool):
     conn = sqlite3.connect(str(DB_PATH))
     conn.execute("UPDATE rooms SET active=? WHERE room_id=?", (int(active), room_id))
+    conn.commit()
+    conn.close()
+
+
+def get_bot_buvid(room_id: int) -> str:
+    """返回该房间 bot 持久化的 buvid；未设置返回空串。"""
+    conn = sqlite3.connect(str(DB_PATH))
+    row = conn.execute("SELECT bot_buvid FROM rooms WHERE room_id=?", (room_id,)).fetchone()
+    conn.close()
+    return (row[0] if row and row[0] else "") or ""
+
+
+def save_bot_buvid(room_id: int, buvid: str):
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.execute("UPDATE rooms SET bot_buvid=? WHERE room_id=?", (buvid or None, room_id))
     conn.commit()
     conn.close()
 

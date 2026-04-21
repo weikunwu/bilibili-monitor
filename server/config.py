@@ -97,6 +97,24 @@ HEADERS = {
     "Origin": "https://live.bilibili.com",
 }
 
+# 同一台机器下多账号的"设备簇"信号很强，给每个 bot 账号稳定分配一个 UA
+# 可以让指纹松散一档。按 uid 取模映射，保证同一账号跨重启始终用同一 UA。
+BOT_UA_POOL = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Safari/605.1.15",
+]
+
+
+def bot_ua_for_uid(uid: int) -> str:
+    """按 uid 稳定映射到 BOT_UA_POOL。uid=0（未登录）返回默认 UA。"""
+    if not uid:
+        return HEADERS["User-Agent"]
+    return BOT_UA_POOL[uid % len(BOT_UA_POOL)]
+
 # ── 默认指令 ──
 DEFAULT_COMMANDS = [
     {
@@ -140,7 +158,13 @@ DEFAULT_COMMANDS = [
         "description": "观众在本场直播关注主播后，机器人按模版感谢一次（同一用户一次）",
         "default_enabled": True,
         "config": {
-            "templates": ["感谢{name}的关注~"],
+            "templates": [
+                "感谢{name}的关注~",
+                "{name}来啦，感谢关注！",
+                "谢谢{name}点了关注，比心",
+                "欢迎{name}常来哦，感谢关注",
+                "{name}关注啦，爱你哟",
+            ],
         },
     },
     {
@@ -150,7 +174,13 @@ DEFAULT_COMMANDS = [
         "description": "观众在本场直播首次点赞后，机器人按模版感谢一次（同一用户一次）",
         "default_enabled": True,
         "config": {
-            "templates": ["感谢{name}的点赞~"],
+            "templates": [
+                "感谢{name}的点赞~",
+                "{name}点了赞，谢谢支持",
+                "谢谢{name}的小心心",
+                "{name}点赞超甜的，爱你",
+                "收到{name}的点赞啦，比心",
+            ],
         },
     },
     {
@@ -160,7 +190,13 @@ DEFAULT_COMMANDS = [
         "description": "观众分享直播间后，机器人按模版感谢一次（同一用户一次）",
         "default_enabled": True,
         "config": {
-            "templates": ["感谢{name}的分享~"],
+            "templates": [
+                "感谢{name}的分享~",
+                "{name}帮忙分享啦，比心",
+                "谢谢{name}分享直播间",
+                "{name}把直播间分享出去啦，感谢",
+                "谢谢{name}拉人进来，爱你",
+            ],
         },
     },
     {
@@ -170,7 +206,13 @@ DEFAULT_COMMANDS = [
         "description": "用户送出付费礼物（盲盒除外）后，机器人按模版自动发弹幕感谢。同种礼物连送会合并数量，不同礼物各自独立计时。",
         "default_enabled": True,
         "config": {
-            "templates": ["感谢{name}的 {gift_count}"],
+            "templates": [
+                "感谢{name}的 {gift_count}",
+                "{name}送出 {gift_count}，谢谢老板",
+                "谢谢{name}的 {gift_count}，爱心一个",
+                "收到{name}的 {gift_count}，么么哒",
+                "{name}太豪气啦，{gift_count} 收到",
+            ],
         },
     },
     {
@@ -180,7 +222,13 @@ DEFAULT_COMMANDS = [
         "description": "用户开通/续费舰长/提督/总督后，机器人按模版自动发弹幕感谢",
         "default_enabled": True,
         "config": {
-            "templates": ["感谢{name}{content}了{num}个月{guard}"],
+            "templates": [
+                "感谢{name}{content}了{num}个月{guard}",
+                "{name}{content}{guard}{num}个月，感谢大佬",
+                "欢迎{name}加入舰队，{content}{num}月{guard}",
+                "感谢{name}大佬{content}{num}个月{guard}，比心",
+                "{guard}{name}威武，感谢{content}{num}个月",
+            ],
         },
     },
     {
@@ -190,7 +238,13 @@ DEFAULT_COMMANDS = [
         "description": "用户发送醒目留言后，机器人按模版自动发弹幕感谢",
         "default_enabled": True,
         "config": {
-            "templates": ["感谢{name}的醒目留言"],
+            "templates": [
+                "感谢{name}的醒目留言",
+                "{name}的醒目留言收到啦",
+                "谢谢{name}的 SC~",
+                "主播已读{name}的醒目留言",
+                "{name}的 SC 超暖的，感谢",
+            ],
         },
     },
     {
@@ -200,7 +254,12 @@ DEFAULT_COMMANDS = [
         "description": "用户开盲盒后，机器人按模版自动发弹幕播报盈亏",
         "default_enabled": True,
         "config": {
-            "templates": ["感谢{name}的{count}个盲盒，{verdict}"],
+            "templates": [
+                "感谢{name}的{count}个盲盒，{verdict}",
+                "{name}开了{count}个盲盒，{verdict}",
+                "{name}的{count}盲盒，{verdict}",
+                "{name}盲盒×{count}，{verdict}~",
+            ],
         },
     },
     {
@@ -213,11 +272,26 @@ DEFAULT_COMMANDS = [
             # 三类：普通 / 专属 (戴本房粉丝牌) / 大航海 (本房舰长以上)
             # 各自独立开关 + 模版；命中优先级: 大航海 > 专属 > 普通
             "normal_enabled": True,
-            "normal_templates": ["欢迎{name}进入直播间"],
+            "normal_templates": [
+                "欢迎{name}进入直播间",
+                "欢迎{name}来了~",
+                "{name}来啦，欢迎欢迎",
+            ],
             "medal_enabled": True,
-            "medal_templates": ["欢迎{name}回家~"],
+            "medal_templates": [
+                "欢迎{name}回家~",
+                "{name}回家咯，欢迎",
+                "家人{name}上线",
+                "欢迎{name}，终于等到你",
+            ],
             "guard_enabled": True,
-            "guard_templates": ["{guard}{name}驾到！"],
+            "guard_templates": [
+                "{guard}{name}驾到！",
+                "欢迎{guard}{name}~",
+                "{guard}{name}来了，鞠躬",
+                "恭迎{guard}{name}！",
+                "{guard}{name}进场，比心",
+            ],
         },
     },
     {
@@ -228,7 +302,13 @@ DEFAULT_COMMANDS = [
         "default_enabled": True,
         "config": {
             "interval_sec": 300,
-            "messages": ["动动手指给{streamer}点点关注"],
+            "messages": [
+                "动动手指给{streamer}点点关注",
+                "新来的朋友记得点个关注哦~",
+                "喜欢{streamer}的话，加个关注不迷路",
+                "路过的朋友点个关注再走呗",
+                "关注{streamer}，下次直播不错过",
+            ],
         },
     },
     {

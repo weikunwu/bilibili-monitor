@@ -14,7 +14,7 @@ from typing import Optional
 import aiohttp
 
 from .config import (
-    HEADERS, DANMU_CONF_API, DANMU_INFO_API, ROOM_INFO_API,
+    HEADERS, bot_ua_for_uid, DANMU_CONF_API, DANMU_INFO_API, ROOM_INFO_API,
     MASTER_INFO_API, FINGER_SPI_API, NAV_API, SEND_GIFT_API, SEND_MSG_API,
     WS_OP_AUTH, WS_OP_HEARTBEAT, PERIOD_LABELS, DANMU_PERIOD_MAP, DB_PATH,
     RARE_BLIND_MIN_PRICE, log,
@@ -26,6 +26,7 @@ from .db import (
     save_event, get_command, get_room_save_danmu, get_room_auto_clip,
     get_nickname, upsert_nickname, delete_nickname,
     set_live_started_at, get_gift_effect_test_enabled,
+    get_bot_buvid, save_bot_buvid,
 )
 from .routes.effects import trigger_gift_vap, try_trigger_entry_effect
 from .time_utils import beijing_time_range
@@ -157,21 +158,36 @@ class BiliLiveClient:
         # 本房间 AI 回复上一次发送时间（防止同房间高频刷屏）。
         self._last_ai_reply_ts: float = 0.0
         # 本房间所有自动弹幕（感谢/欢迎/AI/提醒/命令响应…）共用一把锁，
-        # 保证相邻两条之间至少 DANMU_MIN_INTERVAL 秒，避免被 B 站限流。
+        # 相邻两条之间等一个随机区间（见 DANMU_MIN_INTERVAL_LO/HI），避免被 B 站限流。
         self._send_danmu_lock = asyncio.Lock()
         self._last_send_danmu_ts: float = 0.0
         # 已播报过的 pk_id；PRE_NEW 可能被 B站 重发，用这个去重（偶发性的
         # 匹配取消没进入 START_NEW 会带来 <1% 的空播报，业务上可接受）。
         self._pk_broadcasted: set[int] = set()
+        # 风控熔断：命中硬风控码后静音指数退避，避免继续硬撞。
+        # monotonic 时间戳，进程内状态，重启即清零。
+        self._bot_cooldown_until: float = 0.0
+        self._bot_cooldown_reason: str = ""
+        self._bot_cooldown_count: int = 0  # 硬风控命中次数，用于指数退避
+        self._bot_cooldown_logged_skip: float = 0.0  # 冷却期跳过日志节流
 
     def _make_cookie_header(self) -> dict:
         headers = dict(HEADERS)
+        # 按 bot_uid 稳定分配 UA，让同机器不同账号的指纹不完全一致。
+        if self.bot_uid:
+            headers["User-Agent"] = bot_ua_for_uid(self.bot_uid)
         if self.cookies:
             cookie_str = "; ".join(f"{k}={v}" for k, v in self.cookies.items() if k != "refresh_token")
             headers["Cookie"] = cookie_str
         return headers
 
     async def get_buvid(self):
+        # 每账号持久化 buvid：绑定后一直复用同一个设备指纹，避免每次重连
+        # 都从 finger/spi 拿新值让 B 站看到"同一账号设备不断变化"。
+        saved = get_bot_buvid(self.room_id)
+        if saved:
+            self.buvid = saved
+            return
         headers = self._make_cookie_header()
         async with aiohttp.ClientSession(headers=headers) as session:
             async with session.get(FINGER_SPI_API) as resp:
@@ -179,6 +195,8 @@ class BiliLiveClient:
                 if data.get("code") == 0:
                     self.buvid = data["data"].get("b_3", "")
                     log.info(f"获取 buvid: {self.buvid[:16]}...")
+                    if self.buvid:
+                        save_bot_buvid(self.room_id, self.buvid)
             if self.cookies.get("SESSDATA"):
                 async with session.get(NAV_API) as resp:
                     data = await resp.json(content_type=None)
@@ -1222,16 +1240,24 @@ class BiliLiveClient:
             sched_task.cancel()
             lurker_task.cancel()
 
+    # 每轮间隔在 base * (1 ± SCHEDULED_DANMU_JITTER) 内随机抖动，避免机械节奏。
+    SCHEDULED_DANMU_JITTER = 0.2
+
+    def _jittered_interval(self, base: int) -> float:
+        factor = 1.0 + random.uniform(-self.SCHEDULED_DANMU_JITTER, self.SCHEDULED_DANMU_JITTER)
+        return max(30.0, base * factor)
+
     async def _run_scheduled_danmu(self):
         """Cycle through user-configured danmu on a fixed interval while the
         stream is live. Reads the command config every loop so edits take
         effect without a restart. Safe no-op when disabled / no messages /
         bot not bound / offline."""
         idx = 0
-        # 先等一个完整 interval 再发，避免每次部署/重连立即发一条。
-        # 初始化时读一次 interval，作为首轮等待时长。
+        # 首轮等 30%~100% 的 interval，既避免部署/重连立即发，
+        # 也让多房间同时启动时首条弹幕自动错峰，不再同秒对齐。
         cmd0 = get_command(self.real_room_id, "scheduled_danmu") or {}
-        first_wait = max(60, min(3600, int((cmd0.get("config") or {}).get("interval_sec") or 300)))
+        base_first = max(60, min(3600, int((cmd0.get("config") or {}).get("interval_sec") or 300)))
+        first_wait = base_first * random.uniform(0.3, 1.0)
         try:
             await asyncio.sleep(first_wait)
         except asyncio.CancelledError:
@@ -1266,7 +1292,7 @@ class BiliLiveClient:
                 log.warning(f"[定时弹幕] loop error: {e}")
                 interval = 60
             try:
-                await asyncio.sleep(interval)
+                await asyncio.sleep(self._jittered_interval(interval))
             except asyncio.CancelledError:
                 raise
 
@@ -1547,6 +1573,9 @@ class BiliLiveClient:
         if not self.cookies.get("SESSDATA") or not self.streamer_uid:
             log.warning("未绑定机器人或无主播信息，无法自动送礼")
             return
+        if self._is_bot_cooling():
+            self._log_cooldown_skip("send_gift")
+            return
         gift_id = config.get("gift_id", 31036)
         gift_num = config.get("gift_num", 1)
         gift_price = config.get("gift_price", 100)
@@ -1568,6 +1597,7 @@ class BiliLiveClient:
                     except Exception:
                         log.warning(f"[自动送礼] 非JSON响应: {text[:500]}")
                         return
+                    self._react_to_bili_response(data, "send_gift")
                     if data.get("code") == 0:
                         log.info(f"[自动送礼] 房间 {self.room_id} 送出礼物 gift_id={gift_id} x{gift_num}")
                     else:
@@ -1577,19 +1607,91 @@ class BiliLiveClient:
             log.warning(f"[自动送礼] 异常: {e}")
             asyncio.create_task(self.send_danmu("[打个有效] 送礼失败"))
 
-    DANMU_MIN_INTERVAL = 2.0  # 同一机器人相邻两条弹幕最少间隔（秒）
+    # 同一机器人相邻两条弹幕的间隔在 [LO, HI] 秒内随机取值。
+    # 随机化既能降低"频率过快"告警命中率，也让节奏更像真人；
+    # 下限 3s 已经高于观测到的限流红线（原先固定 2s 偶发踩线）。
+    DANMU_MIN_INTERVAL_LO = 3.0
+    DANMU_MIN_INTERVAL_HI = 6.0
+
+    def _next_danmu_interval(self) -> float:
+        return random.uniform(self.DANMU_MIN_INTERVAL_LO, self.DANMU_MIN_INTERVAL_HI)
+
+    # ----- 风控熔断 -----
+    # 硬风控码：B 站明确的限流/风控/登录态失效，命中就熔断。
+    # "频率过快"这类软提示不做 cooldown——A1/A4 已经把间隔拉开了，
+    # 偶发软限流只丢一条 msg 即可，停整个 bot 5 分钟代价太大。
+    _HARD_RISK_CODES = {-352, -799, 1024, -401, -101, -111}
+    # 硬风控走指数退避 30min * 2^(count-1)，上限 12h
+    _HARD_COOLDOWN_BASE_SEC = 30 * 60
+    _HARD_COOLDOWN_CAP_SEC = 12 * 60 * 60
+
+    def _is_bot_cooling(self) -> bool:
+        return time.monotonic() < self._bot_cooldown_until
+
+    def _bot_cooldown_remaining(self) -> float:
+        return max(0.0, self._bot_cooldown_until - time.monotonic())
+
+    def _enter_bot_cooldown(self, reason: str, seconds: float):
+        # 只在新的冷却更长时覆盖，避免短冷却覆盖长冷却
+        new_until = time.monotonic() + seconds
+        if new_until > self._bot_cooldown_until:
+            self._bot_cooldown_until = new_until
+            self._bot_cooldown_reason = reason
+            log.warning(
+                f"[bot-cooldown] room={self.real_room_id} 熔断 {int(seconds)}s "
+                f"原因: {reason}"
+            )
+
+    def _log_cooldown_skip(self, flow: str):
+        # 冷却期内被调用时，节流成每 60s 一行日志，避免刷屏
+        now = time.monotonic()
+        if now - self._bot_cooldown_logged_skip >= 60:
+            self._bot_cooldown_logged_skip = now
+            log.info(
+                f"[bot-cooldown] room={self.real_room_id} 跳过 {flow}，"
+                f"剩余 {int(self._bot_cooldown_remaining())}s 原因: {self._bot_cooldown_reason}"
+            )
+
+    def _react_to_bili_response(self, data: dict, flow: str) -> bool:
+        """检查 B 站响应，命中风控信号就进入冷却。返回是否刚进入了冷却。
+
+        flow: 用于日志区分（send_danmu / send_gift）
+        """
+        if not isinstance(data, dict):
+            return False
+        code = data.get("code")
+        msg = str(data.get("message") or data.get("msg") or "")
+        if code == 0:
+            # 一次正常成功就清零硬风控退避计数
+            self._bot_cooldown_count = 0
+            return False
+        if code in self._HARD_RISK_CODES:
+            self._bot_cooldown_count += 1
+            backoff = min(
+                self._HARD_COOLDOWN_CAP_SEC,
+                self._HARD_COOLDOWN_BASE_SEC * (2 ** (self._bot_cooldown_count - 1)),
+            )
+            self._enter_bot_cooldown(
+                f"{flow} 硬风控 code={code} msg={msg!r} (第{self._bot_cooldown_count}次)",
+                backoff,
+            )
+            return True
+        return False
 
     async def send_danmu(self, msg: str, reply_uid: int = 0, reply_uname: str = ""):
         if not self.cookies.get("SESSDATA"):
+            return
+        if self._is_bot_cooling():
+            self._log_cooldown_skip("send_danmu")
             return
         csrf = self.cookies.get("bili_jct", "")
         # B站弹幕限制40字，超长分段发送
         chunks = [msg[i:i+40] for i in range(0, len(msg), 40)]
         # 全局串行化：不同流程（感谢/欢迎/AI/命令…）并发调用时排队发送，
-        # 相邻两次之间等够 DANMU_MIN_INTERVAL，消息整体用完后记录时间戳。
+        # 每次等一个随机区间的间隔，消息整体用完后记录时间戳。
         async with self._send_danmu_lock:
             now = time.monotonic()
-            wait = self._last_send_danmu_ts + self.DANMU_MIN_INTERVAL - now
+            wait = self._last_send_danmu_ts + self._next_danmu_interval() - now
             if wait > 0:
                 await asyncio.sleep(wait)
             try:
@@ -1607,16 +1709,24 @@ class BiliLiveClient:
                             payload["reply_mid"] = reply_uid
                             payload["reply_uname"] = reply_uname
                             payload["reply_attr"] = 0
+                        cooling_now = False
                         for attempt in range(3):
                             async with session.post(SEND_MSG_API, data=payload) as resp:
                                 data = await resp.json(content_type=None)
                                 if data.get("code") == 0:
+                                    self._react_to_bili_response(data, "send_danmu")
                                     break
                                 log.warning(f"[发弹幕] 第{attempt+1}次失败: {data.get('message', data.get('msg', ''))}")
+                                # 命中风控就不再重试，避免继续硬撞
+                                if self._react_to_bili_response(data, "send_danmu"):
+                                    cooling_now = True
+                                    break
                                 await asyncio.sleep(2)
-                        # 多段消息之间也遵守同样间隔
+                        if cooling_now:
+                            break  # 剩余分段也跳过
+                        # 多段消息之间也用同样的随机区间
                         if i < len(chunks) - 1:
-                            await asyncio.sleep(self.DANMU_MIN_INTERVAL)
+                            await asyncio.sleep(self._next_danmu_interval())
             except Exception as e:
                 log.warning(f"[发弹幕] 异常: {e}")
             finally:

@@ -39,9 +39,11 @@ async def bot_status(room_id: int = Query(...), _=Depends(require_room_access)):
 
 @router.post("/api/bot/logout")
 async def bot_logout(room_id: int = Query(...), _=Depends(require_room_access)):
-    # 解绑：清 cookie + 停止该房间监控（observe 重启需要主播先重新绑定）
+    # 解绑：清 cookie + buvid + 停止该房间监控（observe 重启需要主播先重新绑定）。
+    # buvid 必须一并清掉，否则下次绑新账号会沿用旧 buvid，B 站会看到
+    # "同一设备指纹换账号"的可疑信号。
     conn = sqlite3.connect(str(DB_PATH))
-    conn.execute("UPDATE rooms SET bot_cookie=NULL WHERE room_id=?", (room_id,))
+    conn.execute("UPDATE rooms SET bot_cookie=NULL, bot_buvid=NULL WHERE room_id=?", (room_id,))
     conn.commit()
     conn.close()
     client = manager.get(room_id)
