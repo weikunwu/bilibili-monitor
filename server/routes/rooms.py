@@ -472,6 +472,10 @@ async def put_overlay_settings_route(room_id: int, request: Request, _=Depends(r
         if tr not in ("today", "week", "live"):
             raise HTTPException(400, "time_range 必须是 today / week / live")
         patch["time_range"] = tr
+    if "scroll_enabled" in body:
+        patch["scroll_enabled"] = bool(body["scroll_enabled"])
+    if "scroll_speed" in body:
+        patch["scroll_speed"] = max(0, min(100, int(body["scroll_speed"])))
     # 合理性：max_price > 0 时必须 >= min_price
     merged = {**get_overlay_settings(room_id), **patch}
     if merged["max_price"] and merged["max_price"] < merged["min_price"]:
