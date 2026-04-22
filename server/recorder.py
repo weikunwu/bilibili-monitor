@@ -342,28 +342,60 @@ class RecorderSession:
             h["Cookie"] = "; ".join(f"{k}={v}" for k, v in self.cookies.items() if k != "refresh_token")
         return h
 
+    # 重试退避：2s 起步翻倍封顶 30s；每次成功 resolve 后复位。下播由 bili_client 的
+    # PREPARING → stop_for 托底，这里不需要自己判断 live_status。
+    BACKOFF_START_SEC = 2
+    BACKOFF_MAX_SEC = 30
+
     async def _run(self):
-        self._session = aiohttp.ClientSession(headers=self._headers(), timeout=aiohttp.ClientTimeout(total=8))
+        backoff = self.BACKOFF_START_SEC
         try:
-            if not await self._resolve_playurl():
-                log.warning(f"[recorder] room {self.room_id} 无可用 fmp4 HLS 流")
-                return
-            self._last_data_ts = time.time()
             while self._running:
                 try:
-                    await self._poll_once()
+                    self._session = aiohttp.ClientSession(
+                        headers=self._headers(),
+                        timeout=aiohttp.ClientTimeout(total=8),
+                    )
+                    if not await self._resolve_playurl():
+                        log.warning(f"[recorder] room {self.room_id} 无可用 fmp4 HLS 流")
+                    else:
+                        backoff = self.BACKOFF_START_SEC
+                        self._last_data_ts = time.time()
+                        while self._running:
+                            try:
+                                await self._poll_once()
+                            except asyncio.CancelledError:
+                                raise
+                            except Exception as ex:
+                                log.info(f"[recorder] room {self.room_id} poll err: {ex}")
+                            if time.time() - self._last_data_ts > self.STALE_GRACE_SEC:
+                                log.warning(
+                                    f"[recorder] room {self.room_id} no playlist data for "
+                                    f"{self.STALE_GRACE_SEC:.0f}s, re-resolving playurl"
+                                )
+                                try:
+                                    await self._resolve_playurl()
+                                except Exception as ex:
+                                    log.warning(f"[recorder] room {self.room_id} re-resolve err: {ex}")
+                                self._last_data_ts = time.time()
+                            await asyncio.sleep(POLL_INTERVAL)
                 except asyncio.CancelledError:
                     raise
-                except Exception as ex:
-                    log.info(f"[recorder] room {self.room_id} poll err: {ex}")
-                if time.time() - self._last_data_ts > self.STALE_GRACE_SEC:
-                    log.warning(
-                        f"[recorder] room {self.room_id} no playlist data for "
-                        f"{self.STALE_GRACE_SEC:.0f}s, re-resolving playurl"
-                    )
-                    await self._resolve_playurl()
-                    self._last_data_ts = time.time()
-                await asyncio.sleep(POLL_INTERVAL)
+                except Exception:
+                    # resolve/poll 循环外层挂了：别让任务死。打完 stack 退避后重来。
+                    log.exception(f"[recorder] room {self.room_id} run err")
+                finally:
+                    if self._session:
+                        try:
+                            await self._session.close()
+                        except Exception:
+                            pass
+                        self._session = None
+                if not self._running:
+                    break
+                log.info(f"[recorder] room {self.room_id} {backoff}s 后重试")
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 2, self.BACKOFF_MAX_SEC)
         except asyncio.CancelledError:
             pass
 
@@ -381,7 +413,13 @@ class RecorderSession:
         if data.get("code") != 0:
             log.warning(f"[recorder] playurl code={data.get('code')} msg={data.get('message')}")
             return False
-        for s in data.get("data", {}).get("playurl_info", {}).get("playurl", {}).get("stream", []):
+        # .get(k, {}) 在 k 存在但值是 None 时会返回 None（不是 default）。B 站偶尔
+        # 给 "playurl_info": null 之类的空响应，链式调用会炸出 AttributeError 把
+        # 整个 _run 任务带走（见过多次静默僵死事故），所以逐层 `or {}` 兜底。
+        data_d = data.get("data") or {}
+        info = data_d.get("playurl_info") or {}
+        playurl = info.get("playurl") or {}
+        for s in playurl.get("stream") or []:
             if s.get("protocol_name") != "http_hls":
                 continue
             for fmt in s.get("format", []):
