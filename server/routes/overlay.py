@@ -224,8 +224,11 @@ async def overlay_gifts(
 
     placeholders = ",".join("?" for _ in wanted_types)
     conn = sqlite3.connect(str(DB_PATH))
-    # 多拉一些然后 Python 侧按设置过滤；最多扫 max_events * 5 条保证性能
-    scan_limit = max_events * 5
+    # 多拉一些然后 Python 侧按设置过滤。buffer 要足够大，否则低价礼物会把高价事件
+    # 挤出扫描窗口（比如 min_price=500 设置本意是过滤小礼，但小礼在 SQL 阶段没被
+    # 过滤掉仍然占扫描名额，导致总督/SC 反而不见了）。单房间一周 qualifying
+    # 事件量级在 10³，max_events * 100 足够覆盖；SQLite 在此量级毫秒可完成。
+    scan_limit = max_events * 100
     rows = conn.execute(
         f"SELECT id, event_type, user_name, user_id, content, extra_json FROM events "
         f"WHERE event_type IN ({placeholders}) AND room_id=? "
