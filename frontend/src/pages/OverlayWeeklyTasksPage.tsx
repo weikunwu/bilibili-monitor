@@ -97,7 +97,7 @@ export function OverlayWeeklyTasksPage() {
     >
       <div
         style={{
-          maxWidth: 440,
+          maxWidth: 400,
           background: 'linear-gradient(135deg, rgba(42,18,42,0.88), rgba(60,22,48,0.88))',
           border: '1px solid rgba(255, 107, 157, 0.25)',
           borderRadius: 14,
@@ -112,22 +112,22 @@ export function OverlayWeeklyTasksPage() {
             alt=""
             style={{ width: 20, height: 20, objectFit: 'contain', display: 'block' }}
           />
-          <span style={{ fontSize: 14, fontWeight: 600, letterSpacing: 0.3 }}>
+          <span style={{ fontSize: 20, fontWeight: 600, letterSpacing: 0.3 }}>
             收集心动盲盒
           </span>
-          <span style={{ marginLeft: 'auto', fontSize: 14, fontWeight: 600 }}>
+          <span style={{ marginLeft: 'auto', fontSize: 20, fontWeight: 600 }}>
             <span style={{ color: '#ff85a2' }}>{count}</span>
             <span style={{ color: '#aaa' }}>/{nextTarget}</span>
           </span>
         </div>
 
         {/* 进度条：整体一条粗条，"已收集" 标签沉在填充色起点里 */}
-        <div style={{ position: 'relative', height: 28 }}>
-          {/* 底轨（只在右侧留 14px 让最后一个里程碑圆点不越界；
+        <div style={{ position: 'relative', height: 36 }}>
+          {/* 底轨（只在右侧留 18px 让最后一个里程碑圆点不越界；
               左侧不留——第 1 个点在 25% 锚位，不会从左边越界） */}
           <div
             style={{
-              position: 'absolute', left: 0, right: 14, top: 2, height: 24,
+              position: 'absolute', left: 0, right: 18, top: 6, height: 24,
               background: 'rgba(255,255,255,0.12)',
               borderRadius: 12,
             }}
@@ -135,15 +135,15 @@ export function OverlayWeeklyTasksPage() {
           {/* 填充轨 */}
           <div
             style={{
-              position: 'absolute', left: 0, top: 2, height: 24,
-              width: `calc((100% - 14px) * ${fillPct / 100})`,
+              position: 'absolute', left: 0, top: 6, height: 24,
+              width: `calc((100% - 18px) * ${fillPct / 100})`,
               minWidth: 58,
               background: 'linear-gradient(to right, #ff2d6b, #ff7aa0)',
               borderRadius: 12,
               boxShadow: '0 0 8px rgba(255,60,110,0.5)',
               display: 'flex', alignItems: 'center',
               paddingLeft: 10,
-              color: '#fff', fontSize: 11, fontWeight: 700,
+              color: '#fff', fontSize: 17, fontWeight: 700,
               letterSpacing: 0.3,
               whiteSpace: 'nowrap',
               boxSizing: 'border-box',
@@ -156,13 +156,13 @@ export function OverlayWeeklyTasksPage() {
           {/* 里程碑圆点：视觉上沿轨道等间距，不按数值比例 */}
           {sorted.map((m, i) => {
             const reached = count >= m
-            const left = `calc((100% - 14px) * ${anchorPct(i) / 100} - 14px)`
+            const left = `calc((100% - 18px) * ${anchorPct(i) / 100} - 18px)`
             return (
               <div
                 key={m}
                 style={{
                   position: 'absolute', left, top: 0,
-                  width: 28, height: 28, borderRadius: '50%',
+                  width: 36, height: 36, borderRadius: '50%',
                   background: reached
                     ? 'linear-gradient(135deg, #ffd34d, #ff9800)'
                     : 'rgba(60, 40, 60, 0.9)',
@@ -173,7 +173,7 @@ export function OverlayWeeklyTasksPage() {
                     ? '0 0 10px rgba(255,180,40,0.55)'
                     : 'inset 0 0 4px rgba(0,0,0,0.4)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 11, fontWeight: 800,
+                  fontSize: 16, fontWeight: 800,
                   color: reached ? '#4a2a00' : '#c9a3c9',
                 }}
               >
