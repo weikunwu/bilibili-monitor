@@ -6,6 +6,7 @@ import ReloadIcon from '@rsuite/icons/Reload'
 import { fetchOverlayToken, rotateOverlayToken } from '../api/client'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { confirmDialog } from '../lib/confirm'
+import previewImg from '../assets/weekly-tasks-preview.png'
 
 interface Props {
   roomId: number
@@ -66,13 +67,25 @@ export function WeeklyTasksPanel({ roomId }: Props) {
 
   return (
     <div>
-      <div className="panel-title">心动每周任务</div>
+      <div className="panel-title">心动每周进度</div>
       <div style={{ padding: isMobile ? '0 12px 20px' : '0 24px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
         <Section
           isMobile={isMobile}
           title="浏览器源链接"
           description="本周累计「心动盲盒」数量的进度条件栏，里程碑 20 / 60 / 120 / 180，每周一 00:00（北京时间）自动重置。用 OBS 等直播工具添加「浏览器源」粘贴此链接即可叠加到直播画面。链接带 token 鉴权，和其他 overlay 共用同一个 token，「重新生成」会同时让所有 overlay 旧链接失效。"
         >
+          <img
+            src={previewImg}
+            alt="心动每周进度 overlay 预览"
+            style={{
+              display: 'block',
+              width: '100%',
+              maxWidth: 460,
+              borderRadius: 8,
+              border: '1px solid #2a2a4a',
+              background: '#0b0b12',
+            }}
+          />
           <InputGroup size="sm" inside>
             <Input readOnly value={url} placeholder="加载中…" />
             <InputGroup.Button onClick={copy} disabled={!url} title="复制链接">

@@ -4,6 +4,7 @@
 token 校验通过后只返回只读的礼物聚合，不含任何账户/密码/cookie。
 """
 
+import asyncio
 import json
 import sqlite3
 import time
@@ -30,10 +31,16 @@ RATE_LIMIT = {
     "weekly_tasks": (60, 60.0),
 }
 
-# 心动每周任务（原名"疯狂星期五"）：直接走 B 站官方接口，数值和直播间里的小组件一致。
+# 心动每周进度（原名"疯狂星期五"）：直接走 B 站官方接口，数值和直播间里的小组件一致。
 CRAZY_FRIDAY_API = "https://api.live.bilibili.com/xlive/custom-activity-interface/general/friday/GetCrazyFridayData"
 # 兜底里程碑 —— 接口正常时用接口返回的 collect_task_list，拉不到时用这个。
 WEEKLY_TASK_DEFAULT_MILESTONES = [20, 60, 120, 180]
+# ── 心动每周进度 per-room 缓存 ──
+# 前端 5s poll；10s TTL 保证多观众/多 OBS 共看同一房时 B站 QPS 收敛到 1/10s/room。
+# 同房间并发 miss 用 lock 串行化，避免 thundering herd 一起打 B 站。
+WEEKLY_CACHE_TTL = 10.0
+_weekly_cache: dict[int, tuple[float, dict]] = {}
+_weekly_cache_locks: dict[int, asyncio.Lock] = {}
 # name -> {ip: deque[timestamp]}
 _rate_buckets: dict[str, dict[str, deque[float]]] = defaultdict(lambda: defaultdict(deque))
 
@@ -309,13 +316,17 @@ async def overlay_weekly_tasks(
 
     ruid = await _resolve_streamer_uid(room_id)
     if not ruid:
+        # 不缓存：ruid 一般只在房间首次启动/断线期间拿不到，下次轮询可能就 OK。
         return {
             "room_id": room_id,
             "count": 0,
             "milestones": WEEKLY_TASK_DEFAULT_MILESTONES,
             "error": "no_streamer_uid",
         }
+    return await _get_weekly_tasks_cached(room_id, ruid)
 
+
+async def _fetch_weekly_tasks(room_id: int, ruid: int) -> dict:
     params = {"room_id": room_id, "ruid": ruid, "config_id": 1}
     try:
         async with aiohttp.ClientSession(headers=HEADERS, timeout=aiohttp.ClientTimeout(total=8)) as s:
@@ -363,5 +374,28 @@ async def overlay_weekly_tasks(
         "cycle_start_time": data.get("cycle_start_time") or 0,
         "cycle_end_time": data.get("cycle_end_time") or 0,
     }
+
+
+async def _get_weekly_tasks_cached(room_id: int, ruid: int) -> dict:
+    """Per-room TTL 缓存 + 单 room 并发锁。
+
+    热路径：缓存命中直接返回，不等锁。miss 时 lock 内 double-check，确保同房间
+    并发 miss 只打 B 站 一次，其余请求读刚写入的缓存。错误响应也进缓存，避免
+    B 站短暂抖动时反复重试放大压力；TTL 到期自然重试。"""
+    now = time.time()
+    entry = _weekly_cache.get(room_id)
+    if entry and now - entry[0] < WEEKLY_CACHE_TTL:
+        return entry[1]
+    lock = _weekly_cache_locks.get(room_id)
+    if lock is None:
+        lock = asyncio.Lock()
+        _weekly_cache_locks[room_id] = lock
+    async with lock:
+        entry = _weekly_cache.get(room_id)
+        if entry and time.time() - entry[0] < WEEKLY_CACHE_TTL:
+            return entry[1]
+        payload = await _fetch_weekly_tasks(room_id, ruid)
+        _weekly_cache[room_id] = (time.time(), payload)
+        return payload
 
 

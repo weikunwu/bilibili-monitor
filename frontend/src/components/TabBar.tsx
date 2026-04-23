@@ -25,7 +25,7 @@ const GROUPS: Group[] = [
     items: [
       { type: TAB_REALTIME, label: '实时礼物截图', icon: <Gift size={16} /> },
       { type: TAB_EFFECTS, label: '进场 & 礼物特效', icon: <Sparkles size={16} /> },
-      { type: TAB_WEEKLY, label: '心动每周任务', icon: <Heart size={16} /> },
+      { type: TAB_WEEKLY, label: '心动每周进度', icon: <Heart size={16} /> },
     ],
   },
   {

@@ -17,7 +17,7 @@ export const TAB_REACTIVE = 'reactive' as const   // 互动回复（AI/欢迎/�
 export const TAB_AUTOMATION = 'automation' as const // 主动 & 高级（定时/打个有效/自动剪辑）
 export const TAB_NICKNAMES = 'nicknames' as const
 export const TAB_EFFECTS = 'effects' as const
-export const TAB_WEEKLY = 'weekly' as const       // 心动每周任务
+export const TAB_WEEKLY = 'weekly' as const       // 心动每周进度
 export const TAB_ADMIN = 'admin' as const
 
 export const BADGE_NAMES: Record<string, string> = {

@@ -7,6 +7,8 @@ interface WeeklyTasksData {
 }
 
 const POLL_MS = 5000
+// 心动盲盒 gift_id=32251，B站 CDN 图稳定；直连省一次后端中转
+const BLIND_BOX_ICON = 'https://s1.hdslb.com/bfs/live/38f645d811537b50873718cecbfd84cd28af50ed.png'
 
 export function OverlayWeeklyTasksPage() {
   const { roomId } = useParams()
@@ -65,8 +67,24 @@ export function OverlayWeeklyTasksPage() {
   const sorted = [...milestones].sort((a, b) => a - b)
   const maxMs = sorted[sorted.length - 1] || 1
   // 下一个未达成的里程碑；都达成就停在最后一档
-  const nextTarget = sorted.find((m) => count < m) ?? maxMs
-  const fillPct = Math.max(0, Math.min(100, (count / maxMs) * 100))
+  const nextIdx = sorted.findIndex((m) => count < m)
+  const nextTarget = nextIdx === -1 ? maxMs : sorted[nextIdx]
+  // 里程碑视觉上等分：第 i 档锚在 (i+1)/n。这样第 1 档不会压在左侧 "已收集" 药丸上，
+  // 最后一档停在轨道右端。段间距离不再受数值差影响（原来 20→60→120→180 的数值
+  // 差造成视觉上不均，20 挤在最左）。
+  const n = sorted.length
+  const anchorPct = (i: number) => (n <= 0 ? 100 : ((i + 1) / n) * 100)
+  let fillPct: number
+  if (nextIdx === -1) {
+    fillPct = 100
+  } else if (nextIdx === 0) {
+    fillPct = Math.max(0, Math.min(1, count / sorted[0])) * anchorPct(0)
+  } else {
+    const prev = sorted[nextIdx - 1]
+    const tgt = sorted[nextIdx]
+    const frac = tgt > prev ? (count - prev) / (tgt - prev) : 0
+    fillPct = anchorPct(nextIdx - 1) + Math.max(0, Math.min(1, frac)) * (anchorPct(nextIdx) - anchorPct(nextIdx - 1))
+  }
 
   return (
     <div
@@ -89,7 +107,11 @@ export function OverlayWeeklyTasksPage() {
       >
         {/* 标题行 */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-          <span style={{ fontSize: 16 }}>💖</span>
+          <img
+            src={BLIND_BOX_ICON}
+            alt=""
+            style={{ width: 20, height: 20, objectFit: 'contain', display: 'block' }}
+          />
           <span style={{ fontSize: 14, fontWeight: 600, letterSpacing: 0.3 }}>
             收集心动盲盒
           </span>
@@ -99,67 +121,63 @@ export function OverlayWeeklyTasksPage() {
           </span>
         </div>
 
-        {/* 进度条 */}
-        <div style={{ position: 'relative', height: 32 }}>
-          {/* 底轨 */}
+        {/* 进度条：整体一条粗条，"已收集" 标签沉在填充色起点里 */}
+        <div style={{ position: 'relative', height: 28 }}>
+          {/* 底轨（只在右侧留 14px 让最后一个里程碑圆点不越界；
+              左侧不留——第 1 个点在 25% 锚位，不会从左边越界） */}
           <div
             style={{
-              position: 'absolute', left: 20, right: 20, top: 12, height: 8,
+              position: 'absolute', left: 0, right: 14, top: 2, height: 24,
               background: 'rgba(255,255,255,0.12)',
-              borderRadius: 4,
+              borderRadius: 12,
             }}
           />
           {/* 填充轨 */}
           <div
             style={{
-              position: 'absolute', left: 20, top: 12, height: 8,
-              width: `calc((100% - 40px) * ${fillPct / 100})`,
+              position: 'absolute', left: 0, top: 2, height: 24,
+              width: `calc((100% - 14px) * ${fillPct / 100})`,
+              minWidth: 58,
               background: 'linear-gradient(to right, #ff2d6b, #ff7aa0)',
-              borderRadius: 4,
+              borderRadius: 12,
               boxShadow: '0 0 8px rgba(255,60,110,0.5)',
-            }}
-          />
-
-          {/* 左侧 "已收集 N" 药丸 */}
-          <div
-            style={{
-              position: 'absolute', left: 0, top: 0,
-              background: 'linear-gradient(135deg, #ff2d6b, #c2185b)',
-              color: '#fff', fontSize: 12, fontWeight: 700,
-              padding: '5px 10px', borderRadius: 14,
-              display: 'flex', alignItems: 'center', gap: 4,
-              boxShadow: '0 2px 6px rgba(255,45,107,0.5)',
+              display: 'flex', alignItems: 'center',
+              paddingLeft: 10,
+              color: '#fff', fontSize: 11, fontWeight: 700,
+              letterSpacing: 0.3,
               whiteSpace: 'nowrap',
+              boxSizing: 'border-box',
+              overflow: 'hidden',
             }}
           >
-            已收集 {count}
+            已收集
           </div>
 
-          {/* 里程碑圆点 */}
-          {sorted.map((m) => {
+          {/* 里程碑圆点：视觉上沿轨道等间距，不按数值比例 */}
+          {sorted.map((m, i) => {
             const reached = count >= m
-            const left = `calc(20px + (100% - 40px) * ${m / maxMs} - 14px)`
+            const left = `calc((100% - 14px) * ${anchorPct(i) / 100} - 14px)`
             return (
               <div
                 key={m}
                 style={{
-                  position: 'absolute', left, top: -2,
-                  width: 32, height: 32, borderRadius: '50%',
+                  position: 'absolute', left, top: 0,
+                  width: 28, height: 28, borderRadius: '50%',
                   background: reached
                     ? 'linear-gradient(135deg, #ffd34d, #ff9800)'
-                    : 'rgba(60, 40, 60, 0.85)',
+                    : 'rgba(60, 40, 60, 0.9)',
                   border: reached
                     ? '2px solid #fff7c2'
-                    : '2px solid rgba(255,255,255,0.15)',
+                    : '2px solid rgba(255,255,255,0.18)',
                   boxShadow: reached
                     ? '0 0 10px rgba(255,180,40,0.55)'
                     : 'inset 0 0 4px rgba(0,0,0,0.4)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: 11, fontWeight: 800,
-                  color: reached ? '#4a2a00' : '#999',
+                  color: reached ? '#4a2a00' : '#c9a3c9',
                 }}
               >
-                {reached ? m : <LockIcon />}
+                {m}
               </div>
             )
           })}
@@ -172,16 +190,5 @@ export function OverlayWeeklyTasksPage() {
         </div>
       )}
     </div>
-  )
-}
-
-function LockIcon() {
-  return (
-    <svg width="12" height="14" viewBox="0 0 12 14" fill="none">
-      <path
-        d="M3 6V4a3 3 0 016 0v2h1a1 1 0 011 1v6a1 1 0 01-1 1H2a1 1 0 01-1-1V7a1 1 0 011-1h1zm1.5 0h3V4a1.5 1.5 0 00-3 0v2z"
-        fill="currentColor"
-      />
-    </svg>
   )
 }
