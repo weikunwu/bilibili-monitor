@@ -73,6 +73,10 @@ export interface EventExtra {
   color_point?: number
   medal_info?: MedalInfo | null
   medal_v2?: MedalV2 | null
+
+  // 服务端打的"这条事件的录屏此刻还能否下载"标记：写入时若 (gift/guard +
+  // 单价 ≥ ¥1000 + 当时 auto_clip 开) → true；72h 定时清盘后会被翻回 false。
+  has_clip?: boolean
 }
 
 export interface Room {

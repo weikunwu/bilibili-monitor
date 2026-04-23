@@ -987,6 +987,48 @@ def cleanup_old_events():
         log.info(f"清理过期事件: 删除 {deleted} 条 (早于 {cutoff})")
 
 
+def backfill_has_clip_for_gift(gift_name: str, cutoff: str) -> int:
+    """一次性回填：has_clip 这个 flag 是新加的，已经落盘的老事件全都没有这个字段，
+    前端会按 undefined 处理成"不可下载"——哪怕录屏其实还在磁盘上。这个函数把
+    所有 gift_name = 指定值、timestamp >= cutoff、单价 ≥ ¥1000 的老礼物事件统一
+    打上 has_clip=true。幂等：只改 has_clip 字段缺失的行。
+
+    副作用：当时 auto_clip 关着、实际没录屏的事件也会被 over-flag，用户点下载时
+    后端 match-clip 找不到文件，前端会显示"已失效"。无数据损坏。"""
+    conn = sqlite3.connect(str(DB_PATH))
+    cur = conn.execute(
+        "UPDATE events "
+        "SET extra_json = json_set(extra_json, '$.has_clip', json('true')) "
+        "WHERE event_type = 'gift' "
+        "  AND json_extract(extra_json, '$.gift_name') = ? "
+        "  AND CAST(json_extract(extra_json, '$.price') AS INTEGER) >= 10000 "
+        "  AND timestamp >= ? "
+        "  AND json_extract(extra_json, '$.has_clip') IS NULL",
+        (gift_name, cutoff),
+    )
+    n = cur.rowcount
+    conn.commit()
+    conn.close()
+    return n
+
+
+def mark_events_clip_expired(cutoff: str) -> int:
+    """把 timestamp < cutoff 且 extra.has_clip=true 的事件标记成 has_clip=false。
+    配合 recorder.cleanup_old_clips：磁盘文件清掉时，事件上的 flag 也翻过来，
+    前端永远看到"flag = 真实可下载"。返回被更新的行数。"""
+    conn = sqlite3.connect(str(DB_PATH))
+    cur = conn.execute(
+        "UPDATE events "
+        "SET extra_json = json_set(extra_json, '$.has_clip', json('false')) "
+        "WHERE timestamp < ? AND json_extract(extra_json, '$.has_clip') = 1",
+        (cutoff,),
+    )
+    n = cur.rowcount
+    conn.commit()
+    conn.close()
+    return n
+
+
 def save_event(event: dict):
     conn = sqlite3.connect(str(DB_PATH))
     conn.execute(

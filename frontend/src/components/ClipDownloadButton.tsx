@@ -1,45 +1,16 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Button, Message, useToaster } from 'rsuite'
 import type { LiveEvent } from '../types'
 import { matchClip } from '../api/client'
 import { composeClipInBrowser, downloadBlob } from '../lib/clipCompose'
 import { confirmDialog } from '../lib/confirm'
-import { EVENT_GIFT, EVENT_GUARD } from '../lib/constants'
 
-// ≥ 1000 电池 (¥1000) — matches the server-side CLIP_GIFT_THRESHOLD.
-export const CLIP_MIN_COIN = 10000
-
+// 是否显示"下载录屏"按钮完全看服务端打的 has_clip flag：
+//   • 写入事件时若 (gift/guard + 单价 ≥ ¥1000 + 当时 auto_clip 开) → true
+//   • 72h 定时清盘时，磁盘文件删掉的同时 db 层把对应事件的 flag 翻回 false
+// 前端不再二次判断单价 / 类型 / 房间 auto_clip / 事件年龄。
 export function isClippable(ev: LiveEvent): boolean {
-  if (ev.event_type !== EVENT_GIFT && ev.event_type !== EVENT_GUARD) return false
-  // Unit-price gate (matches server-side CLIP_GIFT_THRESHOLD) — a combo of
-  // cheap gifts shouldn't show the download button.
-  const unit = ev.extra?.price || 0
-  return unit >= CLIP_MIN_COIN
-}
-
-// Module-level cache so every row in the panel doesn't refetch the
-// auto-clip flag (decides whether the button renders at all).
-const autoClipCache = new Map<number, boolean>()
-const autoClipFetches = new Map<number, Promise<boolean>>()
-
-function useAutoClip(roomId: number | undefined): boolean | undefined {
-  const [state, setState] = useState<boolean | undefined>(
-    () => (roomId ? autoClipCache.get(roomId) : undefined),
-  )
-  useEffect(() => {
-    if (!roomId) return
-    if (autoClipCache.has(roomId)) { setState(autoClipCache.get(roomId)); return }
-    let p = autoClipFetches.get(roomId)
-    if (!p) {
-      p = fetch(`/api/rooms/${roomId}/auto-clip`)
-        .then((r) => r.ok ? r.json() : { enabled: false })
-        .then((d) => { const v = !!d.enabled; autoClipCache.set(roomId, v); return v })
-        .catch(() => false)
-      autoClipFetches.set(roomId, p)
-    }
-    p.then((v) => setState(v))
-  }, [roomId])
-  return state
+  return ev.extra?.has_clip === true
 }
 
 // On-demand lookup — clip download is a rare event and the anchor could
@@ -59,13 +30,12 @@ interface Props {
 }
 
 export function ClipDownloadButton({ event, size = 'sm' }: Props) {
-  const autoClip = useAutoClip(event.room_id)
   const toaster = useToaster()
   const [busy, setBusy] = useState(false)
   const [missing, setMissing] = useState(false)
   const [progress, setProgress] = useState('')
 
-  if (!autoClip) return null
+  if (!isClippable(event)) return null
 
   async function handleClick() {
     if (!event.room_id || !event.user_name || !event.timestamp) return

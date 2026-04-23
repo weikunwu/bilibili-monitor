@@ -7,11 +7,11 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.responses import FileResponse, RedirectResponse, Response, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
-from .config import BASE_DIR, log
+from .config import BASE_DIR, CLIP_RETENTION_HOURS, log
 from .db import (
-    init_db, cleanup_old_events,
+    init_db, cleanup_old_events, mark_events_clip_expired, backfill_has_clip_for_gift,
     get_expired_active_rooms, get_expired_rooms_for_reminder, incr_expired_reminder_count,
 )
 from .auth import AuthMiddleware, get_session_user, get_user_allowed_rooms, handle_login, handle_logout, handle_change_password, handle_send_register_code, handle_register, handle_send_reset_code, handle_reset_password, purge_stale_rate_limits as purge_auth_rate_limits
@@ -189,6 +189,16 @@ async def main(port: int):
     gift_catalog.load_from_db()
     manager.load_all()
 
+    # 一次性回填：has_clip flag 新加，72h 窗口内收到过"33号机"礼物的老事件补上
+    # （幂等：WHERE has_clip IS NULL，后续启动命中 0 行）。其它礼物 72h 内自然归一，不回填。
+    try:
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=CLIP_RETENTION_HOURS)).strftime("%Y-%m-%d %H:%M:%S")
+        n = backfill_has_clip_for_gift("33号机", cutoff)
+        if n:
+            log.info(f"[migration] 回填 has_clip=true {n} 条「33号机」老事件")
+    except Exception as e:
+        log.warning(f"[migration] has_clip backfill 失败: {e}")
+
     config = uvicorn.Config(app, host="0.0.0.0", port=port, log_level="info")
     server = uvicorn.Server(config)
 
@@ -224,10 +234,15 @@ async def _periodic_memory_cleanup():
 
 
 async def _periodic_clip_cleanup():
-    """Delete clips older than 72h every hour. Also sweep orphan entry-effect files."""
+    """Delete clips older than CLIP_RETENTION_HOURS every hour. Also sweep orphan entry-effect files."""
     while True:
         try:
-            recorder.cleanup_old_clips(max_age_hours=72)
+            recorder.cleanup_old_clips(max_age_hours=CLIP_RETENTION_HOURS)
+            # 磁盘清完同步把事件表里过期事件的 has_clip 翻回 false
+            cutoff = (datetime.now(timezone.utc) - timedelta(hours=CLIP_RETENTION_HOURS)).strftime("%Y-%m-%d %H:%M:%S")
+            n = mark_events_clip_expired(cutoff)
+            if n:
+                log.info(f"[clip cleanup] 事件 has_clip 翻 false: {n} 条")
         except Exception as e:
             log.warning(f"[clip cleanup] {e}")
         try:

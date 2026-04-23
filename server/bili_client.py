@@ -349,6 +349,7 @@ class BiliLiveClient:
                         event.get("user_id", 0), self._make_cookie_header()
                     )
                 event["room_id"] = self.real_room_id
+                self._tag_has_clip(event)
                 try:
                     save_event(event)
                     await self.on_event(event)
@@ -375,6 +376,22 @@ class BiliLiveClient:
         if not cmd or not cmd.get("enabled"):
             return None
         return get_nickname(self.real_room_id, uid)
+
+    def _tag_has_clip(self, event: dict) -> None:
+        """给事件的 extra 打 has_clip 标记 —— 代表"这条事件的录屏目前还在磁盘上"。
+        写入口径：类型是 gift/guard + 单价 ≥ 阈值 + 本房 auto_clip 开关打开，
+        即 _maybe_clip 会调起录制的那三档门。后续 72h 定时清盘时，db 层会把
+        过期事件的 has_clip 翻回 false，保持"flag = 真实可下载"。"""
+        et = event.get("event_type")
+        extra = event.setdefault("extra", {})
+        if et not in ("gift", "guard"):
+            return
+        price = extra.get("price") or 0
+        if price < self.CLIP_GIFT_THRESHOLD:
+            return
+        if not get_room_auto_clip(self.room_id):
+            return
+        extra["has_clip"] = True
 
     def _maybe_clip(self, event: dict):
         et = event.get("event_type")
@@ -1485,6 +1502,7 @@ class BiliLiveClient:
                                             event.get("user_id", 0), self._make_cookie_header()
                                         )
                                     event["room_id"] = self.real_room_id
+                                    self._tag_has_clip(event)
                                     skip_danmu = event["event_type"] == "danmu" and not get_room_save_danmu(self.room_id)
                                     # 点赞事件只用于"点赞感谢"，不入库/不推前端
                                     skip_persist = skip_danmu or event["event_type"] == "like"
