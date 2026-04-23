@@ -3,6 +3,7 @@ import { Button, Message, useToaster } from 'rsuite'
 import type { LiveEvent } from '../types'
 import { matchClip } from '../api/client'
 import { composeClipInBrowser, downloadBlob } from '../lib/clipCompose'
+import { confirmDialog } from '../lib/confirm'
 import { EVENT_GIFT, EVENT_GUARD } from '../lib/constants'
 
 // ≥ 1000 电池 (¥1000) — matches the server-side CLIP_GIFT_THRESHOLD.
@@ -68,6 +69,12 @@ export function ClipDownloadButton({ event, size = 'sm' }: Props) {
 
   async function handleClick() {
     if (!event.room_id || !event.user_name || !event.timestamp) return
+    const ok = await confirmDialog({
+      title: '下载录屏',
+      message: '下载录屏占用资源较高，如果下载的录屏没有特效或特效卡顿，建议下播之后再试。',
+      okText: '继续下载',
+    })
+    if (!ok) return
     setBusy(true)
     setMissing(false)
     setProgress('匹配中...')
