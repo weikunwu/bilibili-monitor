@@ -188,19 +188,14 @@ def init_db():
             room_id INTEGER PRIMARY KEY,
             settings_json TEXT NOT NULL DEFAULT '{}',
             bot_cookie TEXT DEFAULT NULL,
+            bot_buvid TEXT DEFAULT NULL,
             active INTEGER NOT NULL DEFAULT 0,
             live_started_at TEXT,
             expires_at TEXT,
-            expired_reminder_count INTEGER NOT NULL DEFAULT 0
+            expired_reminder_count INTEGER NOT NULL DEFAULT 0,
+            relogin_alerted INTEGER NOT NULL DEFAULT 0
         )
     """)
-    # Migration: 每账号持久化 buvid，避免每次重连生成新的设备指纹。
-    rooms_cols = {row[1] for row in conn.execute("PRAGMA table_info(rooms)").fetchall()}
-    if "bot_buvid" not in rooms_cols:
-        conn.execute("ALTER TABLE rooms ADD COLUMN bot_buvid TEXT DEFAULT NULL")
-    # Migration: 登录失效提醒是否已发过，跨重启防重复发。重新扫码绑定时清 0。
-    if "relogin_alerted" not in rooms_cols:
-        conn.execute("ALTER TABLE rooms ADD COLUMN relogin_alerted INTEGER NOT NULL DEFAULT 0")
     conn.execute("""
         CREATE TABLE IF NOT EXISTS commands (
             id TEXT PRIMARY KEY,
@@ -244,31 +239,6 @@ def init_db():
                     "UPDATE rooms SET settings_json=? WHERE room_id=?",
                     (json.dumps(settings, ensure_ascii=False), room_id),
                 )
-
-    # 一次性 migration：早期 broadcast_pk_start 模版迭代过几版（"PK对面"、人气
-    # 字段进出），把所有房间 commands_config 里这条 override 删掉，让它们
-    # fall back 到 DEFAULT_COMMANDS 里的最新模版；同时把 enabled 状态也清掉，
-    # 让所有房间回到 default_enabled=False，避免老用户在 UI 不可见时不小心
-    # 留着开启状态。
-    for room_id, settings_json in conn.execute("SELECT room_id, settings_json FROM rooms").fetchall():
-        try:
-            settings = json.loads(settings_json or "{}")
-        except json.JSONDecodeError:
-            continue
-        changed = False
-        cfgs = settings.get("commands_config") or {}
-        if "broadcast_pk_start" in cfgs:
-            cfgs.pop("broadcast_pk_start", None)
-            changed = True
-        states = settings.get("commands") or {}
-        if "broadcast_pk_start" in states:
-            states.pop("broadcast_pk_start", None)
-            changed = True
-        if changed:
-            conn.execute(
-                "UPDATE rooms SET settings_json=? WHERE room_id=?",
-                (json.dumps(settings, ensure_ascii=False), room_id),
-            )
 
     conn.execute("""
         CREATE TABLE IF NOT EXISTS users (
@@ -366,12 +336,6 @@ def init_db():
             cleared_at TEXT NOT NULL DEFAULT ''
         )
     """)
-    # Migration: overlay_settings 加 scroll_speed / scroll_enabled 列（老库没有）
-    overlay_cols = {row[1] for row in conn.execute("PRAGMA table_info(overlay_settings)").fetchall()}
-    if "scroll_speed" not in overlay_cols:
-        conn.execute("ALTER TABLE overlay_settings ADD COLUMN scroll_speed INTEGER NOT NULL DEFAULT 40")
-    if "scroll_enabled" not in overlay_cols:
-        conn.execute("ALTER TABLE overlay_settings ADD COLUMN scroll_enabled INTEGER NOT NULL DEFAULT 1")
     # 管理员手动生成的续费码。每条一码一用，成功兑换后写入 used_* 字段。
     conn.execute("""
         CREATE TABLE IF NOT EXISTS renewal_tokens (
@@ -412,11 +376,6 @@ def init_db():
         )
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_entry_effects_room ON entry_effects(room_id)")
-    # Migration: 老库 entry_effects 没有 preset_key，补一下；video_filename
-    # 也放宽默认值，方便预设记录写空字符串。
-    existing_cols = {row[1] for row in conn.execute("PRAGMA table_info(entry_effects)").fetchall()}
-    if "preset_key" not in existing_cols:
-        conn.execute("ALTER TABLE entry_effects ADD COLUMN preset_key TEXT NOT NULL DEFAULT ''")
 
     # 礼物特效覆盖：每个 (room_id, gift_id) 一条；命中时 OBS 叠加页播这个视频
     # 而不是 B站 自带 VAP；原本没 VAP 的礼物也能借这条加上特效。
@@ -985,31 +944,6 @@ def cleanup_old_events():
     conn.close()
     if deleted:
         log.info(f"清理过期事件: 删除 {deleted} 条 (早于 {cutoff})")
-
-
-def backfill_has_clip_for_gift(gift_name: str, cutoff: str) -> int:
-    """一次性回填：has_clip 这个 flag 是新加的，已经落盘的老事件全都没有这个字段，
-    前端会按 undefined 处理成"不可下载"——哪怕录屏其实还在磁盘上。这个函数把
-    所有 gift_name = 指定值、timestamp >= cutoff、单价 ≥ ¥1000 的老礼物事件统一
-    打上 has_clip=true。幂等：只改 has_clip 字段缺失的行。
-
-    副作用：当时 auto_clip 关着、实际没录屏的事件也会被 over-flag，用户点下载时
-    后端 match-clip 找不到文件，前端会显示"已失效"。无数据损坏。"""
-    conn = sqlite3.connect(str(DB_PATH))
-    cur = conn.execute(
-        "UPDATE events "
-        "SET extra_json = json_set(extra_json, '$.has_clip', json('true')) "
-        "WHERE event_type = 'gift' "
-        "  AND json_extract(extra_json, '$.gift_name') = ? "
-        "  AND CAST(json_extract(extra_json, '$.price') AS INTEGER) >= 10000 "
-        "  AND timestamp >= ? "
-        "  AND json_extract(extra_json, '$.has_clip') IS NULL",
-        (gift_name, cutoff),
-    )
-    n = cur.rowcount
-    conn.commit()
-    conn.close()
-    return n
 
 
 def mark_events_clip_expired(cutoff: str) -> int:

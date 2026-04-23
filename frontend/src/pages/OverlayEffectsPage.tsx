@@ -101,11 +101,9 @@ export function OverlayEffectsPage() {
         setSoundOn(!!d.sound_on)
         const events: QueuedEvent[] = Array.isArray(d.events) ? d.events : []
         if (events.length) {
-          console.log(`[overlay] 拿到 ${events.length} 条新事件`, events)
           queueRef.current.push(...events)
           // 如果当前没在播，立刻从队首开播
           if (!currentRef.current) pumpNext()
-          else console.log(`[overlay] 当前在播 id=${currentRef.current.id}，等播完再切（待播 ${queueRef.current.length}）`)
         }
       } catch (e) {
         console.warn(`[overlay] poll 异常`, e)

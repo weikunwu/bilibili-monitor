@@ -436,7 +436,6 @@ class BiliLiveClient:
         if et not in ("gift", "guard"):
             return
         if self.live_status != 1:
-            log.debug(f"[gift-vap] room={self.room_id} 未开播 (live_status={self.live_status})，跳过 et={et}")
             return
         extra = event.get("extra") or {}
         gift_id = int(extra.get("gift_id") or 0)
@@ -446,7 +445,7 @@ class BiliLiveClient:
             return
         num = max(1, int(extra.get("num") or 1))
         for _ in range(num):
-            trigger_gift_vap(self.room_id, gift_id, source=et)
+            trigger_gift_vap(self.room_id, gift_id)
 
     def _maybe_broadcast_pk_start(self, pkt: dict) -> None:
         """PK_BATTLE_PRE_NEW 触发：此时 data 里 uname/uid/face/room_id 齐全。
@@ -784,20 +783,11 @@ class BiliLiveClient:
         /api/rooms/{room_id}/effects/entries 里就是 display，DB 也以 display 存的。"""
         mt = data.get("msg_type")
         if mt != 1:
-            log.debug(f"[entry-effect] room={self.room_id} 跳过：msg_type={mt}")
             return
         uid = data.get("uid") or 0
-        if not uid:
-            log.debug(f"[entry-effect] room={self.room_id} 跳过：uid 为空")
-            return
-        if uid == self.bot_uid:
-            log.debug(f"[entry-effect] room={self.room_id} uid={uid} 是机器人自己，跳过")
-            return
-        if uid == self.streamer_uid:
-            log.debug(f"[entry-effect] room={self.room_id} uid={uid} 是主播，跳过")
+        if not uid or uid == self.bot_uid or uid == self.streamer_uid:
             return
         if self.live_status != 1:
-            log.debug(f"[entry-effect] room={self.room_id} 未开播 (live_status={self.live_status})，跳过")
             return
         try_trigger_entry_effect(self.room_id, int(uid))
 
@@ -1538,7 +1528,7 @@ class BiliLiveClient:
                                         if not is_command:
                                             m = re.fullmatch(r"礼物特效测试(\d+)", content)
                                             if m and get_gift_effect_test_enabled(self.room_id):
-                                                trigger_gift_vap(self.room_id, int(m.group(1)), source="test")
+                                                trigger_gift_vap(self.room_id, int(m.group(1)))
                                                 is_command = True
 
                                         # 昵称指令
