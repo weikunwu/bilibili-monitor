@@ -8,8 +8,13 @@ import { generateGiftCard } from './giftCard'
 
 // Fixed output dimensions — the rest of the canvas is filled with the
 // streamer's avatar (blurred) when the base aspect ratio doesn't match.
-const OUT_W = 430
-const OUT_H = 932
+// 源流是 720p（recorder.py qn=150），之前 430×932 等于在降采样，糊。
+// 拉到 720×1560：宽度贴合源，高度按原 aspect 放大，合成后不再经历 downscale。
+const OUT_W = 720
+const OUT_H = 1560
+// 底部 pill / card 里好几个尺寸是绝对像素（fontSize、padding、margin），
+// canvas 放大后要同步放大，否则它们在新分辨率下相对变小。
+const UI_SCALE = OUT_W / 430
 const OUT_ASPECT = OUT_W / OUT_H
 
 // Delay the gift animation + card overlay this many seconds past the raw
@@ -131,10 +136,10 @@ async function buildSmallCardSpec(ev: LiveEvent): Promise<SmallCardSpec | null> 
   const giftName = isGuard
     ? (extra.guard_name || '舰长')
     : (extra.gift_name || ev.content || '礼物')
-  const fontSize = 14
+  const fontSize = Math.round(14 * UI_SCALE)
   const font = `600 ${fontSize}px -apple-system, "PingFang SC", sans-serif`
-  const padX = 12
-  const padY = 6
+  const padX = Math.round(12 * UI_SCALE)
+  const padY = Math.round(6 * UI_SCALE)
   const WHITE = '#fff'
   const YELLOW = '#FFF176'  // brighter than the B站 reference; pops on gold pill
   const segments: SmallCardSegment[] = []
@@ -175,8 +180,8 @@ async function buildSmallCardSpec(ev: LiveEvent): Promise<SmallCardSpec | null> 
     img.onerror = () => resolve(null)
     img.src = extra.avatar!
   }) : null
-  const avatarSize = fontSize + padY * 2 - 6   // inset from pill height so it clearly sits inside the rounded cap
-  const avatarGap = 6
+  const avatarSize = fontSize + padY * 2 - Math.round(6 * UI_SCALE)   // inset from pill height so it clearly sits inside the rounded cap
+  const avatarGap = Math.round(6 * UI_SCALE)
   return {
     segments, font, fontSize, padX, padY, textW,
     h: fontSize + padY * 2, bgColor, bgImage,
@@ -382,7 +387,14 @@ export async function composeClipInBrowser(
     'video/webm',
   ]
   const mimeType = preferred.find((m) => MediaRecorder.isTypeSupported(m)) || ''
-  const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined)
+  // 不显式设码率 Chrome 默认会冲到 5-6 Mbps，再叠 canvas→VP9 二次编码，
+  // 输出会膨胀到 20MB+。720×1560 下给 3 Mbps VP9 — 比源流 (~2 Mbps H.264)
+  // 略高留再编码余量，VP9 效率更高，等效画质接近源片。
+  const recorder = new MediaRecorder(stream, {
+    ...(mimeType ? { mimeType } : {}),
+    videoBitsPerSecond: 3_000_000,
+    audioBitsPerSecond: 128_000,
+  })
   const chunks: Blob[] = []
   recorder.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data) }
   const stopped = new Promise<void>((r) => { recorder.onstop = () => r() })
@@ -438,7 +450,7 @@ export async function composeClipInBrowser(
     // Landscape source: card in the gutter below the base video.
     // Portrait: 10% below center on top of the video.
     mainY = fitMode === 'contain'
-      ? baseDy + baseDh + 8
+      ? baseDy + baseDh + Math.round(8 * UI_SCALE)
       : Math.round((OUT_H - mainTargetH) / 2 + OUT_H * 0.10)
   }
   // Small pill geometry is also constant (text/avatar widths fixed).
@@ -453,11 +465,11 @@ export async function composeClipInBrowser(
     pillW = Math.min(natural, Math.round(OUT_W * 0.7))
     pillH = smallCardSpec.h
     pillX = Math.round((OUT_W - pillW) / 2)
-    pillY = OUT_H - pillH - 60
+    pillY = OUT_H - pillH - Math.round(60 * UI_SCALE)
     // B 站原生底部 pill：实心内容到 pillW 为止，再向右延伸 pillTailW 的渐隐尾
     // 巴（背景继续延伸、alpha 线性到 0）。直接在主 canvas 上 destination-out
     // 会把底下视频一起擦穿，所以 pill 先画到离屏 buffer、fade 完再 drawImage。
-    pillTailW = 30
+    pillTailW = Math.round(30 * UI_SCALE)
     pillBufW = pillW + pillTailW
     pillBuf = document.createElement('canvas')
     pillBuf.width = pillBufW
