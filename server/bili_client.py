@@ -1944,3 +1944,11 @@ class BiliLiveClient:
             if t and not t.done():
                 t.cancel()
         self._gift_bursts.clear()
+        # recorder 有自己的后台 loop，只看 session._running，不看 client 状态。
+        # 不在这里 stop 的话，主播还在直播时用户点"停止监控"/"解绑机器人"
+        # 会留下孤儿 recorder，每 30s 空拉 playurl 刷日志直到进程重启。
+        if recorder.get_session(self.real_room_id) is not None:
+            try:
+                asyncio.create_task(recorder.stop_for(self.real_room_id))
+            except RuntimeError:
+                pass
