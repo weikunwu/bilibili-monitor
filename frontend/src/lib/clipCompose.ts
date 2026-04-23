@@ -184,18 +184,6 @@ async function buildSmallCardSpec(ev: LiveEvent): Promise<SmallCardSpec | null> 
   }
 }
 
-function drawPillPath(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) {
-  const r = h / 2
-  ctx.beginPath()
-  ctx.moveTo(x + r, y)
-  ctx.lineTo(x + w - r, y)
-  ctx.arc(x + w - r, y + r, r, -Math.PI / 2, Math.PI / 2)
-  ctx.lineTo(x + r, y + h)
-  ctx.arc(x + r, y + r, r, Math.PI / 2, -Math.PI / 2)
-  ctx.closePath()
-}
-
-
 export async function composeClipInBrowser(
   roomId: number,
   name: string,
@@ -455,6 +443,10 @@ export async function composeClipInBrowser(
   }
   // Small pill geometry is also constant (text/avatar widths fixed).
   let pillW = 0, pillH = 0, pillX = 0, pillY = 0, avatarSlot = 0
+  let pillBuf: HTMLCanvasElement | null = null
+  let pillBufCtx: CanvasRenderingContext2D | null = null
+  let pillTailW = 0      // 原本直接截断的右侧往外延伸的渐隐尾巴宽度
+  let pillBufW = 0       // pillW + pillTailW，也是离屏 buffer 的宽度
   if (smallCardSpec) {
     avatarSlot = smallCardSpec.avatarSize + smallCardSpec.avatarGap
     const natural = smallCardSpec.textW + smallCardSpec.padX * 2 + avatarSlot
@@ -462,6 +454,15 @@ export async function composeClipInBrowser(
     pillH = smallCardSpec.h
     pillX = Math.round((OUT_W - pillW) / 2)
     pillY = OUT_H - pillH - 60
+    // B 站原生底部 pill：实心内容到 pillW 为止，再向右延伸 pillTailW 的渐隐尾
+    // 巴（背景继续延伸、alpha 线性到 0）。直接在主 canvas 上 destination-out
+    // 会把底下视频一起擦穿，所以 pill 先画到离屏 buffer、fade 完再 drawImage。
+    pillTailW = 30
+    pillBufW = pillW + pillTailW
+    pillBuf = document.createElement('canvas')
+    pillBuf.width = pillBufW
+    pillBuf.height = pillH
+    pillBufCtx = pillBuf.getContext('2d')!
   }
 
   await new Promise<void>((resolve) => {
@@ -500,94 +501,119 @@ export async function composeClipInBrowser(
 
       // Bottom pill — independent 13s lifetime. Scroll-unfurl entrance,
       // marquee-scroll text if it overflows the 70%-of-viewport cap.
-      if (smallCardSpec && cardElapsed >= 0 && cardElapsed < SMALL_DUR) {
+      if (smallCardSpec && pillBufCtx && pillBuf && cardElapsed >= 0 && cardElapsed < SMALL_DUR) {
         const revealEase = 1 - Math.pow(1 - Math.min(1, cardElapsed / FADE), 3)
-        const revealW = Math.round(pillW * revealEase)
+        const revealW = Math.round(pillBufW * revealEase)
         const smallAlpha = cardElapsed > SMALL_DUR - FADE
           ? (SMALL_DUR - cardElapsed) / FADE
           : 1
-        ctx.save()
-        ctx.globalAlpha = Math.max(0, Math.min(1, smallAlpha)) * CARD_MAX_ALPHA
-        // Outer clip: unfurl rect. Caps how much of the pill is visible.
-        ctx.beginPath()
-        ctx.rect(pillX, pillY, revealW, pillH)
-        ctx.clip()
+
+        // 画到离屏 pillBuf（坐标相对 0,0）：pill 本体从 0 延伸到 pillBufW（左
+        // 圆角、右平口），背景铺满整个 buffer；最后对最右 pillTailW 做
+        // destination-out 渐隐，把平口化成向外延伸的淡出尾巴。
+        const pctx = pillBufCtx
+        pctx.clearRect(0, 0, pillBufW, pillH)
 
         // Pill background: sample a 1px-tall middle strip of the gradient
-        // PNG and stretch it into the pill. Squishing the tall card image
-        // vertically distorts the gradient across the rounded caps;
-        // sampling a thin strip keeps verticals uniform so the semicircles
-        // look clean. Solid tier colour is the fallback.
-        ctx.save()
-        drawPillPath(ctx, pillX, pillY, pillW, pillH)
-        ctx.clip()
+        // PNG and stretch it across pillBufW so the tail continues the same
+        // gradient. Clip to a shape rounded on the left, flat on the right
+        // (the flat edge gets dissolved by the tail fade).
+        pctx.save()
+        {
+          const r = pillH / 2
+          pctx.beginPath()
+          pctx.arc(r, r, r, -Math.PI / 2, Math.PI / 2, true) // 左半圆：top → left → bottom
+          pctx.lineTo(pillBufW, pillH)
+          pctx.lineTo(pillBufW, 0)
+          pctx.closePath()
+          pctx.clip()
+        }
         if (smallCardSpec.bgImage) {
           const img = smallCardSpec.bgImage
           const midY = Math.floor(img.naturalHeight / 2)
-          ctx.drawImage(img, 0, midY, img.naturalWidth, 1, pillX, pillY, pillW, pillH)
+          pctx.drawImage(img, 0, midY, img.naturalWidth, 1, 0, 0, pillBufW, pillH)
         } else {
-          ctx.fillStyle = smallCardSpec.bgColor
-          ctx.fillRect(pillX, pillY, pillW, pillH)
+          pctx.fillStyle = smallCardSpec.bgColor
+          pctx.fillRect(0, 0, pillBufW, pillH)
         }
-        ctx.restore()
+        pctx.restore()
 
         // Avatar — circular, inset so the whole disc lives inside the
         // pill's left semicircle with visible padding. Falls back to a
         // placeholder disc with the user's first initial.
         {
           const as = smallCardSpec.avatarSize
-          const ax = pillX + (pillH - as) / 2 + 2
-          const ay = pillY + (pillH - as) / 2
-          ctx.save()
-          ctx.beginPath()
-          ctx.arc(ax + as / 2, ay + as / 2, as / 2, 0, Math.PI * 2)
-          ctx.clip()
+          const ax = (pillH - as) / 2 + 2
+          const ay = (pillH - as) / 2
+          pctx.save()
+          pctx.beginPath()
+          pctx.arc(ax + as / 2, ay + as / 2, as / 2, 0, Math.PI * 2)
+          pctx.clip()
           if (smallCardSpec.avatar) {
-            ctx.drawImage(smallCardSpec.avatar, ax, ay, as, as)
+            pctx.drawImage(smallCardSpec.avatar, ax, ay, as, as)
           } else {
-            ctx.fillStyle = 'rgba(255,255,255,0.25)'
-            ctx.fillRect(ax, ay, as, as)
+            pctx.fillStyle = 'rgba(255,255,255,0.25)'
+            pctx.fillRect(ax, ay, as, as)
             const firstChar = (event?.user_name || '?').trim().charAt(0) || '?'
-            ctx.fillStyle = '#fff'
-            ctx.font = `700 ${Math.round(as * 0.55)}px -apple-system, "PingFang SC", sans-serif`
-            ctx.textAlign = 'center'
-            ctx.textBaseline = 'middle'
-            ctx.fillText(firstChar, ax + as / 2, ay + as / 2 + 1)
-            ctx.textAlign = 'start'
+            pctx.fillStyle = '#fff'
+            pctx.font = `700 ${Math.round(as * 0.55)}px -apple-system, "PingFang SC", sans-serif`
+            pctx.textAlign = 'center'
+            pctx.textBaseline = 'middle'
+            pctx.fillText(firstChar, ax + as / 2, ay + as / 2 + 1)
+            pctx.textAlign = 'start'
           }
-          ctx.restore()
+          pctx.restore()
         }
 
-        // Text. Single line, multi-coloured segments. Wait until the
-        // unfurl finishes before the marquee kicks in so entrance stays clean.
-        ctx.font = smallCardSpec.font
-        ctx.textBaseline = 'middle'
-        const textInnerLeft = pillX + smallCardSpec.padX + avatarSlot
-        const textInnerRight = pillX + pillW - smallCardSpec.padX
-        const textBaselineY = pillY + pillH / 2
+        // Text. 仍只在 pillW 范围内排版（textInnerRight=pillW-padX），避免
+        // 文字延伸进本来就要淡出的尾巴里。Marquee 也一样。
+        pctx.font = smallCardSpec.font
+        pctx.textBaseline = 'middle'
+        const textInnerLeft = smallCardSpec.padX + avatarSlot
+        const textInnerRight = pillW - smallCardSpec.padX
+        const textBaselineY = pillH / 2
         const drawSegments = (startX: number) => {
           let cursor = startX
           for (const s of smallCardSpec!.segments) {
-            ctx.fillStyle = s.color
-            ctx.fillText(s.text, cursor, textBaselineY)
-            cursor += ctx.measureText(s.text).width
+            pctx.fillStyle = s.color
+            pctx.fillText(s.text, cursor, textBaselineY)
+            cursor += pctx.measureText(s.text).width
           }
         }
         if (smallCardSpec.textW <= textInnerRight - textInnerLeft) {
           drawSegments(textInnerLeft)
         } else {
-          ctx.save()
-          ctx.beginPath()
-          ctx.rect(textInnerLeft, pillY, textInnerRight - textInnerLeft, pillH)
-          ctx.clip()
+          pctx.save()
+          pctx.beginPath()
+          pctx.rect(textInnerLeft, 0, textInnerRight - textInnerLeft, pillH)
+          pctx.clip()
           const cycleW = smallCardSpec.textW + 40  // text + gap
           const scrollT = Math.max(0, cardElapsed - FADE)
           const offset = (scrollT * 30) % cycleW   // 30 px/sec
           drawSegments(textInnerLeft - offset)
           drawSegments(textInnerLeft - offset + cycleW)
+          pctx.restore()
+        }
+
+        // 尾巴 fade —— 把右侧平口化成向外延伸的渐隐，匹配 B 站原生 pill 收尾。
+        if (pillTailW > 0) {
+          pctx.save()
+          pctx.globalCompositeOperation = 'destination-out'
+          const g = pctx.createLinearGradient(pillW, 0, pillBufW, 0)
+          g.addColorStop(0, 'rgba(0,0,0,0)')
+          g.addColorStop(1, 'rgba(0,0,0,1)')
+          pctx.fillStyle = g
+          pctx.fillRect(pillW, 0, pillTailW, pillH)
+          pctx.restore()
+        }
+
+        // Composite onto main canvas with unfurl crop (包含尾巴一起展开).
+        if (revealW > 0) {
+          ctx.save()
+          ctx.globalAlpha = Math.max(0, Math.min(1, smallAlpha)) * CARD_MAX_ALPHA
+          ctx.drawImage(pillBuf, 0, 0, revealW, pillH, pillX, pillY, revealW, pillH)
           ctx.restore()
         }
-        ctx.restore()
       }
 
       for (let i = 0; i < vaps.length; i++) {
