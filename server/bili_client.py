@@ -1921,3 +1921,26 @@ class BiliLiveClient:
 
     def stop(self):
         self._running = False
+        # 仅翻 flag 不够：_connect_and_listen 的 `async for raw_msg in ws` 不看 _running，
+        # WS 不关就会继续收包 → 每条包 handler 都可能 create_task(send_danmu)（欢迎/感谢/AI回复/昵称指令…），
+        # 并且 run() 的 finally 也跑不到，定时弹幕/挂粉扫描也不会被 cancel。
+        # 参考 request_reconnect() 的做法，直接关 WS 让整条链路解绑。
+        ws = self._ws
+        if ws is not None and not ws.closed:
+            try:
+                asyncio.create_task(ws.close())
+            except RuntimeError:
+                # 调用侧不在事件循环里（理论不会发生，保险起见兜一下）
+                pass
+        # 盲盒/礼物感谢 debounce flush：任务正在 sleep 等去重窗口结束，
+        # 停止监听后也会到点照发，这里一并 cancel + 清桶。
+        for buf in list(self._blind_bursts.values()):
+            t = buf.get("task")
+            if t and not t.done():
+                t.cancel()
+        self._blind_bursts.clear()
+        for buf in list(self._gift_bursts.values()):
+            t = buf.get("task")
+            if t and not t.done():
+                t.cancel()
+        self._gift_bursts.clear()
