@@ -71,7 +71,14 @@ export function ClipDownloadButton({ event, size = 'sm' }: Props) {
     if (!event.room_id || !event.user_name || !event.timestamp) return
     const ok = await confirmDialog({
       title: '下载录屏',
-      message: '下载录屏占用资源较高，如果下载的录屏没有特效或特效卡顿，建议下播之后再试。',
+      message: (
+        <>
+          <div>刚送出的礼物，请等待 10 分钟后再下载。</div>
+          <div style={{ marginTop: 8 }}>
+            下载录屏占用资源较高，如果下载的录屏没有特效或特效卡顿，建议下播之后再试。
+          </div>
+        </>
+      ),
       okText: '继续下载',
     })
     if (!ok) return
