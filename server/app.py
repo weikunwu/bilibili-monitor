@@ -224,10 +224,10 @@ async def _periodic_memory_cleanup():
 
 
 async def _periodic_clip_cleanup():
-    """Delete clips older than 24h every hour. Also sweep orphan entry-effect files."""
+    """Delete clips older than 72h every hour. Also sweep orphan entry-effect files."""
     while True:
         try:
-            recorder.cleanup_old_clips(max_age_hours=24)
+            recorder.cleanup_old_clips(max_age_hours=72)
         except Exception as e:
             log.warning(f"[clip cleanup] {e}")
         try:

@@ -1075,7 +1075,7 @@ export function ToolsPanel({ roomId, category }: Props) {
             </span>
           </div>
           <div className="cmd-desc">直播时收到单价 ≥<span style={{ color: '#ef5350' }}>¥1000</span> 礼物时自动录制前后片段，可在礼物和大航海列表下载</div>
-          <div className="cmd-desc">录制片段仅保留 24 小时</div>
+          <div className="cmd-desc">录制片段仅保留 72 小时</div>
         </div>
       </div>
         </>
