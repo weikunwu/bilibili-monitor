@@ -27,6 +27,7 @@ const { Column, HeaderCell, Cell } = Table
 
 const MAX_BYTES = 100 * 1024 * 1024
 const ALLOWED_EXT = ['.mp4', '.webm']
+const ENTRY_EFFECT_MAX_UIDS = 10
 
 function Section({
   title, description, children, isMobile,
@@ -181,12 +182,25 @@ export function EffectsPanel({ roomId }: Props) {
           </div>
         </Section>
 
-        <div style={{ fontSize: 15, fontWeight: 600, color: '#e8e8e8', marginTop: 4 }}>进场特效</div>
+        <div style={{ fontSize: 15, fontWeight: 600, color: '#e8e8e8', marginTop: 4 }}>
+          进场特效
+          <span style={{ fontSize: 12, fontWeight: 400, color: '#888', marginLeft: 8 }}>
+            {rows.length}/{ENTRY_EFFECT_MAX_UIDS}
+          </span>
+        </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
           <div style={{ fontSize: 12, color: '#888' }}>
-            每个 UID 仅保留一个视频（再次上传会覆盖）。
+            每个 UID 仅保留一个视频（再次上传会覆盖）。每个房间最多 {ENTRY_EFFECT_MAX_UIDS} 个 UID。
           </div>
-          <Button size="sm" appearance="primary" startIcon={<PlusIcon />} onClick={() => setShowAdd(true)} style={{ flexShrink: 0 }}>
+          <Button
+            size="sm"
+            appearance="primary"
+            startIcon={<PlusIcon />}
+            onClick={() => setShowAdd(true)}
+            disabled={rows.length >= ENTRY_EFFECT_MAX_UIDS}
+            title={rows.length >= ENTRY_EFFECT_MAX_UIDS ? `已达上限 ${ENTRY_EFFECT_MAX_UIDS}，请先删除后再新增` : ''}
+            style={{ flexShrink: 0 }}
+          >
             新增
           </Button>
         </div>

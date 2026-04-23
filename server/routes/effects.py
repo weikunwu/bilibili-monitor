@@ -24,11 +24,12 @@ from fastapi.responses import FileResponse
 from ..auth import require_room_access
 from ..config import (
     ENTRY_EFFECT_ROOT, ENTRY_EFFECT_MAX_BYTES, ENTRY_EFFECT_ALLOWED_EXT,
-    ENTRY_EFFECT_COOLDOWN_SEC, GIFT_EFFECT_ROOT, log,
+    ENTRY_EFFECT_MAX_UIDS_PER_ROOM, ENTRY_EFFECT_COOLDOWN_SEC, GIFT_EFFECT_ROOT, log,
 )
 from .. import effect_catalog
 from ..db import (
     list_entry_effects, get_entry_effect_for_user, upsert_entry_effect, delete_entry_effect,
+    count_entry_effects,
     get_entry_effect_sound_on, set_entry_effect_sound_on,
     get_gift_effect_test_enabled, set_gift_effect_test_enabled,
     list_gift_effects, get_gift_effect_for_gift, upsert_gift_effect, delete_gift_effect,
@@ -260,6 +261,12 @@ async def upload_effect(
     if ext not in ENTRY_EFFECT_ALLOWED_EXT:
         raise HTTPException(400, f"只支持 {'/'.join(sorted(ENTRY_EFFECT_ALLOWED_EXT))}")
 
+    # 新 uid 时做容量检查；老 uid 是覆盖上传不占新名额。先校验再读文件，
+    # 避免到达上限的用户白白上传大文件。
+    old = get_entry_effect_for_user(room_id, uid)
+    if old is None and count_entry_effects(room_id) >= ENTRY_EFFECT_MAX_UIDS_PER_ROOM:
+        raise HTTPException(400, f"每个房间最多为 {ENTRY_EFFECT_MAX_UIDS_PER_ROOM} 个 UID 绑定进场特效")
+
     # 读到内存做大小校验。10MB 可控；后续要升得更大再改成流式分片。
     data = await file.read()
     if len(data) > ENTRY_EFFECT_MAX_BYTES:
@@ -272,9 +279,6 @@ async def upload_effect(
     new_filename = f"{uuid.uuid4().hex}{ext}"
     new_path = room_dir / new_filename
     new_path.write_bytes(data)
-
-    # Upsert：旧文件要从磁盘删掉（仅当旧记录是上传类型）
-    old = get_entry_effect_for_user(room_id, uid)
     row = upsert_entry_effect(
         room_id, uid, (user_name or "").strip(),
         video_filename=new_filename, preset_key="", size_bytes=len(data),
@@ -311,6 +315,8 @@ async def upload_preset_effect(
 
     # Upsert：如果旧记录是上传类型，把磁盘文件清掉
     old = get_entry_effect_for_user(room_id, uid)
+    if old is None and count_entry_effects(room_id) >= ENTRY_EFFECT_MAX_UIDS_PER_ROOM:
+        raise HTTPException(400, f"每个房间最多为 {ENTRY_EFFECT_MAX_UIDS_PER_ROOM} 个 UID 绑定进场特效")
     row = upsert_entry_effect(
         room_id, uid, user_name,
         video_filename="", preset_key=preset_key, size_bytes=0,

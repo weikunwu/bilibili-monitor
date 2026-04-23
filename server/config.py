@@ -67,6 +67,7 @@ ENTRY_EFFECT_ROOT = DATA_DIR / "entry_effects"
 ENTRY_EFFECT_ROOT.mkdir(parents=True, exist_ok=True)
 ENTRY_EFFECT_MAX_BYTES = 100 * 1024 * 1024   # 100 MB
 ENTRY_EFFECT_ALLOWED_EXT = {".mp4", ".webm"}
+ENTRY_EFFECT_MAX_UIDS_PER_ROOM = 10          # 每房最多 10 个 UID 能绑进场特效
 # 礼物特效覆盖：用户上传的视频替换 B站 自带 VAP，路径同结构。
 GIFT_EFFECT_ROOT = DATA_DIR / "gift_effects"
 GIFT_EFFECT_ROOT.mkdir(parents=True, exist_ok=True)

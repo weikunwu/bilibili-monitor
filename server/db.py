@@ -690,6 +690,15 @@ def list_entry_effects(room_id: int) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def count_entry_effects(room_id: int) -> int:
+    conn = sqlite3.connect(str(DB_PATH))
+    n = conn.execute(
+        "SELECT COUNT(*) FROM entry_effects WHERE room_id=?", (room_id,),
+    ).fetchone()[0]
+    conn.close()
+    return int(n)
+
+
 def get_entry_effect_for_user(room_id: int, uid: int) -> Optional[dict]:
     conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
