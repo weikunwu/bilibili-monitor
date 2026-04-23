@@ -10,10 +10,12 @@ import time
 from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
 
+import aiohttp
 from fastapi import APIRouter, HTTPException, Query, Request
 
-from ..config import DB_PATH
+from ..config import DB_PATH, HEADERS, ROOM_INFO_API
 from ..db import verify_overlay_token, get_overlay_settings, get_live_started_at, is_room_expired
+from ..manager import manager
 
 
 router = APIRouter()
@@ -25,7 +27,13 @@ MAX_EVENTS = 20  # 绝对上限；实际 N 由房间设置决定
 # gifts: 正常 poll 12/min (每 5 秒一次)，留 5x buffer
 RATE_LIMIT = {
     "gifts": (60, 60.0),
+    "weekly_tasks": (60, 60.0),
 }
+
+# 心动每周任务（原名"疯狂星期五"）：直接走 B 站官方接口，数值和直播间里的小组件一致。
+CRAZY_FRIDAY_API = "https://api.live.bilibili.com/xlive/custom-activity-interface/general/friday/GetCrazyFridayData"
+# 兜底里程碑 —— 接口正常时用接口返回的 collect_task_list，拉不到时用这个。
+WEEKLY_TASK_DEFAULT_MILESTONES = [20, 60, 120, 180]
 # name -> {ip: deque[timestamp]}
 _rate_buckets: dict[str, dict[str, deque[float]]] = defaultdict(lambda: defaultdict(deque))
 
@@ -258,6 +266,102 @@ async def overlay_gifts(
         "room_id": room_id, "users": items,
         "scroll_enabled": bool(settings.get("scroll_enabled", True)),
         "scroll_speed": int(settings.get("scroll_speed") or 40),
+    }
+
+
+async def _resolve_streamer_uid(room_id: int) -> int:
+    """Return the streamer's uid (ruid) for a room. 0 if unresolvable.
+
+    先读 manager 里已连接的 client 缓存；没缓存就打 B 站 Room.get_info 拉一次。
+    """
+    client = manager.get(room_id)
+    uid = getattr(client, "streamer_uid", 0) if client else 0
+    if uid:
+        return int(uid)
+    try:
+        async with aiohttp.ClientSession(headers=HEADERS, timeout=aiohttp.ClientTimeout(total=8)) as s:
+            async with s.get(ROOM_INFO_API, params={"room_id": room_id}) as r:
+                d = await r.json(content_type=None)
+                if d.get("code") == 0:
+                    return int((d.get("data") or {}).get("uid") or 0)
+    except Exception:
+        pass
+    return 0
+
+
+@router.get("/api/overlay/weekly-tasks/{room_id}")
+async def overlay_weekly_tasks(
+    room_id: int,
+    request: Request,
+    token: str = Query(..., description="overlay token, generated from room settings"),
+):
+    """Return this week's 心动盲盒 progress directly from B站's Crazy Friday API.
+
+    数值和主播直播间里"收集心动盲盒 N/M"小组件一模一样（normal_task_collect_cnt +
+    collect_task_list）。不再查我们自己的 events 表 —— 官方接口是唯一真源、
+    跟观众实时看到的完全对齐。
+    """
+    _check_rate(request, "weekly_tasks")
+    if not verify_overlay_token(room_id, token):
+        raise HTTPException(status_code=403, detail="invalid overlay token")
+    if is_room_expired(room_id):
+        raise HTTPException(status_code=410, detail="房间已到期")
+
+    ruid = await _resolve_streamer_uid(room_id)
+    if not ruid:
+        return {
+            "room_id": room_id,
+            "count": 0,
+            "milestones": WEEKLY_TASK_DEFAULT_MILESTONES,
+            "error": "no_streamer_uid",
+        }
+
+    params = {"room_id": room_id, "ruid": ruid, "config_id": 1}
+    try:
+        async with aiohttp.ClientSession(headers=HEADERS, timeout=aiohttp.ClientTimeout(total=8)) as s:
+            async with s.get(CRAZY_FRIDAY_API, params=params) as r:
+                d = await r.json(content_type=None)
+    except Exception:
+        return {
+            "room_id": room_id,
+            "count": 0,
+            "milestones": WEEKLY_TASK_DEFAULT_MILESTONES,
+            "error": "fetch_failed",
+        }
+
+    if d.get("code") != 0:
+        return {
+            "room_id": room_id,
+            "count": 0,
+            "milestones": WEEKLY_TASK_DEFAULT_MILESTONES,
+            "error": f"api_code_{d.get('code')}",
+        }
+
+    data = d.get("data") or {}
+    proc = (data.get("anchor_process_map") or {}).get(str(ruid)) or {}
+    count = int(proc.get("normal_task_collect_cnt") or 0)
+    # collect_task_list: [{target, sp_probability, limit, level}, ...] —— 按 target 升序
+    task_list = data.get("collect_task_list") or []
+    milestones: list[int] = []
+    for t in task_list:
+        try:
+            v = int(t.get("target") or 0)
+            if v > 0:
+                milestones.append(v)
+        except (TypeError, ValueError):
+            continue
+    milestones.sort()
+    if not milestones:
+        milestones = list(WEEKLY_TASK_DEFAULT_MILESTONES)
+
+    return {
+        "room_id": room_id,
+        "count": count,
+        "milestones": milestones,
+        "blind_gift_name": data.get("blind_gift_name") or "心动盲盒",
+        "grand_prize_name": data.get("grand_prize_name") or "",
+        "cycle_start_time": data.get("cycle_start_time") or 0,
+        "cycle_end_time": data.get("cycle_end_time") or 0,
     }
 
 
