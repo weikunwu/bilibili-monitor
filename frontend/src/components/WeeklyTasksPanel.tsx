@@ -72,7 +72,7 @@ export function WeeklyTasksPanel({ roomId }: Props) {
         <Section
           isMobile={isMobile}
           title="浏览器源链接"
-          description="本周累计「心动盲盒」数量的进度条件栏，里程碑 20 / 60 / 120 / 180，每周一 00:00（北京时间）自动重置。用 OBS 等直播工具添加「浏览器源」粘贴此链接即可叠加到直播画面。链接带 token 鉴权，和其他 overlay 共用同一个 token，「重新生成」会同时让所有 overlay 旧链接失效。"
+          description="本周累计「心动盲盒」数量的进度条件栏，里程碑 20 / 60 / 120 / 180，按 B 站心动盲盒 cycle 自动重置。暴击任务触发时会自动切到暴击任务进度。用 OBS 等直播工具添加「浏览器源」粘贴此链接即可叠加到直播画面。链接带 token 鉴权，和其他 overlay 共用同一个 token，「重新生成」会同时让所有旧链接失效。"
         >
           <img
             src={previewImg}
