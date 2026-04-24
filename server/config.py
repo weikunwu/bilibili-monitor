@@ -338,8 +338,8 @@ DEFAULT_COMMANDS = [
         "id": "broadcast_pk_start",
         "name": "PK 播报",
         "type": "auto_broadcast",
-        "description": "连线 PK 开始时自动播报对面主播信息。模版里用 \\n 换行会分成多条弹幕发。占位符：{name} 对面主播名；{followers} 粉丝数（带万/亿缩写）；{online} 当前在线戴牌互动人数；{guard_brief} 舰队摘要（暂无 / N舰长 / N(督x提y长z)）；{gold} 本场贡献金瓜子折算成元；也支持 {guard_total}/{governor}/{admiral}/{captain} 单独字段。数字缺失用 ? 占位。",
-        "default_enabled": False,
+        "description": "连线 PK 开始时自动播报对面主播信息。模版里用 \\n 换行会分成多条弹幕发。占位符：{name} 对面主播名；{followers} 粉丝数（带万/亿缩写）；{online} 当前在线戴牌互动人数；{guard_brief} 舰队摘要（暂无 / N舰长 / N(督x提y长z)）；{gold} 本场高能贡献（元）；也支持 {guard_total}/{governor}/{admiral}/{captain} 单独字段。数字缺失用 ? 占位。",
+        "default_enabled": True,
         "config": {
             "templates": [
                 "PK对手 {name}！\n粉丝{followers} 舰队{guard_brief}\n当前在线人数{online}，本场高能贡献{gold}元",
