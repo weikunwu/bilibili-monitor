@@ -287,16 +287,16 @@ function CritTaskCard({
           <img
             src={giftImg}
             alt=""
-            style={{ width: 22, height: 22, objectFit: 'contain', display: 'block' }}
+            style={{ width: 20, height: 20, objectFit: 'contain', display: 'block' }}
           />
         ) : null}
-        <span style={{ fontSize: 20, fontWeight: 600, letterSpacing: 0.3 }}>
+        <span style={{ fontSize: 18, fontWeight: 600, letterSpacing: 0.3 }}>
           收集{giftName}
         </span>
         <span
           style={{
             marginLeft: 8,
-            fontSize: 12, fontWeight: 700,
+            fontSize: 11, fontWeight: 700,
             padding: '2px 8px',
             borderRadius: 999,
             background: 'linear-gradient(to right, #ff4d2a, #ffa43a)',
@@ -306,7 +306,7 @@ function CritTaskCard({
         >
           暴击
         </span>
-        <span style={{ marginLeft: 'auto', fontSize: 20, fontWeight: 600 }}>
+        <span style={{ marginLeft: 'auto', fontSize: 18, fontWeight: 600 }}>
           <span style={{ color: '#ffb84d' }}>{count}</span>
           <span style={{ color: '#aaa' }}>/{target}</span>
         </span>
