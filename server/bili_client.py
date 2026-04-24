@@ -532,6 +532,7 @@ class BiliLiveClient:
         async def _gold(session):
             # queryContributionRank?type=gold 返回 rank 但 score 恒为 0，
             # 本场金瓜子榜得走 getOnlineGoldRank（camelCase 参数）。
+            # score 单位是电池，1 元 = 10 电池。
             if not (uid and room):
                 return -1
             try:
@@ -540,8 +541,7 @@ class BiliLiveClient:
                 async with session.get(url, params=params, timeout=aiohttp.ClientTimeout(total=6)) as r:
                     d = (await r.json(content_type=None)).get("data") or {}
                     items = d.get("OnlineRankItem") or d.get("onlineList") or []
-                    # 金瓜子 → 元：1000 金瓜子 = 1 元
-                    return sum(int(u.get("score") or 0) for u in items) // 1000
+                    return sum(int(u.get("score") or 0) for u in items) // 10
             except Exception as e:
                 log.warning(f"[pk-broadcast] gold rank fail: {e}")
             return -1
