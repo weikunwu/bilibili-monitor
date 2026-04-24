@@ -75,12 +75,12 @@ export function WeeklyTasksPanel({ roomId }: Props) {
           title="浏览器源链接"
           description="本周累计「心动盲盒」数量的进度条件栏，里程碑 20 / 60 / 120 / 180，按 B 站心动盲盒 cycle 自动重置。暴击任务触发时会自动切到暴击任务进度。用 OBS 等直播工具添加「浏览器源」粘贴此链接即可叠加到直播画面。链接带 token 鉴权，和其他 overlay 共用同一个 token，「重新生成」会同时让所有旧链接失效。"
         >
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', flexWrap: 'wrap', gap: isMobile ? 12 : 8 }}>
             {[
               { src: previewImg, alt: '心动盲盒 overlay 预览', caption: '心动盲盒收集期' },
-              { src: critPreviewImg, alt: '暴击任务 overlay 预览', caption: '暴击任务触发时' },
+              { src: critPreviewImg, alt: '暴击任务 overlay 预览', caption: '暴击任务收集期' },
             ].map(({ src, alt, caption }) => (
-              <div key={alt} style={{ flex: '1 1 220px', minWidth: 0 }}>
+              <div key={alt} style={{ flex: isMobile ? '0 0 auto' : '1 1 220px', minWidth: 0 }}>
                 <img
                   src={src}
                   alt={alt}
@@ -88,9 +88,8 @@ export function WeeklyTasksPanel({ roomId }: Props) {
                     display: 'block',
                     width: '100%',
                     maxWidth: 460,
+                    margin: '0 auto',
                     borderRadius: 8,
-                    border: '1px solid #2a2a4a',
-                    background: '#0b0b12',
                   }}
                 />
                 <div style={{ fontSize: 11, color: '#888', marginTop: 4, textAlign: 'center' }}>
