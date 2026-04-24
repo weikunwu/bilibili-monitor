@@ -277,7 +277,7 @@ function CritTaskCard({
           <img
             src={giftImg}
             alt=""
-            style={{ width: 22, height: 22, objectFit: 'contain', display: 'block' }}
+            style={{ width: 20, height: 20, objectFit: 'contain', display: 'block' }}
           />
         ) : null}
         <span style={{ fontSize: 20, fontWeight: 600, letterSpacing: 0.3 }}>
@@ -320,7 +320,7 @@ function CritTaskCard({
             boxShadow: '0 0 10px rgba(255,120,40,0.6)',
             display: 'flex', alignItems: 'center',
             paddingLeft: count > 0 ? 10 : 0,
-            color: '#fff', fontSize: 15, fontWeight: 700,
+            color: '#fff', fontSize: 17, fontWeight: 700,
             letterSpacing: 0.3,
             whiteSpace: 'nowrap',
             boxSizing: 'border-box',
