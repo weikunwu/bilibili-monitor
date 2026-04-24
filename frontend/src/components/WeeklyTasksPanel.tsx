@@ -38,6 +38,9 @@ export function WeeklyTasksPanel({ roomId }: Props) {
   const [token, setToken] = useState('')
   const [copied, setCopied] = useState(false)
   const [rotating, setRotating] = useState(false)
+  // B 站返回的本轮 cycle 起止（秒级 unix ts），用来展示真实的重置时间 —— 不是每周一，
+  // 而是心动盲盒自己的 cycle（在写本段时观察到 Sat 00:00 → Fri 23:59 CST，但以 API 为准）。
+  const [cycle, setCycle] = useState<{ start: number; end: number } | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -45,7 +48,23 @@ export function WeeklyTasksPanel({ roomId }: Props) {
     return () => { cancelled = true }
   }, [roomId])
 
+  useEffect(() => {
+    if (!token) return
+    let cancelled = false
+    fetch(`/api/overlay/weekly-tasks/${roomId}?token=${encodeURIComponent(token)}`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => {
+        if (cancelled || !d) return
+        const s = Number(d.cycle_start_time) || 0
+        const e = Number(d.cycle_end_time) || 0
+        if (s > 0 && e > 0) setCycle({ start: s, end: e })
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [roomId, token])
+
   const url = token ? `${window.location.origin}/overlay/${roomId}/weekly-tasks?token=${token}` : ''
+  const cycleText = cycle ? formatCycleCst(cycle.start, cycle.end) : ''
 
   async function copy() {
     if (!url) return
@@ -72,7 +91,7 @@ export function WeeklyTasksPanel({ roomId }: Props) {
         <Section
           isMobile={isMobile}
           title="浏览器源链接"
-          description="本周累计「心动盲盒」数量的进度条件栏，里程碑 20 / 60 / 120 / 180，每周一 00:00（北京时间）自动重置。用 OBS 等直播工具添加「浏览器源」粘贴此链接即可叠加到直播画面。链接带 token 鉴权，和其他 overlay 共用同一个 token，「重新生成」会同时让所有 overlay 旧链接失效。"
+          description={`本周累计「心动盲盒」数量的进度条件栏，里程碑 20 / 60 / 120 / 180，按 B 站心动盲盒 cycle 自动重置${cycleText ? `（本轮 ${cycleText}，北京时间）` : '（以 B 站 cycle 为准，不是周一）'}。用 OBS 等直播工具添加「浏览器源」粘贴此链接即可叠加到直播画面。链接带 token 鉴权，和其他 overlay 共用同一个 token，「重新生成」会同时让所有 overlay 旧链接失效。`}
         >
           <img
             src={previewImg}
@@ -104,4 +123,19 @@ export function WeeklyTasksPanel({ roomId }: Props) {
       </div>
     </div>
   )
+}
+
+// 把 cycle_start/end unix ts 格式化为北京时间的 "M/D(周X) HH:mm → M/D(周X) HH:mm"。
+// 不依赖宿主机时区 —— 手动算 CST(+08:00) 的日期字段。
+function formatCycleCst(startSec: number, endSec: number): string {
+  const fmt = (sec: number) => {
+    const d = new Date((sec + 8 * 3600) * 1000)
+    const m = d.getUTCMonth() + 1
+    const day = d.getUTCDate()
+    const hh = String(d.getUTCHours()).padStart(2, '0')
+    const mm = String(d.getUTCMinutes()).padStart(2, '0')
+    const wk = '日一二三四五六'[d.getUTCDay()]
+    return `${m}/${day}(周${wk}) ${hh}:${mm}`
+  }
+  return `${fmt(startSec)} → ${fmt(endSec)}`
 }

@@ -365,6 +365,11 @@ async def _fetch_weekly_tasks(room_id: int, ruid: int) -> dict:
     if not milestones:
         milestones = list(WEEKLY_TASK_DEFAULT_MILESTONES)
 
+    # 暴击任务（plus_task）字段。前端在 plus_task_status > 0 且 target > 0 时切换到暴击 tracker。
+    plus_task_count = int(proc.get("plus_task_collect_cnt") or 0)
+    plus_task_target = int(proc.get("plus_task_target_cnt") or 0)
+    plus_task_status = int(proc.get("plus_task_status") or 0)
+
     return {
         "room_id": room_id,
         "count": count,
@@ -372,7 +377,13 @@ async def _fetch_weekly_tasks(room_id: int, ruid: int) -> dict:
         "blind_gift_name": data.get("blind_gift_name") or "心动盲盒",
         "grand_prize_name": data.get("grand_prize_name") or "",
         "cycle_start_time": data.get("cycle_start_time") or 0,
+        "cycle_settlement_time": data.get("cycle_settlement_time") or 0,
         "cycle_end_time": data.get("cycle_end_time") or 0,
+        "plus_task_count": plus_task_count,
+        "plus_task_target": plus_task_target,
+        "plus_task_status": plus_task_status,
+        "plus_gift_name": data.get("plus_gift_name") or "",
+        "plus_gift_img": data.get("plus_gift_img") or "",
     }
 
 
