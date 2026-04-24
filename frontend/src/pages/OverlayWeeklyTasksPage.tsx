@@ -17,10 +17,15 @@ const POLL_MS = 5000
 // 心动盲盒 gift_id=32251，B站 CDN 图稳定；直连省一次后端中转
 const BLIND_BOX_ICON = 'https://s1.hdslb.com/bfs/live/38f645d811537b50873718cecbfd84cd28af50ed.png'
 
+// 电影票礼物图（plus_gift_img 典型值）—— 预览用，直连 B 站 CDN。
+const MOVIE_TICKET_ICON = 'https://s1.hdslb.com/bfs/live/20864a10beaea541c7dce264d5bbc56676d63e4f.png'
+
 export function OverlayWeeklyTasksPage() {
   const { roomId } = useParams()
   const [searchParams] = useSearchParams()
   const token = searchParams.get('token') || ''
+  // ?preview=weekly|crit：跳过 API，用内置 mock 数据直接渲染对应卡片，方便截图 / 设计预览。
+  const preview = searchParams.get('preview')
   const [data, setData] = useState<WeeklyTasksData>({
     count: 0,
     milestones: [20, 60, 120, 180],
@@ -47,6 +52,7 @@ export function OverlayWeeklyTasksPage() {
   }, [])
 
   useEffect(() => {
+    if (preview) return  // 预览模式：直接用 mock，跳过 API 轮询
     if (!roomId) return
     if (!token) { setError('缺少 token'); return }
     let cancelled = false
@@ -85,7 +91,7 @@ export function OverlayWeeklyTasksPage() {
     poll()
     iv = window.setInterval(poll, POLL_MS)
     return () => { cancelled = true; clearInterval(iv) }
-  }, [roomId, token])
+  }, [roomId, token, preview])
 
   // cycle 两段式：[start, settlement) = 心动盲盒收集期 → weekly 卡；
   // [settlement, end) = 暴击任务时段 → 仅当 plus_task_status===1 显示 crit 卡，否则藏；
@@ -119,7 +125,11 @@ export function OverlayWeeklyTasksPage() {
         color: '#fff',
       }}
     >
-      {mode === 'hidden' ? null : mode === 'crit' ? (
+      {preview === 'weekly' ? (
+        <WeeklyTaskCard count={87} milestones={[20, 60, 120, 180]} />
+      ) : preview === 'crit' ? (
+        <CritTaskCard count={6} target={10} giftName="电影票" giftImg={MOVIE_TICKET_ICON} />
+      ) : mode === 'hidden' ? null : mode === 'crit' ? (
         <CritTaskCard
           count={data.plusCount}
           target={data.plusTarget}
