@@ -80,19 +80,30 @@ async def _ensure_info_limited(client):
         return await client.ensure_info()
 
 
+async def _refresh_bot_identity_limited(client):
+    async with _INFO_FETCH_SEM:
+        return await client.refresh_bot_identity()
+
+
 @router.get("/api/rooms")
 async def get_rooms(request: Request):
     allowed = getattr(request.state, "allowed_rooms", None)
     db_rooms = get_all_rooms()
 
-    # Lazy fetch: ensure room info is loaded for clients that haven't fetched yet
+    # Lazy fetch: ensure room info and bot_name are loaded for clients that
+    # haven't fetched yet. bot_name is populated by WS connect flow; rooms
+    # with cookie but active=0 never hit that path, so backfill here.
     clients_to_fetch = []
     for room_id, _ in db_rooms:
         if allowed is not None and room_id not in allowed:
             continue
         c = manager.get(room_id)
-        if c and not c._info_fetched:
+        if not c:
+            continue
+        if not c._info_fetched:
             clients_to_fetch.append(_ensure_info_limited(c))
+        if c.cookies.get("SESSDATA") and not c.bot_name:
+            clients_to_fetch.append(_refresh_bot_identity_limited(c))
     if clients_to_fetch:
         await asyncio.gather(*clients_to_fetch, return_exceptions=True)
 
