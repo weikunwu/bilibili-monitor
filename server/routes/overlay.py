@@ -248,7 +248,7 @@ async def overlay_gifts(
         f"SELECT id, event_type, user_name, user_id, content, extra_json FROM events "
         f"WHERE event_type IN ({placeholders}) AND room_id=? "
         f"AND timestamp >= ? AND timestamp < ? "
-        f"AND COALESCE(json_extract(extra_json, '$.coin_type'), '') != 'silver' "
+        f"AND COALESCE(coin_type, '') != 'silver' "
         f"ORDER BY id DESC LIMIT ?",
         (*wanted_types, room_id, utc_start, utc_end, scan_limit),
     ).fetchall()

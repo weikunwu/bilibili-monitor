@@ -19,9 +19,9 @@ def load_from_db() -> int:
     try:
         conn = sqlite3.connect(str(DB_PATH))
         rows = conn.execute(
-            "SELECT DISTINCT json_extract(extra_json, '$.gift_name') "
+            "SELECT DISTINCT gift_name "
             "FROM events WHERE event_type='gift' "
-            "AND COALESCE(json_extract(extra_json, '$.price'), 0) > ?",
+            "AND COALESCE(price, 0) > ?",
             (RARE_BLIND_MIN_PRICE,),
         ).fetchall()
         conn.close()
