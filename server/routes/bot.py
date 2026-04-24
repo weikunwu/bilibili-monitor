@@ -115,6 +115,10 @@ async def bot_poll(request: Request, qrcode_key: str):
             # 清掉内存里 per-session 的派生状态（老 buvid / 老用户名 / 老熔断）
             client.reset_bot_session_state()
             client.request_reconnect()
+            # request_reconnect 只在 WS loop 跑着的时候有用；active=0 的房间
+            # WS 不跑，必须显式拉一次 NAV_API，否则 bot_name 永远是空串 → UI
+            # 显示 "Unknown (UID: xxx)"。
+            await client.refresh_bot_identity()
         _qr_sessions.pop(qrcode_key, None)
         log.info(f"房间 {target_room_id} 扫码绑定成功 (UID: {uid})")
         return {"code": 0, "message": "绑定成功", "uid": uid}

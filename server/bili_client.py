@@ -206,13 +206,21 @@ class BiliLiveClient:
         # 拿到后常驻内存，重连不会重复请求。
         if not self.cookies.get("SESSDATA") or self.bot_name:
             return
-        async with aiohttp.ClientSession(headers=self._make_cookie_header()) as session:
-            async with session.get(NAV_API) as resp:
-                data = await resp.json(content_type=None)
-                if data.get("code") == 0:
-                    self.bot_uid = data["data"].get("mid", 0)
-                    self.bot_name = data["data"].get("uname", "")
-                    log.info(f"已登录用户: {self.bot_name} (UID: {self.bot_uid})")
+        try:
+            async with aiohttp.ClientSession(headers=self._make_cookie_header()) as session:
+                async with session.get(NAV_API) as resp:
+                    data = await resp.json(content_type=None)
+                    if data.get("code") == 0:
+                        self.bot_uid = data["data"].get("mid", 0)
+                        self.bot_name = data["data"].get("uname", "")
+                        log.info(f"已登录用户: {self.bot_name} (UID: {self.bot_uid})")
+                    else:
+                        log.warning(
+                            f"[bot-identity] room={self.room_id} NAV_API 失败 "
+                            f"code={data.get('code')} msg={data.get('message')!r}"
+                        )
+        except Exception as e:
+            log.warning(f"[bot-identity] room={self.room_id} NAV_API 异常: {e}")
 
     async def get_room_info(self):
         async with aiohttp.ClientSession(headers=self._make_cookie_header()) as session:
