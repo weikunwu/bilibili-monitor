@@ -501,7 +501,7 @@ class BiliLiveClient:
                     items = d.get("item") or d.get("list") or []
                     return len(items)
             except Exception as e:
-                log.debug(f"[pk-broadcast] online rank fail: {e}")
+                log.warning(f"[pk-broadcast] online rank fail: {e}")
             return -1
 
         async def _followers(session):
@@ -513,7 +513,7 @@ class BiliLiveClient:
                     if j.get("code") == 0:
                         return int(j["data"].get("follower_num") or 0)
             except Exception as e:
-                log.debug(f"[pk-broadcast] master info fail: {e}")
+                log.warning(f"[pk-broadcast] master info fail: {e}")
             return -1
 
         async def _guards(session):
@@ -522,21 +522,20 @@ class BiliLiveClient:
             return await self._fetch_opponent_guard_counts(session, room, uid)
 
         async def _gold(session):
+            # queryContributionRank?type=gold 返回 rank 但 score 恒为 0，
+            # 本场金瓜子榜得走 getOnlineGoldRank（camelCase 参数）。
             if not (uid and room):
                 return -1
             try:
-                params = {
-                    "ruid": uid, "room_id": room,
-                    "page": 1, "page_size": 100,
-                    "type": "gold", "switch": "contribution_rank", "platform": "web",
-                }
-                async with session.get(self.ONLINE_RANK_API, params=params, timeout=aiohttp.ClientTimeout(total=6)) as r:
+                url = "https://api.live.bilibili.com/xlive/general-interface/v1/rank/getOnlineGoldRank"
+                params = {"ruid": uid, "roomId": room, "page": 1, "pageSize": 100}
+                async with session.get(url, params=params, timeout=aiohttp.ClientTimeout(total=6)) as r:
                     d = (await r.json(content_type=None)).get("data") or {}
-                    items = d.get("item") or d.get("list") or []
+                    items = d.get("OnlineRankItem") or d.get("onlineList") or []
                     # 金瓜子 → 元：1000 金瓜子 = 1 元
                     return sum(int(u.get("score") or 0) for u in items) // 1000
             except Exception as e:
-                log.debug(f"[pk-broadcast] contrib rank fail: {e}")
+                log.warning(f"[pk-broadcast] gold rank fail: {e}")
             return -1
 
         async with aiohttp.ClientSession(headers=headers) as session:
@@ -564,7 +563,7 @@ class BiliLiveClient:
                 async with session.get(url, params=params, timeout=aiohttp.ClientTimeout(total=5)) as r:
                     d = (await r.json(content_type=None)).get("data") or {}
             except Exception as e:
-                log.debug(f"[pk-broadcast] guard page {page} fail: {e}")
+                log.warning(f"[pk-broadcast] guard page {page} fail: {e}")
                 break
             if page == 1:
                 total = int((d.get("info") or {}).get("num") or 0)
