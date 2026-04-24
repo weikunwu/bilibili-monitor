@@ -183,6 +183,46 @@ def init_db():
     # 按房间 + 用户 + 时间的 GROUP BY 查询（list_room_users）会走这个索引。
     conn.execute("CREATE INDEX IF NOT EXISTS idx_events_room_user_ts ON events(room_id, user_id, timestamp)")
 
+    # 把 extra_json 里最热的几个字段提成真列（不是 VIRTUAL 生成列）：查询直接
+    # 引用列名、可建索引、不再 per-row json_extract。展示型字段（avatar、gift_img、
+    # 头像框色、弹幕 emoticon 等）继续留在 extra_json —— 它们从不进 WHERE。
+    # ALTER TABLE ADD COLUMN 没有 IF NOT EXISTS，try/except 做幂等。
+    for col_def in (
+        "gift_name TEXT",
+        "price INTEGER",
+        "coin_type TEXT",
+        "num INTEGER",
+        "total_coin INTEGER",
+        "blind_name TEXT",
+        "guard_level INTEGER",
+    ):
+        try:
+            conn.execute(f"ALTER TABLE events ADD COLUMN {col_def}")
+        except sqlite3.OperationalError:
+            pass  # already added on a prior startup
+    # rare_blind_by_gift / gift_catalog.load_from_db 都按 gift_name 精确筛选，
+    # 独立索引能绕过 (room_id, event_type, timestamp) 上的大范围扫描。
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_events_room_gift_name ON events(room_id, gift_name)")
+
+    # 一次性回填老数据。PRAGMA user_version 作 sentinel：跑完置 1，后续启动跳过。
+    # 新插入的事件走 save_event 直接填列，不依赖这段。
+    user_version = int(conn.execute("PRAGMA user_version").fetchone()[0] or 0)
+    if user_version < 1:
+        log.info("[migrate v1] backfilling events columns from extra_json...")
+        conn.execute("""
+            UPDATE events SET
+              gift_name   = json_extract(extra_json, '$.gift_name'),
+              price       = CAST(json_extract(extra_json, '$.price') AS INTEGER),
+              coin_type   = json_extract(extra_json, '$.coin_type'),
+              num         = CAST(json_extract(extra_json, '$.num') AS INTEGER),
+              total_coin  = CAST(json_extract(extra_json, '$.total_coin') AS INTEGER),
+              blind_name  = json_extract(extra_json, '$.blind_name'),
+              guard_level = CAST(json_extract(extra_json, '$.guard_level') AS INTEGER)
+            WHERE extra_json IS NOT NULL
+        """)
+        conn.execute("PRAGMA user_version = 1")
+        log.info("[migrate v1] backfill done")
+
     conn.execute("""
         CREATE TABLE IF NOT EXISTS rooms (
             room_id INTEGER PRIMARY KEY,
@@ -963,10 +1003,25 @@ def mark_events_clip_expired(cutoff: str) -> int:
     return n
 
 
+def _as_int(v) -> Optional[int]:
+    """extra 里 price / num / total_coin 可能是 int / float / None / ""；
+    统一落成 INTEGER 列前做一次 safe coerce，和老路径 CAST(... AS INTEGER) 语义一致
+    （截断小数、非法值归 None）。"""
+    if v is None or v == "":
+        return None
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return None
+
+
 def save_event(event: dict):
+    extra = event.get("extra") or {}
     conn = sqlite3.connect(str(DB_PATH))
     conn.execute(
-        "INSERT INTO events (room_id, timestamp, event_type, user_name, user_id, content, extra_json) VALUES (?,?,?,?,?,?,?)",
+        "INSERT INTO events (room_id, timestamp, event_type, user_name, user_id, content, extra_json, "
+        "gift_name, price, coin_type, num, total_coin, blind_name, guard_level) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (
             event.get("room_id", 0),
             event["timestamp"],
@@ -974,7 +1029,14 @@ def save_event(event: dict):
             event.get("user_name"),
             event.get("user_id"),
             event.get("content"),
-            json.dumps(event.get("extra", {}), ensure_ascii=False),
+            json.dumps(extra, ensure_ascii=False),
+            extra.get("gift_name"),
+            _as_int(extra.get("price")),
+            extra.get("coin_type"),
+            _as_int(extra.get("num")),
+            _as_int(extra.get("total_coin")),
+            extra.get("blind_name"),
+            _as_int(extra.get("guard_level")),
         ),
     )
     conn.commit()

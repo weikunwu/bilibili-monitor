@@ -55,7 +55,7 @@ def _query_events(
         conditions.append("user_name=?")
         params.append(user_name)
     # exclude silver coin gifts (free gifts like 辣条)
-    conditions.append("COALESCE(json_extract(extra_json, '$.coin_type'), '') != 'silver'")
+    conditions.append("COALESCE(coin_type, '') != 'silver'")
     where = " WHERE " + " AND ".join(conditions)
     rows = conn.execute(
         f"SELECT id, room_id, timestamp, event_type, user_name, user_id, content, extra_json "
@@ -102,7 +102,7 @@ for _t in ("danmu", "gift", "guard", "superchat"):
 
 def _compute_stats(room_id: int) -> dict:
     """单次 GROUP BY 拿回四类事件的 COUNT；比 5 次独立 COUNT 少 5x 往返。
-    SC 的 price 汇总用 json_extract 交给 SQLite，避免把所有 extra_json 拉到 Python。"""
+    SC 的 price 直接 SUM 真列，不再 json_extract。"""
     conn = sqlite3.connect(str(DB_PATH))
     rows = conn.execute(
         "SELECT event_type, COUNT(*) FROM events WHERE room_id=? GROUP BY event_type",
@@ -111,7 +111,7 @@ def _compute_stats(room_id: int) -> dict:
     counts = {r[0]: r[1] for r in rows}
     total = sum(counts.values())
     sc_total = conn.execute(
-        "SELECT COALESCE(SUM(CAST(json_extract(extra_json, '$.price') AS INTEGER)), 0) "
+        "SELECT COALESCE(SUM(price), 0) "
         "FROM events WHERE event_type='superchat' AND room_id=?",
         (room_id,),
     ).fetchone()[0] or 0
@@ -155,15 +155,14 @@ def _gift_summary_sql(where: str, params: list) -> list[tuple]:
         WITH agg AS (
           SELECT
             user_id,
-            json_extract(extra_json, '$.gift_name') AS gn,
+            gift_name AS gn,
             MIN(id) AS first_id,
-            SUM(COALESCE(CAST(json_extract(extra_json, '$.num') AS INTEGER), 1))        AS num_sum,
-            SUM(COALESCE(json_extract(extra_json, '$.total_coin'), 0))                  AS coin_sum,
-            MIN(CASE WHEN CAST(json_extract(extra_json, '$.guard_level') AS INTEGER) > 0
-                     THEN CAST(json_extract(extra_json, '$.guard_level') AS INTEGER) END) AS guard_level
+            SUM(COALESCE(num, 1))                                 AS num_sum,
+            SUM(COALESCE(total_coin, 0))                          AS coin_sum,
+            MIN(CASE WHEN guard_level > 0 THEN guard_level END)   AS guard_level
           FROM events
           WHERE {where}
-          GROUP BY user_id, json_extract(extra_json, '$.gift_name')
+          GROUP BY user_id, gift_name
         )
         SELECT
           e.user_name,
@@ -177,7 +176,7 @@ def _gift_summary_sql(where: str, params: list) -> list[tuple]:
           CAST(json_extract(e.extra_json, '$.gift_id') AS INTEGER),
           agg.guard_level,
           json_extract(e.extra_json, '$.action'),
-          json_extract(e.extra_json, '$.blind_name')
+          e.blind_name
         FROM agg
         JOIN events e ON e.id = agg.first_id
         ORDER BY agg.first_id
@@ -253,7 +252,7 @@ async def gift_summary(
 ):
     beijing_tz = timezone(timedelta(hours=8))
     if date:
-        where = "event_type='gift' AND room_id=? AND timestamp LIKE ? AND COALESCE(json_extract(extra_json, '$.coin_type'), '') != 'silver'"
+        where = "event_type='gift' AND room_id=? AND timestamp LIKE ? AND COALESCE(coin_type, '') != 'silver'"
         params: list = [room_id, date + "%"]
     else:
         now_bj = datetime.now(beijing_tz)
@@ -261,13 +260,13 @@ async def gift_summary(
         bj_end = bj_start + timedelta(days=1)
         utc_start = bj_start.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         utc_end = bj_end.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-        where = "event_type='gift' AND room_id=? AND timestamp >= ? AND timestamp < ? AND COALESCE(json_extract(extra_json, '$.coin_type'), '') != 'silver'"
+        where = "event_type='gift' AND room_id=? AND timestamp >= ? AND timestamp < ? AND COALESCE(coin_type, '') != 'silver'"
         params = [room_id, utc_start, utc_end]
     if user_name:
         where += " AND user_name=?"
         params.append(user_name)
     if blind_only:
-        where += " AND COALESCE(json_extract(extra_json, '$.blind_name'), '') != ''"
+        where += " AND COALESCE(blind_name, '') != ''"
 
     agg_rows = _gift_summary_sql(where, params)
     users = _build_gift_users_from_agg(agg_rows, sort_by=sort)
@@ -290,7 +289,7 @@ async def blind_box_summary(
     # SQL 侧按 (user_id, blind_name, gift_name) 聚合，Python 只做最后一层字典嵌套。
     where = (
         "event_type='gift' AND room_id=? AND timestamp >= ? AND timestamp < ? "
-        "AND COALESCE(json_extract(extra_json, '$.blind_name'), '') != ''"
+        "AND COALESCE(blind_name, '') != ''"
     )
     params: list = [room_id, utc_start, utc_end]
     if user_name:
@@ -302,20 +301,17 @@ async def blind_box_summary(
         SELECT
           MAX(user_name)                                           AS user_name,
           user_id                                                   AS user_id,
-          json_extract(extra_json, '$.blind_name')                  AS blind_name,
-          json_extract(extra_json, '$.gift_name')                   AS gift_name,
-          SUM(COALESCE(CAST(json_extract(extra_json, '$.num') AS INTEGER), 1))        AS num_sum,
-          SUM(COALESCE(json_extract(extra_json, '$.price'), 0) *
-              COALESCE(CAST(json_extract(extra_json, '$.num') AS INTEGER), 1))       AS value_sum,
+          blind_name                                                AS blind_name,
+          gift_name                                                 AS gift_name,
+          SUM(COALESCE(num, 1))                                     AS num_sum,
+          SUM(COALESCE(price, 0) * COALESCE(num, 1))                AS value_sum,
           SUM(COALESCE(json_extract(extra_json, '$.blind_price'), 0) *
-              COALESCE(CAST(json_extract(extra_json, '$.num') AS INTEGER), 1))       AS cost_sum,
+              COALESCE(num, 1))                                     AS cost_sum,
           MAX(json_extract(extra_json, '$.avatar'))                 AS avatar,
           MAX(json_extract(extra_json, '$.gift_img'))               AS gift_img
         FROM events
         WHERE {where}
-        GROUP BY user_id,
-                 json_extract(extra_json, '$.blind_name'),
-                 json_extract(extra_json, '$.gift_name')
+        GROUP BY user_id, blind_name, gift_name
     """, params).fetchall()
     conn.close()
 

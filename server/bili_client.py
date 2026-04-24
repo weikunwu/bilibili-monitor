@@ -1842,7 +1842,7 @@ class BiliLiveClient:
         sql = (
             "SELECT extra_json FROM events WHERE event_type='gift' AND room_id=? "
             "AND timestamp >= ? AND timestamp < ? "
-            "AND COALESCE(json_extract(extra_json, '$.blind_name'), '') != ''"
+            "AND COALESCE(blind_name, '') != ''"
         )
         params: list = [self.real_room_id, utc_start, utc_end]
         if user_id:
@@ -1902,11 +1902,11 @@ class BiliLiveClient:
             return
         utc_start, utc_end, _ = beijing_time_range("this_month")
         sql = (
-            "SELECT COALESCE(SUM(CAST(COALESCE(json_extract(extra_json, '$.num'), 1) AS INTEGER)), 0) "
+            "SELECT COALESCE(SUM(COALESCE(num, 1)), 0) "
             "FROM events WHERE event_type='gift' AND room_id=? "
             "AND timestamp >= ? AND timestamp < ? "
-            "AND json_extract(extra_json, '$.gift_name') = ? "
-            "AND COALESCE(json_extract(extra_json, '$.price'), 0) > ?"
+            "AND gift_name = ? "
+            "AND COALESCE(price, 0) > ?"
         )
         params: list = [self.real_room_id, utc_start, utc_end, gift_name, RARE_BLIND_MIN_PRICE]
         if user_id:
