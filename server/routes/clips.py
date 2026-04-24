@@ -58,6 +58,10 @@ def _load_sidecar(path: Path) -> Optional[dict]:
         return None
 
 
+def _san_name(s: str) -> str:
+    return "".join(c for c in s if c.isalnum() or c in "-_")[:32]
+
+
 @router.get("/api/rooms/{room_id}/clips")
 async def list_clips(room_id: int, _=Depends(require_room_access)):
     d = _room_dir(room_id)
@@ -113,9 +117,9 @@ async def match_clip(
                 continue
             dt = abs(t - event_ts)
             if dt <= window_sec and dt < best_delta:
-                # also require label to match user_name loosely (sanitized)
-                lbl = ov.get("label", "")
-                safe_u = "".join(c for c in user_name if c.isalnum() or c in "-_")[:32]
+                # sidecar label 原样保留 B 站脱敏星号（如 "慎***"），两边都过滤一遍再前缀匹配。
+                lbl = _san_name(ov.get("label", ""))
+                safe_u = _san_name(user_name)
                 if lbl and safe_u and lbl == safe_u[: len(lbl)]:
                     best = {"name": p.stem, "meta": meta, "overlay": ov, "delta_sec": round(dt, 3)}
                     best_delta = dt
