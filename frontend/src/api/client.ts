@@ -66,6 +66,57 @@ export async function fetchEventsByType(
   return _fetchEventsUrl(url, false)
 }
 
+function _decorateEvents(arr: LiveEvent[]): LiveEvent[] {
+  return arr.map((e) => {
+    if (typeof e.extra_json === 'string') {
+      try { e.extra = JSON.parse(e.extra_json) } catch { e.extra = {} as never }
+    }
+    if (!e.extra) e.extra = {} as never
+    return e
+  })
+}
+
+export async function fetchEventsPage(
+  roomId: number,
+  type: 'danmu' | 'gift' | 'guard' | 'superchat',
+  opts: {
+    timeFrom?: string; timeTo?: string;
+    userNames?: string[]; offset?: number; limit?: number;
+  },
+): Promise<{ events: LiveEvent[]; total: number }> {
+  const { timeFrom, timeTo, userNames, offset = 0, limit = 50 } = opts
+  const qs = new URLSearchParams()
+  qs.set('room_id', String(roomId))
+  qs.set('limit', String(limit))
+  qs.set('offset', String(offset))
+  if (timeFrom) qs.set('time_from', timeFrom)
+  if (timeTo) qs.set('time_to', timeTo)
+  for (const u of userNames || []) qs.append('user_name', u)
+  const res = await fetch(`/api/events/${type}/page?${qs.toString()}`)
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({} as { detail?: string }))
+    toast(d.detail || '查询失败', 'error')
+    return { events: [], total: 0 }
+  }
+  const data = await res.json() as { events: LiveEvent[]; total: number }
+  return { events: _decorateEvents(data.events), total: data.total }
+}
+
+export async function fetchEventUsers(
+  roomId: number,
+  type: 'danmu' | 'gift' | 'guard' | 'superchat',
+  opts: { timeFrom?: string; timeTo?: string },
+): Promise<{ name: string; count: number }[]> {
+  const { timeFrom, timeTo } = opts
+  const qs = new URLSearchParams()
+  qs.set('room_id', String(roomId))
+  if (timeFrom) qs.set('time_from', timeFrom)
+  if (timeTo) qs.set('time_to', timeTo)
+  const res = await fetch(`/api/events/${type}/users?${qs.toString()}`)
+  if (!res.ok) return []
+  return res.json()
+}
+
 export async function fetchBotStatus(roomId: number): Promise<{ logged_in: boolean; uid: number }> {
   const res = await fetch(`/api/bot/status?room_id=${roomId}`)
   return res.json()

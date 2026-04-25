@@ -34,12 +34,11 @@ def _today_utc_range(tz_offset: Optional[int] = None) -> tuple[str, str]:
     return utc_start, utc_end
 
 
-def _query_events(
-    room_id: int, type: Optional[str], user_name: Optional[str],
-    time_from: Optional[str], time_to: Optional[str], limit: int, offset: int,
-) -> list[dict]:
-    conn = sqlite3.connect(str(DB_PATH))
-    conn.row_factory = sqlite3.Row
+def _build_event_where(
+    room_id: int, type: Optional[str],
+    user_names: Optional[list[str]],
+    time_from: Optional[str], time_to: Optional[str],
+) -> tuple[str, list]:
     conditions = ["room_id=?"]
     params: list = [room_id]
     if type:
@@ -51,12 +50,24 @@ def _query_events(
     if time_to:
         conditions.append("timestamp<=?")
         params.append(time_to)
-    if user_name:
-        conditions.append("user_name=?")
-        params.append(user_name)
+    if user_names:
+        placeholders = ",".join("?" * len(user_names))
+        conditions.append(f"user_name IN ({placeholders})")
+        params.extend(user_names)
     # exclude silver coin gifts (free gifts like 辣条)
     conditions.append("COALESCE(json_extract(extra_json, '$.coin_type'), '') != 'silver'")
-    where = " WHERE " + " AND ".join(conditions)
+    return " WHERE " + " AND ".join(conditions), params
+
+
+def _query_events(
+    room_id: int, type: Optional[str], user_name: Optional[str],
+    time_from: Optional[str], time_to: Optional[str], limit: int, offset: int,
+) -> list[dict]:
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.row_factory = sqlite3.Row
+    where, params = _build_event_where(
+        room_id, type, [user_name] if user_name else None, time_from, time_to,
+    )
     rows = conn.execute(
         f"SELECT id, room_id, timestamp, event_type, user_name, user_id, content, extra_json "
         f"FROM events{where} ORDER BY id DESC LIMIT ? OFFSET ?",
@@ -64,6 +75,50 @@ def _query_events(
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+def _query_events_page(
+    room_id: int, type: Optional[str], user_names: Optional[list[str]],
+    time_from: Optional[str], time_to: Optional[str], limit: int, offset: int,
+) -> dict:
+    """后端分页：在同一个连接里跑 COUNT + 分页 SELECT，让前端不用先拉全量再切片。
+    适合高流量房间（弹幕一晚可能 5 万条+）。"""
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.row_factory = sqlite3.Row
+    where, params = _build_event_where(room_id, type, user_names, time_from, time_to)
+    total = conn.execute(f"SELECT COUNT(*) FROM events{where}", params).fetchone()[0]
+    rows = conn.execute(
+        f"SELECT id, room_id, timestamp, event_type, user_name, user_id, content, extra_json "
+        f"FROM events{where} ORDER BY id DESC LIMIT ? OFFSET ?",
+        params + [limit, offset],
+    ).fetchall()
+    conn.close()
+    return {"events": [dict(r) for r in rows], "total": total}
+
+
+def _query_event_users(
+    room_id: int, type: str,
+    time_from: Optional[str], time_to: Optional[str],
+) -> list[dict]:
+    """筛选下拉用：列出指定时间窗内某类事件的用户，按出现次数降序。"""
+    conn = sqlite3.connect(str(DB_PATH))
+    conditions = ["room_id=?", "event_type=?", "user_name IS NOT NULL", "user_name != ''"]
+    params: list = [room_id, type]
+    if time_from:
+        conditions.append("timestamp>=?")
+        params.append(time_from)
+    if time_to:
+        conditions.append("timestamp<=?")
+        params.append(time_to)
+    conditions.append("COALESCE(json_extract(extra_json, '$.coin_type'), '') != 'silver'")
+    where = " WHERE " + " AND ".join(conditions)
+    rows = conn.execute(
+        f"SELECT user_name, COUNT(*) AS c FROM events{where} "
+        f"GROUP BY user_name ORDER BY c DESC",
+        params,
+    ).fetchall()
+    conn.close()
+    return [{"name": r[0], "count": r[1]} for r in rows]
 
 
 @router.get("/api/events")
@@ -96,8 +151,37 @@ def _make_typed_endpoint(event_type: str):
     return handler
 
 
+def _make_typed_page_endpoint(event_type: str):
+    async def handler(
+        room_id: int = Query(...),
+        user_name: Optional[list[str]] = Query(None),
+        limit: int = Query(50, ge=1, le=500),
+        offset: int = Query(0, ge=0),
+        time_from: Optional[str] = Query(None),
+        time_to: Optional[str] = Query(None),
+        _=Depends(require_room_access),
+    ):
+        enforce_query_range(time_from, time_to)
+        return _query_events_page(room_id, event_type, user_name, time_from, time_to, limit, offset)
+    return handler
+
+
+def _make_typed_users_endpoint(event_type: str):
+    async def handler(
+        room_id: int = Query(...),
+        time_from: Optional[str] = Query(None),
+        time_to: Optional[str] = Query(None),
+        _=Depends(require_room_access),
+    ):
+        enforce_query_range(time_from, time_to)
+        return _query_event_users(room_id, event_type, time_from, time_to)
+    return handler
+
+
 for _t in ("danmu", "gift", "guard", "superchat"):
     router.add_api_route(f"/api/events/{_t}", _make_typed_endpoint(_t), methods=["GET"])
+    router.add_api_route(f"/api/events/{_t}/page", _make_typed_page_endpoint(_t), methods=["GET"])
+    router.add_api_route(f"/api/events/{_t}/users", _make_typed_users_endpoint(_t), methods=["GET"])
 
 
 def _compute_stats(room_id: int) -> dict:
