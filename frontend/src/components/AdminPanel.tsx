@@ -233,8 +233,8 @@ export function AdminPanel({ rooms, onRoomsChanged, role: currentRole }: Props) 
   async function handleSubmitVote() {
     if (!voteRoom) return
     const n = Math.floor(Number(voteCount))
-    if (!Number.isFinite(n) || n < 1) {
-      setVoteStatus({ type: 'error', text: '数量必须是 ≥ 1 的整数' })
+    if (!Number.isFinite(n) || n < 100 || n % 100 !== 0) {
+      setVoteStatus({ type: 'error', text: '数量必须是 100 的整数倍（最小 100）' })
       return
     }
     setVoteLoading(true)
@@ -717,6 +717,7 @@ export function AdminPanel({ rooms, onRoomsChanged, role: currentRole }: Props) 
         <Modal.Body>
           <div style={{ fontSize: 13, color: '#888', marginBottom: 12, lineHeight: 1.6 }}>
             按"每 bot 每房间每小时 {votePerBotLimit} 张"的 B 站限制把数量拆到多个默认 bot 上**串行**送出。
+            数量必须是 100 的整数倍（最小 100）。
             {voteRemaining !== null && (
               <>
                 <br />
@@ -730,7 +731,19 @@ export function AdminPanel({ rooms, onRoomsChanged, role: currentRole }: Props) 
           <Stack spacing={8} wrap style={{ marginBottom: 12 }}>
             <InputGroup size="sm" style={{ width: 200 }}>
               <InputGroup.Addon>数量（张）</InputGroup.Addon>
-              <Input value={voteCount} onChange={setVoteCount} />
+              <Input
+                value={voteCount}
+                onChange={setVoteCount}
+                onBlur={() => {
+                  // blur 时把非整百自动 round 到最近的 100 倍数（最少 100），
+                  // 避免用户手输 250 / 99 这种被 submit 校验拦掉
+                  const n = Math.round(Number(voteCount) / 100) * 100
+                  setVoteCount(String(Math.max(100, n || 100)))
+                }}
+                type="number"
+                step={100}
+                min={100}
+              />
             </InputGroup>
           </Stack>
           {voteStatus && (

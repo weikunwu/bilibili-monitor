@@ -502,8 +502,8 @@ async def send_popularity_vote(room_id: int, request: Request):
         count = int(body.get("count", 0))
     except (TypeError, ValueError):
         raise HTTPException(400, "数量必须是整数")
-    if count < 1:
-        raise HTTPException(400, "数量必须 ≥ 1")
+    if count < 100 or count % 100 != 0:
+        raise HTTPException(400, "数量必须是 100 的整数倍（最小 100）")
 
     target = manager.get(room_id)
     if not target:
