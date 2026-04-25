@@ -85,8 +85,7 @@ async def add_room(request: Request):
     return {"ok": True, "room_id": room_id}
 
 
-# dry-run 阶段：先 500 探风控反应，确认无连带熔断后再上 1000
-_LIKE_PER_BOT = 500
+_LIKE_PER_BOT = 1000
 _LIKE_MAX_BOTS = 5
 # 同一目标房间互斥：dispatch 期间不允许重复触发（避免 5×N 个 bot 撞同一房间）
 _like_dispatch_running: set[int] = set()

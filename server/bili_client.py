@@ -1982,7 +1982,8 @@ class BiliLiveClient:
             return
         hit = nickname_is_banned(self.real_room_id, nickname)
         if hit:
-            await self.send_danmu(f"{user_name}，昵称含违禁词「{hit}」，不能使用")
+            log.info(f"[nickname] room={self.real_room_id} uid={user_id} nickname={nickname!r} 命中违禁词={hit!r}")
+            await self.send_danmu(f"{user_name}，昵称含违禁词，不能使用")
             return
         upsert_nickname(self.real_room_id, user_id, user_name, nickname)
         await self.send_danmu(f"好的，{nickname}")
