@@ -98,8 +98,9 @@ _like_dispatch_running: set[int] = set()
 
 @router.post("/api/admin/rooms/{room_id}/like", dependencies=admin_dep)
 async def trigger_room_likes(room_id: int):
-    """随机抽 _LIKE_MAX_BOTS 个有 bot cookie 的房间（当前房间的 bot 优先入选），
-    每个 bot 给该房间刷 _LIKE_PER_BOT 次点赞。每个 bot 自己限频、并行执行，
+    """从默认机器人池 + 目标房间自己的 bot 里抽 _LIKE_MAX_BOTS 个，每个给目标
+    房间刷 _LIKE_PER_BOT 次点赞。目标房间 bot 优先入选；不借用别的监控房间的 bot
+    （避免拿别主播的号给本房刷赞影响他们的风控）。每个 bot 自己限频、并行执行，
     dispatch 后台跑；同一目标房间未跑完前重复触发返回 409。"""
     target = manager.get(room_id)
     if not target:
@@ -113,9 +114,9 @@ async def trigger_room_likes(room_id: int):
     target_real_room_id = target.real_room_id
     target_streamer_uid = target.streamer_uid
 
-    # 候选池：所有可用机器人——房间绑定的 + 默认机器人池里的，全部要求
-    # 有 bot cookie + 没在跑别的点赞 + 没在风控冷却
-    pool = list(manager.all_clients().values()) + list(manager.all_default_bots().values())
+    # 候选池：默认机器人池 + 目标房间自己的 bot；不借用其他监控房间的 bot。
+    # 全部要求有 bot cookie + 没在跑别的点赞 + 没在风控冷却。
+    pool = list(manager.all_default_bots().values()) + [target]
     candidates = [
         c for c in pool
         if c.cookies.get("SESSDATA") and c.bot_uid
