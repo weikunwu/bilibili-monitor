@@ -326,10 +326,11 @@ export async function sendPopularityVote(
   ok: boolean
   requested: number
   sent: number
+  aborted_by_cooling: boolean
   gift_id: number
   gift_price: number
   bots: { uid: number; name: string; sent: number }[]
-  failures: { uid: number; name: string; tried: number; code: number; message: string }[]
+  failures: { uid: number; name: string; tried: number; sent: number; error: string; cooling: boolean }[]
   total_remaining_this_hour: number
 }> {
   const res = await fetch(`/api/admin/rooms/${roomId}/popularity-vote`, {

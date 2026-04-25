@@ -67,7 +67,8 @@ export function AdminPanel({ rooms, onRoomsChanged, role: currentRole }: Props) 
   const [voteRemaining, setVoteRemaining] = useState<number | null>(null)
   const [votePerBotLimit, setVotePerBotLimit] = useState(200)
   const [voteAvailableBots, setVoteAvailableBots] = useState(0)
-  const [voteStatus, setVoteStatus] = useState<{ type: 'info' | 'success' | 'error'; text: string } | null>(null)
+  const [voteStatus, setVoteStatus] = useState<{ type: 'info' | 'success' | 'warning' | 'error'; text: string } | null>(null)
+  const [voteResult, setVoteResult] = useState<Awaited<ReturnType<typeof sendPopularityVote>> | null>(null)
   const [voteLoading, setVoteLoading] = useState(false)
 
   useEffect(() => { loadTokens() }, [])
@@ -212,6 +213,7 @@ export function AdminPanel({ rooms, onRoomsChanged, role: currentRole }: Props) 
     setVoteRoom(r)
     setVoteCount('100')
     setVoteStatus(null)
+    setVoteResult(null)
     setVoteRemaining(null)
     setVoteOpen(true)
     try {
@@ -225,6 +227,7 @@ export function AdminPanel({ rooms, onRoomsChanged, role: currentRole }: Props) 
   function closeVote() {
     setVoteOpen(false)
     setVoteStatus(null)
+    setVoteResult(null)
   }
 
   async function handleSubmitVote() {
@@ -235,20 +238,21 @@ export function AdminPanel({ rooms, onRoomsChanged, role: currentRole }: Props) 
       return
     }
     setVoteLoading(true)
-    setVoteStatus({ type: 'info', text: '正在串行送出...' })
+    setVoteStatus({ type: 'info', text: '正在串行送出（多 bot 间有 2-4s 间隔，单 bot 内每 100 张为一批）...' })
+    setVoteResult(null)
     try {
       const r = await sendPopularityVote(voteRoom.room_id, n)
       setVoteRemaining(r.total_remaining_this_hour)
-      const botSummary = r.bots.map((b) => `${b.name || b.uid}×${b.sent}`).join(' + ')
+      setVoteResult(r)
       const partial = r.sent < r.requested
-        ? `（请求 ${r.requested} 张，部分成功）`
-        : ''
-      const failTail = r.failures.length
-        ? `；${r.failures.length} 个 bot 失败：${r.failures.map((f) => `${f.name || f.uid}(code=${f.code})`).join(', ')}`
-        : ''
+      // partial 提到 warning 级别（黄色），完整成功才用 success 绿
+      const head = partial
+        ? `⚠ 请求 ${r.requested} 张，实际只送出 ${r.sent} 张`
+        : `已送 ${r.sent} 张`
+      const tail = r.aborted_by_cooling ? '（命中风控，已提前停）' : ''
       setVoteStatus({
-        type: partial ? 'info' : 'success',
-        text: `已送 ${r.sent} 张${partial}：${botSummary}。本小时累计剩余 ${r.total_remaining_this_hour} 张${failTail}`,
+        type: partial ? 'warning' : 'success',
+        text: `${head}${tail}。本小时累计剩余 ${r.total_remaining_this_hour} 张`,
       })
     } catch (err) {
       setVoteStatus({ type: 'error', text: (err as Error).message })
@@ -733,10 +737,24 @@ export function AdminPanel({ rooms, onRoomsChanged, role: currentRole }: Props) 
             <Message
               type={voteStatus.type}
               showIcon
-              style={{ marginBottom: 4 }}
+              style={{ marginBottom: 8 }}
             >
               {voteStatus.text}
             </Message>
+          )}
+          {voteResult && (voteResult.bots.length > 0 || voteResult.failures.length > 0) && (
+            <div style={{ fontSize: 12, lineHeight: 1.7, padding: 8, background: '#14141f', border: '1px solid #2a2a4a', borderRadius: 4 }}>
+              {voteResult.bots.map((b) => (
+                <div key={`ok-${b.uid}`} style={{ color: '#7cd97e' }}>
+                  ✓ {b.name || b.uid} 送出 {b.sent} 张
+                </div>
+              ))}
+              {voteResult.failures.map((f) => (
+                <div key={`fail-${f.uid}`} style={{ color: f.cooling ? '#fb7299' : '#ffb74d' }}>
+                  {f.cooling ? '⛔' : '⚠'} {f.name || f.uid} 计划 {f.tried} 张 / 实送 {f.sent} 张 — {f.error}
+                </div>
+              ))}
+            </div>
           )}
         </Modal.Body>
         <Modal.Footer>

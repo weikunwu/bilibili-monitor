@@ -1702,6 +1702,55 @@ class BiliLiveClient:
         if result.get("code") != 0:
             asyncio.create_task(self.send_danmu("[打个有效] 送礼失败"))
 
+    # 跨房间批量送礼参数：单 bot 一次 sendGift 不超过 N 张，批与批之间随机
+    # sleep。100 是 B 站送礼面板批量送的常见档位，再大就明显机器味了。
+    GIFT_BATCH_SIZE = 100
+    GIFT_BATCH_INTERVAL_LO = 1.5
+    GIFT_BATCH_INTERVAL_HI = 3.0
+
+    async def send_gift_batches(
+        self,
+        *,
+        gift_id: int,
+        gift_price: int,
+        total: int,
+        target_room_id: int,
+        target_streamer_uid: int,
+        log_tag: str,
+    ) -> dict:
+        """把 total 张同一礼物拆成 ≤GIFT_BATCH_SIZE 批送到目标房间。
+        命中硬风控（_react_to_bili_response 把 bot 拉进 cooling）立即整个停；
+        非风控失败（电池不够 / 礼物下架等）也立即停，避免继续耗。
+        返回 {sent, failed, cooling, last_error}。调用方做 _is_bot_cooling 前置检查。"""
+        sent = 0
+        failed = 0
+        cooling = False
+        last_error = ""
+        while sent + failed < total:
+            batch = min(self.GIFT_BATCH_SIZE, total - sent - failed)
+            result = await self._send_gift_raw(
+                gift_id=gift_id, gift_num=batch, gift_price=gift_price,
+                target_room_id=target_room_id,
+                target_streamer_uid=target_streamer_uid,
+                log_tag=log_tag,
+            )
+            if result.get("code") == 0:
+                sent += batch
+            else:
+                failed += batch
+                last_error = f"code={result.get('code')} msg={result.get('message')!r}"
+                # _react_to_bili_response 已在 _send_gift_raw 里跑过；此处只
+                # 看它有没有把 bot 拉进 cooling，把信号往上抛供调用方决定
+                # 是否停掉**整个 dispatch**（多 bot 都别再撞同一道墙）。
+                if self._is_bot_cooling():
+                    cooling = True
+                break
+            if sent + failed < total:
+                await asyncio.sleep(random.uniform(
+                    self.GIFT_BATCH_INTERVAL_LO, self.GIFT_BATCH_INTERVAL_HI,
+                ))
+        return {"sent": sent, "failed": failed, "cooling": cooling, "last_error": last_error}
+
     async def _send_gift_raw(
         self,
         *,

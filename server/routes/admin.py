@@ -468,12 +468,28 @@ def _popularity_record(room_id: int, bot_uid: int, count: int) -> None:
 
 
 def _eligible_default_bots() -> list[BiliLiveClient]:
-    """默认机器人池里 cookie/uid 完整、不需重扫、不在冷却的可用 bot。"""
-    return [
-        b for b in manager.all_default_bots().values()
-        if b.cookies.get("SESSDATA") and b.bot_uid
-        and not b._needs_relogin and not b._is_bot_cooling()
-    ]
+    """默认机器人池里 cookie/uid 完整、不需重扫、不在冷却的可用 bot。
+    按 bot_uid 去重——同一 UID 出现多次（理论上 manager dict 已用 UID 索引
+    不会重复，但保留这一层防御性去重，未来若加入 target room bot 等其它来源
+    也能用同一函数）。"""
+    seen: set[int] = set()
+    out: list[BiliLiveClient] = []
+    for b in manager.all_default_bots().values():
+        if not b.cookies.get("SESSDATA") or not b.bot_uid:
+            continue
+        if b.bot_uid in seen:
+            continue
+        if b._needs_relogin or b._is_bot_cooling():
+            continue
+        seen.add(b.bot_uid)
+        out.append(b)
+    return out
+
+
+# 多 bot 之间的随机间隔（秒）：单 bot 内部已经按 GIFT_BATCH_INTERVAL_*
+# 隔开了，bot 与 bot 之间再加一道，避免连环 POST 被 IP 维度盯上。
+_POPULARITY_BOT_GAP_LO = 2.0
+_POPULARITY_BOT_GAP_HI = 4.0
 
 
 @router.post("/api/admin/rooms/{room_id}/popularity-vote", dependencies=admin_dep)
@@ -558,34 +574,53 @@ async def send_popularity_vote(room_id: int, request: Request):
     sent_total = 0
     used_bots: list[dict] = []
     failures: list[dict] = []
-    for bot, cap, _gold in candidates:
+    aborted_by_cooling = False
+    for idx, (bot, cap, _gold) in enumerate(candidates):
         if sent_total >= count:
             break
         send_n = min(cap, count - sent_total)
-        result = await bot._send_gift_raw(
-            gift_id=gift_id, gift_num=send_n, gift_price=gift_price,
+        # 单 bot 内部走 send_gift_batches：拆 ≤GIFT_BATCH_SIZE 张/批，批间
+        # 1.5–3s 间隔，命中风控时把 cooling 信号往上抛。
+        result = await bot.send_gift_batches(
+            gift_id=gift_id, gift_price=gift_price, total=send_n,
             target_room_id=target_real_room,
             target_streamer_uid=target_streamer_uid,
             log_tag="人气票",
         )
-        if result.get("code") == 0:
-            _popularity_record(room_id, bot.bot_uid, send_n)
+        sent = int(result.get("sent", 0))
+        if sent > 0:
+            _popularity_record(room_id, bot.bot_uid, sent)
             _wallet_cache.pop(bot.bot_uid, None)
-            sent_total += send_n
-            used_bots.append({"uid": bot.bot_uid, "name": bot.bot_name, "sent": send_n})
-        else:
+            sent_total += sent
+            used_bots.append({"uid": bot.bot_uid, "name": bot.bot_name, "sent": sent})
+        if sent < send_n:
             failures.append({
-                "uid": bot.bot_uid, "name": bot.bot_name, "tried": send_n,
-                "code": result.get("code"),
-                "message": str(result.get("message", "")),
+                "uid": bot.bot_uid, "name": bot.bot_name,
+                "tried": send_n, "sent": sent,
+                "error": str(result.get("last_error", "")),
+                "cooling": bool(result.get("cooling")),
             })
+        # 命中硬风控：B 站从 IP/账号关联维度可能盯上了，让后续 bot 也别再
+        # 撞同一道墙。直接 break，剩下的没送的算请求未完成。
+        if result.get("cooling"):
+            aborted_by_cooling = True
+            log.warning(
+                f"[人气票] room={target_real_room} bot={bot.bot_uid} 命中风控，"
+                f"提前终止后续 {len(candidates) - idx - 1} 个 bot"
+            )
+            break
+        # bot 与 bot 之间随机间隔，避免紧邻的 POST 被 IP 维度盯上
+        if idx < len(candidates) - 1 and sent_total < count:
+            await asyncio.sleep(random.uniform(
+                _POPULARITY_BOT_GAP_LO, _POPULARITY_BOT_GAP_HI,
+            ))
 
     if sent_total == 0:
         # 全部失败 → 4xx 把首例错误提到前端
         msg = "全部失败"
         if failures:
             f = failures[0]
-            msg = f"全部失败，首例: {f['name'] or f['uid']} code={f['code']} msg={f['message']!r}"
+            msg = f"全部失败，首例: {f['name'] or f['uid']} {f['error']}"
         raise HTTPException(400, msg)
 
     return {
@@ -593,6 +628,7 @@ async def send_popularity_vote(room_id: int, request: Request):
         "room_id": room_id,
         "requested": count,
         "sent": sent_total,
+        "aborted_by_cooling": aborted_by_cooling,
         "gift_id": gift_id,
         "gift_price": gift_price,
         "bots": used_bots,
