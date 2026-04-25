@@ -51,8 +51,17 @@ def verify_password(password: str, stored: str) -> bool:
     return hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), 100_000).hex() == h
 
 
+def encrypt_cookies(cookies: dict) -> str:
+    """JSON + Fernet 加密 cookies，返回 base64 字符串。"""
+    return _get_fernet().encrypt(json.dumps(cookies, ensure_ascii=False).encode()).decode()
+
+
+def decrypt_cookies(blob: str) -> dict:
+    return json.loads(_get_fernet().decrypt(blob.encode()))
+
+
 def save_cookies(cookies: dict, room_id: int = 0):
-    encrypted = _get_fernet().encrypt(json.dumps(cookies, ensure_ascii=False).encode()).decode()
+    encrypted = encrypt_cookies(cookies)
     conn = sqlite3.connect(str(DB_PATH))
     conn.execute("INSERT OR IGNORE INTO rooms (room_id, settings_json) VALUES (?, '{}')", (room_id,))
     conn.execute("UPDATE rooms SET bot_cookie=? WHERE room_id=?", (encrypted, room_id))
@@ -67,7 +76,7 @@ def load_cookies(room_id: int = 0) -> dict:
         row = conn.execute("SELECT bot_cookie FROM rooms WHERE room_id=?", (room_id,)).fetchone()
         conn.close()
         if row and row[0]:
-            cookies = json.loads(_get_fernet().decrypt(row[0].encode()))
+            cookies = decrypt_cookies(row[0])
             if cookies.get("SESSDATA"):
                 log.info(f"从数据库加载登录信息 (房间 {room_id}, UID: {cookies.get('DedeUserID', '?')})")
                 return cookies

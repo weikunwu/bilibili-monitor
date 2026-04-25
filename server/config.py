@@ -88,6 +88,7 @@ LIKE_REPORT_API = "https://api.live.bilibili.com/xlive/app-ucenter/v1/like_info_
 MASTER_INFO_API = "https://api.live.bilibili.com/live_user/v1/Master/info"
 FINGER_SPI_API = "https://api.bilibili.com/x/frontend/finger/spi"
 NAV_API = "https://api.bilibili.com/x/web-interface/nav"
+WALLET_STATUS_API = "https://api.live.bilibili.com/xlive/revenue/v1/wallet/getStatus"
 QR_GENERATE_API = "https://passport.bilibili.com/x/passport-login/web/qrcode/generate"
 QR_POLL_API = "https://passport.bilibili.com/x/passport-login/web/qrcode/poll"
 

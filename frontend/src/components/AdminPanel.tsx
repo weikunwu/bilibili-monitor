@@ -1,10 +1,12 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Input, InputGroup, Button, SelectPicker, Modal, Checkbox, Stack, Divider, Message } from 'rsuite'
 import type { Room } from '../types'
 import {
   fetchUsers, createUser, deleteUser, assignUserRooms, updateUserRole, addRoom, removeRoom,
   createRenewalTokens, listRenewalTokens, triggerRoomLikes,
-  type UserInfo, type RenewalToken,
+  listDefaultBots, fetchDefaultBotQrCode, pollDefaultBotQrLogin, deleteDefaultBot,
+  rechargeDefaultBot, queryRechargeStatus,
+  type UserInfo, type RenewalToken, type DefaultBot,
 } from '../api/client'
 import { confirmDialog } from '../lib/confirm'
 
@@ -37,7 +39,179 @@ export function AdminPanel({ rooms, onRoomsChanged, role: currentRole }: Props) 
   const [allTokens, setAllTokens] = useState<RenewalToken[]>([])
   const [showUsedTokens, setShowUsedTokens] = useState(false)
 
+  const [defaultBots, setDefaultBots] = useState<DefaultBot[]>([])
+  const [defaultBotsLoading, setDefaultBotsLoading] = useState(false)
+  const [defaultBotMsg, setDefaultBotMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [qrOpen, setQrOpen] = useState(false)
+  const [qrUrl, setQrUrl] = useState('')
+  const [qrStatus, setQrStatus] = useState('')
+  const [qrStatusClass, setQrStatusClass] = useState<'' | 'success' | 'error'>('')
+  const qrKeyRef = useRef<string | null>(null)
+  const qrTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // 充值 modal 状态
+  const [rechargeOpen, setRechargeOpen] = useState(false)
+  const [rechargeBot, setRechargeBot] = useState<DefaultBot | null>(null)
+  const [rechargeYuan, setRechargeYuan] = useState('30')
+  const [rechargeChannel, setRechargeChannel] = useState<'qr' | 'cash'>('cash')
+  const [rechargeStatus, setRechargeStatus] = useState('')
+  const [rechargeLoading, setRechargeLoading] = useState(false)
+  const rechargeOrderRef = useRef<string | null>(null)
+  const rechargeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
   useEffect(() => { loadTokens() }, [])
+  useEffect(() => { if (isAdmin) loadDefaultBots() }, [isAdmin])
+
+  async function loadDefaultBots(force = false) {
+    setDefaultBotsLoading(true)
+    try { setDefaultBots(await listDefaultBots(force)) } catch { /* ignore */ }
+    finally { setDefaultBotsLoading(false) }
+  }
+
+  const cleanupQr = useCallback(() => {
+    if (qrTimerRef.current) {
+      clearInterval(qrTimerRef.current)
+      qrTimerRef.current = null
+    }
+    qrKeyRef.current = null
+  }, [])
+
+  function closeQr() {
+    cleanupQr()
+    setQrOpen(false)
+  }
+
+  async function openAddDefaultBot() {
+    setDefaultBotMsg(null)
+    setQrOpen(true)
+    setQrUrl('')
+    setQrStatus('加载中...')
+    setQrStatusClass('')
+    cleanupQr()
+    try {
+      const d = await fetchDefaultBotQrCode()
+      if (d.error) {
+        setQrStatus(d.error)
+        setQrStatusClass('error')
+        return
+      }
+      qrKeyRef.current = d.qrcode_key
+      setQrUrl(`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(d.url)}`)
+      setQrStatus('请使用哔哩哔哩 APP 扫码')
+      qrTimerRef.current = setInterval(async () => {
+        if (!qrKeyRef.current) return
+        try {
+          const r = await pollDefaultBotQrLogin(qrKeyRef.current)
+          if (r.code === 0) {
+            setQrStatus(`绑定成功! ${r.name || ''} (UID: ${r.uid})`)
+            setQrStatusClass('success')
+            cleanupQr()
+            await loadDefaultBots()
+            window.setTimeout(() => setQrOpen(false), 1500)
+          } else if (r.code === 86090) {
+            setQrStatus('已扫码，请在手机上确认...')
+          } else if (r.code === 86038) {
+            setQrStatus('二维码已过期，请重新打开')
+            setQrStatusClass('error')
+            cleanupQr()
+          }
+        } catch { /* ignore */ }
+      }, 2000)
+    } catch {
+      setQrStatus('获取二维码失败')
+      setQrStatusClass('error')
+    }
+  }
+
+  function cleanupRecharge() {
+    if (rechargeTimerRef.current) {
+      clearInterval(rechargeTimerRef.current)
+      rechargeTimerRef.current = null
+    }
+    rechargeOrderRef.current = null
+  }
+
+  function closeRecharge() {
+    cleanupRecharge()
+    setRechargeOpen(false)
+    setRechargeStatus('')
+  }
+
+  function openRecharge(b: DefaultBot) {
+    cleanupRecharge()
+    setRechargeBot(b)
+    setRechargeYuan('30')
+    setRechargeChannel('cash')
+    setRechargeStatus('')
+    setRechargeOpen(true)
+  }
+
+  async function handleSubmitRecharge() {
+    if (!rechargeBot) return
+    const yuan = Math.floor(Number(rechargeYuan))
+    if (!Number.isFinite(yuan) || yuan < 1 || yuan > 1998) {
+      setRechargeStatus('金额需在 1~1998 元')
+      return
+    }
+    setRechargeLoading(true)
+    setRechargeStatus('正在创建订单...')
+    try {
+      const r = await rechargeDefaultBot(rechargeBot.uid, yuan, rechargeChannel)
+      rechargeOrderRef.current = r.order_id
+      // 打开 B 站 支付页：QR 直接拿到的 url；cash 把 pay_center_params JSON
+      // 编进 cashier-desk 的 ?params= 里。
+      let payUrl = ''
+      if (rechargeChannel === 'qr' && r.code_url) {
+        payUrl = r.code_url
+      } else if (rechargeChannel === 'cash' && r.pay_center_params) {
+        const params = encodeURIComponent(JSON.stringify(r.pay_center_params))
+        payUrl = `https://pay.bilibili.com/pay-v2-web/cashier/cashier-desk?params=${params}`
+      } else {
+        setRechargeStatus('B站没有返回支付链接，请重试')
+        setRechargeLoading(false)
+        return
+      }
+      window.open(payUrl, '_blank')
+      setRechargeStatus('已打开 B 站支付页，请在新标签页完成支付。本窗口会自动检测')
+      // 轮询订单状态：B 站 return status=1 是待支付，付完 ≠ 1（具体值实测）
+      rechargeTimerRef.current = setInterval(async () => {
+        if (!rechargeOrderRef.current || !rechargeBot) return
+        try {
+          const s = await queryRechargeStatus(rechargeBot.uid, rechargeOrderRef.current)
+          if (s.status !== undefined && s.status !== 1) {
+            setRechargeStatus(`支付完成（status=${s.status}），正在刷新电池...`)
+            cleanupRecharge()
+            await loadDefaultBots()
+            setDefaultBotMsg({
+              type: 'success',
+              text: `「${rechargeBot.name || rechargeBot.uid}」充值 ${yuan} 元完成`,
+            })
+            window.setTimeout(() => setRechargeOpen(false), 1500)
+          }
+        } catch { /* 偶发查单失败不中断轮询 */ }
+      }, 3000)
+    } catch (err) {
+      setRechargeStatus(`下单失败：${(err as Error).message}`)
+    } finally {
+      setRechargeLoading(false)
+    }
+  }
+
+  async function handleDeleteDefaultBot(uid: number, name: string) {
+    if (!await confirmDialog({
+      message: `确定删除默认机器人「${name || uid}」？删除后该 bot 不再参与批量点赞。`,
+      danger: true, okText: '删除',
+    })) return
+    try {
+      await deleteDefaultBot(uid)
+      setDefaultBotMsg({ type: 'success', text: `已删除「${name || uid}」` })
+      await loadDefaultBots()
+    } catch (err) {
+      setDefaultBotMsg({ type: 'error', text: (err as Error).message })
+    }
+  }
+
+  useEffect(() => () => { cleanupQr(); cleanupRecharge() }, [cleanupQr])
 
   async function loadTokens() {
     try { setAllTokens(await listRenewalTokens()) } catch { /* ignore */ }
@@ -303,6 +477,78 @@ export function AdminPanel({ rooms, onRoomsChanged, role: currentRole }: Props) 
 
         <Divider style={{ borderColor: '#2a2a4a' }} />
 
+        {/* ── Default bots ── */}
+        <h3 style={{ color: '#fb7299', marginBottom: 8, fontSize: 16 }}>默认机器人</h3>
+        <div style={{ fontSize: 13, color: '#888', marginBottom: 12, lineHeight: 1.6 }}>
+          不绑定具体房间的 bot 池，扫码登录后参与批量点赞等跨房间动作。
+          每次「自动点赞」会从「房间机器人 + 默认机器人」里随机抽 5 个集中刷。
+        </div>
+        <Stack spacing={8} style={{ marginBottom: 12 }}>
+          <Button appearance="primary" size="sm" onClick={openAddDefaultBot}>
+            扫码添加机器人
+          </Button>
+          <Button
+            appearance="ghost" size="sm"
+            loading={defaultBotsLoading}
+            onClick={() => loadDefaultBots(true)}
+          >
+            刷新电池
+          </Button>
+        </Stack>
+        {defaultBotMsg && (
+          <Message
+            type={defaultBotMsg.type}
+            showIcon closable
+            onClose={() => setDefaultBotMsg(null)}
+            style={{ marginBottom: 12 }}
+          >
+            {defaultBotMsg.text}
+          </Message>
+        )}
+        <div className="admin-grid">
+          {defaultBots.map((b) => {
+            const status = b.needs_relogin ? '需重扫' : b.cooling ? '风控冷却' : b.in_memory ? '在线' : '未加载'
+            const statusColor = b.needs_relogin ? '#fb7299' : b.cooling ? '#ffb74d' : b.in_memory ? '#7cd97e' : '#888'
+            return (
+              <div key={b.uid} className="admin-card">
+                <div className="admin-card-head">
+                  <div className="admin-card-title" title={b.name || String(b.uid)}>
+                    {b.name || `UID ${b.uid}`}
+                  </div>
+                  <span style={{ fontSize: 11, color: statusColor }}>{status}</span>
+                </div>
+                <div className="admin-card-meta">
+                  UID: {b.uid}
+                  <br />
+                  电池: {b.battery === null ? '?' : b.battery.toLocaleString()}
+                  <br />
+                  添加时间: {(b.created_at || '').slice(0, 16)}
+                </div>
+                <div className="admin-card-actions">
+                  <Button
+                    appearance="ghost" size="xs"
+                    disabled={!b.in_memory}
+                    onClick={() => openRecharge(b)}
+                  >
+                    充值
+                  </Button>
+                  <Button
+                    color="red" appearance="ghost" size="xs"
+                    onClick={() => handleDeleteDefaultBot(b.uid, b.name)}
+                  >
+                    删除
+                  </Button>
+                </div>
+              </div>
+            )
+          })}
+          {defaultBots.length === 0 && (
+            <div className="admin-card-meta" style={{ gridColumn: '1 / -1' }}>暂无默认机器人</div>
+          )}
+        </div>
+
+        <Divider style={{ borderColor: '#2a2a4a' }} />
+
         {/* ── User management ── */}
         <h3 style={{ color: '#fb7299', marginBottom: 16, fontSize: 16 }}>用户管理</h3>
 
@@ -393,6 +639,71 @@ export function AdminPanel({ rooms, onRoomsChanged, role: currentRole }: Props) 
           )}
         </div>
       </>}
+
+      {/* Default bot recharge modal */}
+      <Modal open={rechargeOpen} onClose={closeRecharge} size="xs">
+        <Modal.Header>
+          <Modal.Title>
+            充值「{rechargeBot?.name || rechargeBot?.uid}」
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <div style={{ fontSize: 13, color: '#888', marginBottom: 12, lineHeight: 1.6 }}>
+            后端用 bot cookie 调 B 站接口下单，新标签页打开 B 站支付页面付款。
+            付款完成后本窗口会自动检测并刷新电池数。
+          </div>
+          <Stack spacing={8} wrap style={{ marginBottom: 12 }}>
+            <InputGroup size="sm" style={{ width: 160 }}>
+              <InputGroup.Addon>金额（元）</InputGroup.Addon>
+              <Input value={rechargeYuan} onChange={setRechargeYuan} />
+            </InputGroup>
+            <SelectPicker
+              data={[
+                { label: '微信 / 支付宝（扫码）', value: 'qr' },
+                { label: 'PayPal / 信用卡', value: 'cash' },
+              ]}
+              value={rechargeChannel}
+              onChange={(v) => v && setRechargeChannel(v as 'qr' | 'cash')}
+              size="sm"
+              searchable={false}
+              cleanable={false}
+              style={{ width: 220 }}
+            />
+          </Stack>
+          {rechargeStatus && (
+            <div style={{ fontSize: 12, color: '#aaa', padding: 8, background: '#14141f', borderRadius: 4 }}>
+              {rechargeStatus}
+            </div>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button onClick={closeRecharge} appearance="subtle">关闭</Button>
+          <Button
+            onClick={handleSubmitRecharge}
+            appearance="primary"
+            loading={rechargeLoading}
+          >
+            立即充值
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* Default bot QR modal */}
+      <Modal open={qrOpen} onClose={closeQr} size="xs">
+        <Modal.Header>
+          <Modal.Title>添加默认机器人</Modal.Title>
+        </Modal.Header>
+        <Modal.Body style={{ textAlign: 'center' }}>
+          <p style={{ color: '#aaa', marginBottom: 16 }}>使用哔哩哔哩 APP 扫描二维码登录</p>
+          <div className="qr-container">
+            {qrUrl && <img src={qrUrl} alt="二维码" />}
+          </div>
+          <div className={`qr-status ${qrStatusClass}`}>{qrStatus}</div>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button onClick={closeQr} appearance="subtle">关闭</Button>
+        </Modal.Footer>
+      </Modal>
 
       {/* Edit rooms modal */}
       <Modal open={editingUser !== null} onClose={() => setEditingUser(null)} size="xs">
