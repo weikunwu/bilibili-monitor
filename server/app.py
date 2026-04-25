@@ -4,6 +4,7 @@ import asyncio
 
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, RedirectResponse, Response, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -64,6 +65,45 @@ if FRONTEND_DIST.exists():
 
 # ── Auth middleware ──
 app.add_middleware(AuthMiddleware)
+
+
+# 给二进制响应（image/video/audio/font）打 Content-Encoding: identity 标记，
+# 让外层 GZipMiddleware 跳过压缩 —— 这些 content-type 已经压过，再 gzip
+# 一次只浪费 CPU、对大视频还会破坏 Range/206 语义。
+# 必须比 GZipMiddleware 更内层（更早注册），才能在响应出栈时先于 GZip 决策。
+class _SkipGZipForBinary:
+    SKIP_PREFIXES = (b"image/", b"video/", b"audio/", b"font/")
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") != "http":
+            await self.app(scope, receive, send)
+            return
+
+        async def wrapped_send(message):
+            if message["type"] == "http.response.start":
+                headers = list(message.get("headers", []))
+                ct = b""
+                for k, v in headers:
+                    if k.lower() == b"content-type":
+                        ct = v.lower()
+                        break
+                if any(ct.startswith(p) for p in self.SKIP_PREFIXES):
+                    headers.append((b"content-encoding", b"identity"))
+                    message = {**message, "headers": headers}
+            await send(message)
+
+        await self.app(scope, receive, wrapped_send)
+
+
+app.add_middleware(_SkipGZipForBinary)
+
+# 给所有 >1KB 的响应套 gzip。fly egress 30GB/月，API JSON 压缩比通常 5-8x：
+# 一次 2000 条礼物 ~1.2MB → ~200KB，单点能省 80% 出流量。
+# CF 在 fly 前面也会保留 Content-Encoding=gzip 直接转发到浏览器。
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 
 @app.middleware("http")

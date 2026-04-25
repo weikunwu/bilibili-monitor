@@ -140,7 +140,7 @@ def _make_typed_endpoint(event_type: str):
     async def handler(
         room_id: int = Query(...),
         user_name: Optional[str] = Query(None),
-        limit: int = Query(2000, ge=1, le=5000),
+        limit: int = Query(5000, ge=1, le=10000),
         offset: int = Query(0, ge=0),
         time_from: Optional[str] = Query(None),
         time_to: Optional[str] = Query(None),

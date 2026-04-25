@@ -59,7 +59,7 @@ export async function fetchEventsByType(
   type: 'danmu' | 'gift' | 'guard' | 'superchat',
   opts?: { timeFrom?: string; timeTo?: string; limit?: number },
 ): Promise<LiveEvent[]> {
-  const { timeFrom, timeTo, limit = 2000 } = opts || {}
+  const { timeFrom, timeTo, limit = 5000 } = opts || {}
   let url = `/api/events/${type}?limit=${limit}&room_id=${roomId}`
   if (timeFrom) url += `&time_from=${encodeURIComponent(timeFrom)}`
   if (timeTo) url += `&time_to=${encodeURIComponent(timeTo)}`
