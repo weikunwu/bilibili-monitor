@@ -88,7 +88,9 @@ LIKE_REPORT_API = "https://api.live.bilibili.com/xlive/app-ucenter/v1/like_info_
 MASTER_INFO_API = "https://api.live.bilibili.com/live_user/v1/Master/info"
 FINGER_SPI_API = "https://api.bilibili.com/x/frontend/finger/spi"
 NAV_API = "https://api.bilibili.com/x/web-interface/nav"
-WALLET_STATUS_API = "https://api.live.bilibili.com/xlive/revenue/v1/wallet/getStatus"
+# 直播钱包：和 B 站 web 真实流量保持一致（pay-v2-web 充值页用的就是这个），
+# 避免触发"接口模式异常"的风控信号。响应 data.gold 即金瓜子，100 金瓜子 = 1 电池。
+WALLET_STATUS_API = "https://api.live.bilibili.com/xlive/revenue/v1/wallet/myGoldWallet"
 QR_GENERATE_API = "https://passport.bilibili.com/x/passport-login/web/qrcode/generate"
 QR_POLL_API = "https://passport.bilibili.com/x/passport-login/web/qrcode/poll"
 

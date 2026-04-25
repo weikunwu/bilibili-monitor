@@ -261,30 +261,31 @@ class BiliLiveClient:
             log.warning(f"[buvid] {self.log_id} SPI 拉失败: {e}")
 
     async def fetch_wallet_status(self) -> dict:
-        """拉一次直播钱包：{"gold": int, "silver": int, "bp": int}
-          • gold = 金瓜子（直播间送付费礼物的余额）；100 金瓜子 = 1 电池
-          • silver = 银瓜子（免费瓜子）
-          • bp = B 币（钱包充值的目标币）；1 B 币 = 1 元
+        """拉一次直播钱包：{"gold": int}。100 金瓜子 = 1 电池。
         未登录 / 接口异常返回 {} —— 调用方按缺失处理。"""
         if not self.cookies.get("SESSDATA"):
             return {}
+        # 和 B 站 web 充值页发的 query 完全一致，避免接口调用模式偏差被风控盯上。
+        params = {
+            "need_bp": "1",
+            "need_metal": "1",
+            "platform": "pc",
+            "bp_with_decimal": "0",
+            "ios_bp_afford_party": "0",
+        }
         try:
             async with aiohttp.ClientSession(headers=self._make_cookie_header()) as session:
-                async with session.get(WALLET_STATUS_API) as resp:
+                async with session.get(WALLET_STATUS_API, params=params) as resp:
                     data = await resp.json(content_type=None)
                     if data.get("code") == 0:
                         d = data.get("data") or {}
-                        return {
-                            "gold": int(d.get("gold", 0)),
-                            "silver": int(d.get("silver", 0)),
-                            "bp": int(d.get("bp", 0)),
-                        }
+                        return {"gold": int(d.get("gold", 0))}
                     log.warning(
-                        f"[wallet] uid={self.bot_uid} code={data.get('code')} "
+                        f"[wallet] {self.log_id} code={data.get('code')} "
                         f"msg={data.get('message')!r}"
                     )
         except Exception as e:
-            log.warning(f"[wallet] uid={self.bot_uid} 异常: {e}")
+            log.warning(f"[wallet] {self.log_id} 异常: {e}")
         return {}
 
     async def refresh_bot_identity(self):
