@@ -183,7 +183,7 @@ async def websocket_endpoint(ws: WebSocket):
 
 # ── Main ──
 
-async def main(port: int):
+async def main(port: int, listen: bool = True):
     init_db()
     cleanup_old_events()
     gift_catalog.load_from_db()
@@ -192,8 +192,12 @@ async def main(port: int):
     config = uvicorn.Config(app, host="0.0.0.0", port=port, log_level="info")
     server = uvicorn.Server(config)
 
-    run_tasks = manager.get_run_tasks()
-    log.info(f"启动监控: {len(run_tasks)} 个活跃房间 / {len(manager.all_clients())} 个总房间 | Web: http://localhost:{port}")
+    if listen:
+        run_tasks = manager.get_run_tasks()
+        log.info(f"启动监控: {len(run_tasks)} 个活跃房间 / {len(manager.all_clients())} 个总房间 | Web: http://localhost:{port}")
+    else:
+        run_tasks = []
+        log.info(f"仅服务器模式（不启动事件监听）/ {len(manager.all_clients())} 个总房间 | Web: http://localhost:{port}")
 
     await asyncio.gather(
         server.serve(),
