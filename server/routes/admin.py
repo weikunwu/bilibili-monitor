@@ -6,11 +6,13 @@
 """
 
 import asyncio
+import random
 import sqlite3
 
 from fastapi import APIRouter, Depends, Request, HTTPException
 
 from ..auth import require_admin, require_admin_or_staff
+from ..bili_client import BiliLiveClient
 from ..config import log
 from ..db import (
     list_users, create_user, delete_user, assign_user_rooms, update_user_role,
@@ -83,35 +85,92 @@ async def add_room(request: Request):
     return {"ok": True, "room_id": room_id}
 
 
+# dry-run 阶段：先 500 探风控反应，确认无连带熔断后再上 1000
+_LIKE_PER_BOT = 500
+_LIKE_MAX_BOTS = 5
+# 同一目标房间互斥：dispatch 期间不允许重复触发（避免 5×N 个 bot 撞同一房间）
+_like_dispatch_running: set[int] = set()
+
+
 @router.post("/api/admin/rooms/{room_id}/like", dependencies=admin_dep)
 async def trigger_room_likes(room_id: int):
-    """用该房间机器人 cookie 上报 1000 次点赞，分批 + 频控。
-    长任务后台跑（~30s），HTTP 立即返回；同房间互斥，重复触发返回 409。"""
-    client = manager.get(room_id)
-    if not client:
+    """随机抽 _LIKE_MAX_BOTS 个有 bot cookie 的房间（当前房间的 bot 优先入选），
+    每个 bot 给该房间刷 _LIKE_PER_BOT 次点赞。每个 bot 自己限频、并行执行，
+    dispatch 后台跑；同一目标房间未跑完前重复触发返回 409。"""
+    target = manager.get(room_id)
+    if not target:
         raise HTTPException(404, "房间不存在")
-    if not client.cookies.get("SESSDATA") or not client.bot_uid:
-        raise HTTPException(400, "该房间未绑定机器人")
-    if client._like_running:
+    if room_id in _like_dispatch_running:
         raise HTTPException(409, "该房间正在点赞中，请等当前批次跑完")
-    total = 1000
-    # 预估时长：批数 × 平均间隔（前端用来锁按钮 + 给提示）
-    avg_interval = (client.LIKE_BATCH_INTERVAL_LO + client.LIKE_BATCH_INTERVAL_HI) / 2
-    eta_seconds = int((total / client.LIKE_BATCH_SIZE) * avg_interval)
-    client._like_running = True
+    if not target.streamer_uid:
+        await target.ensure_info()
+    if not target.streamer_uid:
+        raise HTTPException(400, "未取到目标房间主播 UID")
+    target_real_room_id = target.real_room_id
+    target_streamer_uid = target.streamer_uid
 
-    async def _run():
+    # 候选池：有 bot cookie + 没在跑别的点赞 + 没在风控冷却
+    candidates = [
+        c for c in manager.all_clients().values()
+        if c.cookies.get("SESSDATA") and c.bot_uid
+        and not c._like_running and not c._is_bot_cooling()
+    ]
+    if not candidates:
+        raise HTTPException(400, "当前没有可用的机器人（全部未绑定/在跑/冷却中）")
+
+    # 当前房间的 bot 优先入选，剩下从其它候选里随机抽
+    if target in candidates:
+        others = [c for c in candidates if c is not target]
+        random.shuffle(others)
+        selected = [target] + others[:_LIKE_MAX_BOTS - 1]
+    else:
+        random.shuffle(candidates)
+        selected = candidates[:_LIKE_MAX_BOTS]
+
+    per_bot = _LIKE_PER_BOT
+    avg_interval = (BiliLiveClient.LIKE_BATCH_INTERVAL_LO + BiliLiveClient.LIKE_BATCH_INTERVAL_HI) / 2
+    eta_seconds = int((per_bot / BiliLiveClient.LIKE_BATCH_SIZE) * avg_interval)
+    total = per_bot * len(selected)
+
+    for bot in selected:
+        bot._like_running = True
+    _like_dispatch_running.add(room_id)
+    bot_summary = ", ".join(
+        f"{b.bot_uid}({b.bot_name or '?'}@room{b.real_room_id})" for b in selected
+    )
+    log.info(
+        f"[批量点赞-dispatch] target=room{target_real_room_id}(anchor_uid={target_streamer_uid}) "
+        f"per_bot={per_bot} bots={len(selected)} → [{bot_summary}]"
+    )
+
+    async def _run_one(bot: BiliLiveClient):
+        log.info(
+            f"[批量点赞] bot={bot.bot_uid}({bot.bot_name or '?'}) → target=room{target_real_room_id} 开始 total={per_bot}"
+        )
         try:
-            await client.send_likes(total)
+            await bot.send_likes(
+                per_bot,
+                target_room_id=target_real_room_id,
+                target_streamer_uid=target_streamer_uid,
+            )
         except Exception as e:
-            log.warning(f"[批量点赞] room={room_id} 任务异常: {e}")
+            log.warning(f"[批量点赞] bot={bot.bot_uid} → room={target_real_room_id} 异常: {e}")
         finally:
-            client._like_running = False
+            bot._like_running = False
 
-    asyncio.create_task(_run())
+    async def _run_all():
+        try:
+            await asyncio.gather(*(_run_one(b) for b in selected), return_exceptions=True)
+        finally:
+            _like_dispatch_running.discard(room_id)
+            log.info(f"[批量点赞-dispatch] target=room{target_real_room_id} 全部 bot 跑完，dispatch 释放")
+
+    asyncio.create_task(_run_all())
     return {
         "ok": True, "room_id": room_id,
         "scheduled": total, "eta_seconds": eta_seconds,
+        "bot_count": len(selected),
+        "bots": [{"uid": b.bot_uid, "name": b.bot_name} for b in selected],
     }
 
 

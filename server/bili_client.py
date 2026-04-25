@@ -1673,8 +1673,15 @@ class BiliLiveClient:
     LIKE_BATCH_INTERVAL_HI = 7.0
     LIKE_MAX_TOTAL = 1500
 
-    async def send_likes(self, total: int) -> dict:
+    async def send_likes(
+        self,
+        total: int,
+        *,
+        target_room_id: int | None = None,
+        target_streamer_uid: int | None = None,
+    ) -> dict:
         """用本房间机器人 cookie 上报 total 次点赞，分批走 likeReportV3。
+        target_* 给跨房间点赞（多 bot 集中给一个房间刷赞）用，省略则点自己房间。
         返回 {sent, failed, error}；命中风控/登录失效提前停。
         调用方需先用 _like_running 互斥。"""
         if total <= 0:
@@ -1685,16 +1692,19 @@ class BiliLiveClient:
         if self._is_bot_cooling():
             self._log_cooldown_skip("send_likes")
             return {"sent": 0, "failed": 0, "error": "机器人风控冷却中"}
-        if not self.streamer_uid:
+        tgt_room = target_room_id if target_room_id else self.real_room_id
+        tgt_anchor = target_streamer_uid if target_streamer_uid else self.streamer_uid
+        if not tgt_anchor:
             await self.ensure_info()
-        if not self.streamer_uid:
+            tgt_anchor = self.streamer_uid
+        if not tgt_anchor:
             return {"sent": 0, "failed": 0, "error": "未取到主播 UID"}
         csrf = self.cookies.get("bili_jct", "")
         if not csrf:
             return {"sent": 0, "failed": 0, "error": "csrf 缺失"}
         headers = self._make_cookie_header()
-        # 关键：Referer 必须带房间号，通用 referer 会被 -352。
-        headers["Referer"] = f"https://live.bilibili.com/{self.real_room_id}"
+        # 关键：Referer 必须带目标房间号，通用 referer 会被 -352。
+        headers["Referer"] = f"https://live.bilibili.com/{tgt_room}"
         # likeReportV3 还要 cookie 里有 buvid3 + buvid4，缺任一就 -352。
         # 实测最小 cookie 集 = 登录 5 件套 + buvid3/buvid4，bili_ticket 可省。
         await self._ensure_buvid_pair()
@@ -1711,15 +1721,17 @@ class BiliLiveClient:
         failed = 0
         last_error = ""
         batch_idx = 0
+        # 跨房间点赞时日志前缀带上 bot 自己房间号，方便区分
+        log_tag = f"room={tgt_room}" if tgt_room == self.real_room_id else f"bot_room={self.real_room_id}→target={tgt_room}"
         async with aiohttp.ClientSession(headers=headers) as session:
             while sent + failed < total:
                 batch = min(self.LIKE_BATCH_SIZE, total - sent - failed)
                 batch_idx += 1
                 params = wbi_sign({
                     "click_time": batch,
-                    "room_id": self.real_room_id,
+                    "room_id": tgt_room,
                     "uid": self.bot_uid,
-                    "anchor_id": self.streamer_uid,
+                    "anchor_id": tgt_anchor,
                     "web_location": "444.8",
                     "csrf": csrf,
                 }, wbi_key)
@@ -1732,7 +1744,7 @@ class BiliLiveClient:
                         except Exception:
                             failed += batch
                             last_error = f"非 JSON 响应: {text[:200]}"
-                            log.warning(f"[批量点赞] room={self.real_room_id} {last_error}")
+                            log.warning(f"[批量点赞] {log_tag} {last_error}")
                             break
                         if data.get("code") == 0:
                             sent += batch
@@ -1740,24 +1752,24 @@ class BiliLiveClient:
                             # 之后每 20 批打一次进度，1000 次大概 5 行进度日志。
                             if batch_idx == 1:
                                 log.info(
-                                    f"[批量点赞] room={self.real_room_id} 首批响应 "
+                                    f"[批量点赞] {log_tag} 首批响应 "
                                     f"click_time={batch} body={text[:500]}"
                                 )
                             elif batch_idx % 20 == 0:
                                 log.info(
-                                    f"[批量点赞] room={self.real_room_id} 进度 "
+                                    f"[批量点赞] {log_tag} 进度 "
                                     f"sent={sent}/{total} batch={batch_idx}"
                                 )
                             self._react_to_bili_response(data, "send_likes")
                         else:
                             failed += batch
                             last_error = f"code={data.get('code')} msg={data.get('message') or data.get('msg')}"
-                            log.warning(f"[批量点赞] room={self.real_room_id} 第{batch_idx}批失败: {last_error}")
+                            log.warning(f"[批量点赞] {log_tag} 第{batch_idx}批失败: {last_error}")
                             cooling_now = self._react_to_bili_response(data, "send_likes")
                 except Exception as e:
                     failed += batch
                     last_error = f"请求异常: {e}"
-                    log.warning(f"[批量点赞] room={self.real_room_id} {last_error}")
+                    log.warning(f"[批量点赞] {log_tag} {last_error}")
                     break
                 if cooling_now:
                     break
@@ -1766,7 +1778,7 @@ class BiliLiveClient:
                         self.LIKE_BATCH_INTERVAL_LO, self.LIKE_BATCH_INTERVAL_HI,
                     ))
         log.info(
-            f"[批量点赞] room={self.real_room_id} 完成 sent={sent} failed={failed}"
+            f"[批量点赞] {log_tag} 完成 sent={sent} failed={failed}"
             + (f" last_error={last_error!r}" if last_error else "")
         )
         return {"sent": sent, "failed": failed, "error": last_error}

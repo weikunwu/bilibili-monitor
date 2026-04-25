@@ -132,13 +132,13 @@ export function AdminPanel({ rooms, onRoomsChanged, role: currentRole }: Props) 
 
   async function handleLikeRoom(roomId: number, label: string) {
     if (likingRoomIds.has(roomId)) return
-    if (!await confirmDialog({ message: `确定用「${label}」的机器人自动点赞？\n保守频控、慢慢跑，约需 10–15 分钟`, okText: '自动点赞' })) return
+    if (!await confirmDialog({ message: `确定为「${label}」自动点赞？\n随机抽多个机器人集中点赞，保守频控、慢慢跑，约需 10–15 分钟`, okText: '自动点赞' })) return
     setLikingRoomIds((prev) => new Set(prev).add(roomId))
     setLikeMsg(null)
     try {
       const r = await triggerRoomLikes(roomId)
       const mins = Math.ceil(r.eta_seconds / 60)
-      setLikeMsg({ type: 'success', text: `「${label}」已触发 ${r.scheduled} 次点赞，预计 ${mins} 分钟跑完` })
+      setLikeMsg({ type: 'success', text: `「${label}」已用 ${r.bot_count} 个机器人触发共 ${r.scheduled} 次点赞，预计 ${mins} 分钟跑完` })
       // 按钮锁到任务预计跑完 + 10s 兜底；服务端 _like_running 是真正的互斥
       window.setTimeout(() => {
         setLikingRoomIds((prev) => {

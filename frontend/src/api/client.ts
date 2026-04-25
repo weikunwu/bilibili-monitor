@@ -297,7 +297,13 @@ export async function removeRoom(roomId: number): Promise<void> {
   }
 }
 
-export async function triggerRoomLikes(roomId: number): Promise<{ ok: boolean; scheduled: number; eta_seconds: number }> {
+export async function triggerRoomLikes(roomId: number): Promise<{
+  ok: boolean
+  scheduled: number
+  eta_seconds: number
+  bot_count: number
+  bots: { uid: number; name: string }[]
+}> {
   const res = await fetch(`/api/admin/rooms/${roomId}/like`, { method: 'POST' })
   if (!res.ok) {
     const d = await res.json().catch(() => ({}))
