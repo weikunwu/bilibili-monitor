@@ -165,7 +165,7 @@ function WeeklyTaskCard({ count, milestones }: { count: number; milestones: numb
   return (
     <div
       style={{
-        maxWidth: 400,
+        maxWidth: 360,
         background: 'linear-gradient(135deg, rgba(42,18,42,0.88), rgba(60,22,48,0.88))',
         border: '1px solid rgba(255, 107, 157, 0.25)',
         borderRadius: 14,
@@ -263,7 +263,7 @@ function CritTaskCard({
   return (
     <div
       style={{
-        maxWidth: 400,
+        maxWidth: 360,
         // 暴击配色：走更"烈"的红→橙，和普通周任务的粉紫做视觉区分，一眼能认出"这是暴击"
         background: 'linear-gradient(135deg, rgba(58,14,14,0.9), rgba(70,28,8,0.9))',
         border: '1px solid rgba(255, 170, 60, 0.4)',
