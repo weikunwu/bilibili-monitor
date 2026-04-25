@@ -407,6 +407,21 @@ def init_db():
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_gift_effects_room ON gift_effects(room_id)")
 
+    # 默认机器人池：和具体房间无关，admin 扫码登录后存这里。批量点赞、群发等
+    # 跨房间动作从这个池抽，避免主播必须先把 bot 绑到某个监控房间才能加入池。
+    # cookie / buvid3 / buvid4 都用 COOKIE_SECRET AES 加密。
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS default_bots (
+            uid INTEGER PRIMARY KEY,
+            name TEXT NOT NULL DEFAULT '',
+            cookie TEXT,
+            buvid3 TEXT,
+            buvid4 TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            relogin_alerted INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+
     admin_email = os.environ.get("ADMIN_EMAIL", "")
     admin_password = os.environ.get("ADMIN_PASSWORD", "")
     if admin_password:
@@ -503,6 +518,89 @@ def set_relogin_alerted(room_id: int, alerted: bool):
         "UPDATE rooms SET relogin_alerted=? WHERE room_id=?",
         (1 if alerted else 0, room_id),
     )
+    conn.commit()
+    conn.close()
+
+
+# ── 默认机器人（和房间解耦的 bot 池）──
+
+def list_default_bots() -> list[dict]:
+    """返回 [{uid, name, has_cookie, created_at}]，不外漏 cookie 本身。"""
+    conn = sqlite3.connect(str(DB_PATH))
+    rows = conn.execute(
+        "SELECT uid, name, cookie, created_at FROM default_bots ORDER BY created_at"
+    ).fetchall()
+    conn.close()
+    return [
+        {"uid": r[0], "name": r[1] or "", "has_cookie": bool(r[2]), "created_at": r[3]}
+        for r in rows
+    ]
+
+
+def get_default_bot_uids() -> list[int]:
+    conn = sqlite3.connect(str(DB_PATH))
+    rows = conn.execute("SELECT uid FROM default_bots").fetchall()
+    conn.close()
+    return [r[0] for r in rows]
+
+
+def upsert_default_bot(uid: int, name: str, encrypted_cookie: str):
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.execute(
+        "INSERT INTO default_bots (uid, name, cookie) VALUES (?,?,?) "
+        "ON CONFLICT(uid) DO UPDATE SET name=excluded.name, cookie=excluded.cookie, "
+        "buvid3=NULL, buvid4=NULL, relogin_alerted=0",
+        (uid, name or "", encrypted_cookie),
+    )
+    conn.commit()
+    conn.close()
+
+
+def update_default_bot_name(uid: int, name: str):
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.execute("UPDATE default_bots SET name=? WHERE uid=?", (name or "", uid))
+    conn.commit()
+    conn.close()
+
+
+def get_default_bot_cookie_blob(uid: int) -> Optional[str]:
+    conn = sqlite3.connect(str(DB_PATH))
+    row = conn.execute("SELECT cookie FROM default_bots WHERE uid=?", (uid,)).fetchone()
+    conn.close()
+    return row[0] if row and row[0] else None
+
+
+def delete_default_bot(uid: int):
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.execute("DELETE FROM default_bots WHERE uid=?", (uid,))
+    conn.commit()
+    conn.close()
+
+
+def get_default_bot_buvid3(uid: int) -> str:
+    conn = sqlite3.connect(str(DB_PATH))
+    row = conn.execute("SELECT buvid3 FROM default_bots WHERE uid=?", (uid,)).fetchone()
+    conn.close()
+    return (row[0] if row and row[0] else "") or ""
+
+
+def save_default_bot_buvid3(uid: int, buvid3: str):
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.execute("UPDATE default_bots SET buvid3=? WHERE uid=?", (buvid3 or None, uid))
+    conn.commit()
+    conn.close()
+
+
+def get_default_bot_buvid4(uid: int) -> str:
+    conn = sqlite3.connect(str(DB_PATH))
+    row = conn.execute("SELECT buvid4 FROM default_bots WHERE uid=?", (uid,)).fetchone()
+    conn.close()
+    return (row[0] if row and row[0] else "") or ""
+
+
+def save_default_bot_buvid4(uid: int, buvid4: str):
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.execute("UPDATE default_bots SET buvid4=? WHERE uid=?", (buvid4 or None, uid))
     conn.commit()
     conn.close()
 

@@ -17,7 +17,7 @@ from .config import (
     HEADERS, bot_ua_for_uid, FALLBACK_BOT_ROOM_ID,
     DANMU_CONF_API, DANMU_INFO_API, ROOM_INFO_API,
     MASTER_INFO_API, FINGER_SPI_API, NAV_API, SEND_GIFT_API, SEND_MSG_API,
-    LIKE_REPORT_API,
+    LIKE_REPORT_API, WALLET_STATUS_API,
     WS_OP_AUTH, WS_OP_HEARTBEAT, PERIOD_LABELS, DANMU_PERIOD_MAP, DB_PATH,
     RARE_BLIND_MIN_PRICE, log,
 )
@@ -30,6 +30,8 @@ from .db import (
     set_live_started_at, get_gift_effect_test_enabled,
     get_bot_buvid3, save_bot_buvid3, get_bot_buvid4, save_bot_buvid4,
     get_relogin_alerted, set_relogin_alerted,
+    get_default_bot_buvid3, save_default_bot_buvid3,
+    get_default_bot_buvid4, save_default_bot_buvid4,
 )
 from .routes.effects import trigger_gift_vap, try_trigger_entry_effect
 from .time_utils import beijing_time_range
@@ -107,7 +109,18 @@ def _decode_interact_word_pb(b64: str) -> dict:
 
 
 class BiliLiveClient:
-    def __init__(self, room_id: int, on_event, cookies: dict = None):
+    def __init__(
+        self,
+        room_id: int,
+        on_event,
+        cookies: dict = None,
+        is_default_bot: bool = False,
+    ):
+        # is_default_bot=True 表示这个 client 不绑任何监控房间，只作为 admin
+        # 默认机器人池的占位：buvid 走 default_bots 表持久化、不发 relogin
+        # 提醒弹幕、不参与 manager.run() 的 WS 循环。仅供跨房间动作（批量
+        # 点赞等）调用 send_likes 用。
+        self.is_default_bot = is_default_bot
         self.room_id = room_id
         self.real_room_id = room_id
         self.on_event = on_event
@@ -183,6 +196,15 @@ class BiliLiveClient:
         # 必须用户重新扫码才能恢复。前端据此提示"请重新扫码登录"。
         self._needs_relogin: bool = False
 
+    @property
+    def log_id(self) -> str:
+        """日志上下文标签：默认 bot 不绑房间，打 room=0 容易误导，
+        改成 'default(uid=X name=Y)'；房间 bot 保持原 'room=N' 形式。"""
+        if self.is_default_bot:
+            tail = f" name={self.bot_name!r}" if self.bot_name else ""
+            return f"default(uid={self.bot_uid}{tail})"
+        return f"room={self.real_room_id}"
+
     def _make_cookie_header(self) -> dict:
         headers = dict(HEADERS)
         # 按 bot_uid 稳定分配 UA，让同机器不同账号的指纹不完全一致。
@@ -197,8 +219,12 @@ class BiliLiveClient:
         # 每账号持久化 buvid3 + buvid4：绑定后复用同一对设备指纹，避免每次
         # 重连都从 finger/spi 拿新值让 B 站看到"同一账号设备不断变化"。
         # 两个必须成对持久化，半新半旧也是可疑信号。
-        saved3 = get_bot_buvid3(self.room_id)
-        saved4 = get_bot_buvid4(self.room_id)
+        if self.is_default_bot:
+            saved3 = get_default_bot_buvid3(self.bot_uid)
+            saved4 = get_default_bot_buvid4(self.bot_uid)
+        else:
+            saved3 = get_bot_buvid3(self.room_id)
+            saved4 = get_bot_buvid4(self.room_id)
         if saved3 and saved4:
             self.buvid3 = saved3
             self.buvid4 = saved4
@@ -212,10 +238,16 @@ class BiliLiveClient:
                     b4 = data["data"].get("b_4", "")
                     if b3:
                         self.buvid3 = b3
-                        save_bot_buvid3(self.room_id, b3)
+                        if self.is_default_bot:
+                            save_default_bot_buvid3(self.bot_uid, b3)
+                        else:
+                            save_bot_buvid3(self.room_id, b3)
                     if b4:
                         self.buvid4 = b4
-                        save_bot_buvid4(self.room_id, b4)
+                        if self.is_default_bot:
+                            save_default_bot_buvid4(self.bot_uid, b4)
+                        else:
+                            save_bot_buvid4(self.room_id, b4)
                     log.info(f"获取 buvid3: {self.buvid3[:16]}... + buvid4: {self.buvid4[:16]}...")
 
     async def _ensure_buvid_pair(self):
@@ -226,7 +258,35 @@ class BiliLiveClient:
         try:
             await self.get_buvid()
         except Exception as e:
-            log.warning(f"[buvid] room={self.real_room_id} SPI 拉失败: {e}")
+            log.warning(f"[buvid] {self.log_id} SPI 拉失败: {e}")
+
+    async def fetch_wallet_status(self) -> dict:
+        """拉一次直播钱包：{"gold": int}。100 金瓜子 = 1 电池。
+        未登录 / 接口异常返回 {} —— 调用方按缺失处理。"""
+        if not self.cookies.get("SESSDATA"):
+            return {}
+        # 和 B 站 web 充值页发的 query 完全一致，避免接口调用模式偏差被风控盯上。
+        params = {
+            "need_bp": "1",
+            "need_metal": "1",
+            "platform": "pc",
+            "bp_with_decimal": "0",
+            "ios_bp_afford_party": "0",
+        }
+        try:
+            async with aiohttp.ClientSession(headers=self._make_cookie_header()) as session:
+                async with session.get(WALLET_STATUS_API, params=params) as resp:
+                    data = await resp.json(content_type=None)
+                    if data.get("code") == 0:
+                        d = data.get("data") or {}
+                        return {"gold": int(d.get("gold", 0))}
+                    log.warning(
+                        f"[wallet] {self.log_id} code={data.get('code')} "
+                        f"msg={data.get('message')!r}"
+                    )
+        except Exception as e:
+            log.warning(f"[wallet] {self.log_id} 异常: {e}")
+        return {}
 
     async def refresh_bot_identity(self):
         # 已登录但 bot_name 还没取到时，从 NAV_API 拉一次用户名/UID。
@@ -243,11 +303,11 @@ class BiliLiveClient:
                         log.info(f"已登录用户: {self.bot_name} (UID: {self.bot_uid})")
                     else:
                         log.warning(
-                            f"[bot-identity] room={self.room_id} NAV_API 失败 "
+                            f"[bot-identity] {self.log_id} NAV_API 失败 "
                             f"code={data.get('code')} msg={data.get('message')!r}"
                         )
         except Exception as e:
-            log.warning(f"[bot-identity] room={self.room_id} NAV_API 异常: {e}")
+            log.warning(f"[bot-identity] {self.log_id} NAV_API 异常: {e}")
 
     async def get_room_info(self):
         async with aiohttp.ClientSession(headers=self._make_cookie_header()) as session:
@@ -1721,8 +1781,12 @@ class BiliLiveClient:
         failed = 0
         last_error = ""
         batch_idx = 0
-        # 跨房间点赞时日志前缀带上 bot 自己房间号，方便区分
-        log_tag = f"room={tgt_room}" if tgt_room == self.real_room_id else f"bot_room={self.real_room_id}→target={tgt_room}"
+        # 跨房间点赞时日志前缀带上 bot 自己身份，方便区分；默认 bot 不绑房间，
+        # 用统一的 log_id（"default(uid=X name=Y)"）。
+        if not self.is_default_bot and tgt_room == self.real_room_id:
+            log_tag = f"room={tgt_room}"
+        else:
+            log_tag = f"{self.log_id}→target={tgt_room}"
         async with aiohttp.ClientSession(headers=headers) as session:
             while sent + failed < total:
                 batch = min(self.LIKE_BATCH_SIZE, total - sent - failed)
@@ -1818,7 +1882,7 @@ class BiliLiveClient:
             self._bot_cooldown_until = new_until
             self._bot_cooldown_reason = reason
             log.warning(
-                f"[bot-cooldown] room={self.real_room_id} 熔断 {int(seconds)}s "
+                f"[bot-cooldown] {self.log_id} 熔断 {int(seconds)}s "
                 f"原因: {reason}"
             )
 
@@ -1828,10 +1892,10 @@ class BiliLiveClient:
         if now - self._bot_cooldown_logged_skip >= 60:
             self._bot_cooldown_logged_skip = now
             if self._needs_relogin:
-                log.info(f"[bot-cooldown] room={self.real_room_id} 跳过 {flow}，需要重新扫码登录")
+                log.info(f"[bot-cooldown] {self.log_id} 跳过 {flow}，需要重新扫码登录")
             else:
                 log.info(
-                    f"[bot-cooldown] room={self.real_room_id} 跳过 {flow}，"
+                    f"[bot-cooldown] {self.log_id} 跳过 {flow}，"
                     f"剩余 {int(self._bot_cooldown_remaining())}s 原因: {self._bot_cooldown_reason}"
                 )
 
@@ -1840,6 +1904,10 @@ class BiliLiveClient:
         提醒弹幕，引导主播重新扫码。未配置、配置的是自己、或该房间 cookie
         不全则静默跳过；发送失败也不影响 bot 主流程。
         幂等：已发过的跨重启不再重复发，直到用户重新扫码清掉 DB 标志。"""
+        # 默认机器人没绑任何房间，没有"播提醒弹幕"的去处，直接跳过——
+        # admin 在前端列表里看登录态/重新扫码就行。
+        if self.is_default_bot:
+            return
         if not FALLBACK_BOT_ROOM_ID or FALLBACK_BOT_ROOM_ID == self.room_id:
             return
         if get_relogin_alerted(self.room_id):
@@ -1897,7 +1965,7 @@ class BiliLiveClient:
             if not self._needs_relogin:
                 self._needs_relogin = True
                 log.warning(
-                    f"[bot-relogin] room={self.real_room_id} 需重新扫码登录："
+                    f"[bot-relogin] {self.log_id} 需重新扫码登录："
                     f"{flow} code={code} msg={msg!r}"
                 )
                 # 用公用账号给本房间发一条提醒弹幕，让主播看到去重新扫码。

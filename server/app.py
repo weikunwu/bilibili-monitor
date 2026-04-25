@@ -257,6 +257,7 @@ async def main(port: int, listen: bool = True):
     cleanup_old_events()
     gift_catalog.load_from_db()
     manager.load_all()
+    manager.load_all_default_bots()
 
     config = uvicorn.Config(app, host="0.0.0.0", port=port, log_level="info")
     server = uvicorn.Server(config)

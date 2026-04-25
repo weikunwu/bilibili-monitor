@@ -341,6 +341,81 @@ export async function listRenewalTokens(): Promise<RenewalToken[]> {
   return await res.json()
 }
 
+export interface DefaultBot {
+  uid: number
+  name: string
+  has_cookie: boolean
+  created_at: string
+  in_memory: boolean
+  needs_relogin: boolean
+  cooling: boolean
+  battery: number | null   // 电池总数（B 币 × 10 + 金瓜子 / 100）；null 表示拉取失败
+}
+
+export async function listDefaultBots(force = false): Promise<DefaultBot[]> {
+  // force=true 绕过后端 60s 钱包缓存重拉所有 bot 的电池数。
+  const res = await fetch(`/api/admin/default-bots${force ? '?force=1' : ''}`)
+  if (!res.ok) return []
+  return await res.json()
+}
+
+export async function fetchDefaultBotQrCode(): Promise<{
+  url: string; qrcode_key: string; error?: string
+}> {
+  const res = await fetch('/api/admin/default-bots/qrcode')
+  return res.json()
+}
+
+export async function pollDefaultBotQrLogin(
+  qrcodeKey: string,
+): Promise<{ code: number; message: string; uid?: number; name?: string }> {
+  const res = await fetch(`/api/admin/default-bots/poll?qrcode_key=${qrcodeKey}`)
+  return res.json()
+}
+
+export async function deleteDefaultBot(uid: number): Promise<void> {
+  const res = await fetch(`/api/admin/default-bots/${uid}`, { method: 'DELETE' })
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({}))
+    throw new Error(d.detail || '删除失败')
+  }
+}
+
+export interface RechargeOrder {
+  order_id: string
+  code_url: string                                 // QR 渠道下 B 站给的扫码页 url
+  pay_center_params: Record<string, unknown> | null // cash 渠道下要 POST 给收银台的参数
+  expire: number
+}
+
+export async function rechargeDefaultBot(
+  uid: number, yuan: number, channel: 'qr' | 'cash',
+): Promise<RechargeOrder> {
+  const res = await fetch(`/api/admin/default-bots/${uid}/recharge`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ yuan, channel }),
+  })
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({}))
+    throw new Error(d.detail || '下单失败')
+  }
+  return res.json()
+}
+
+export async function queryRechargeStatus(
+  uid: number, orderId: string,
+): Promise<{ status: number; order_id?: string }> {
+  const res = await fetch(
+    `/api/admin/default-bots/${uid}/recharge/status?order_id=${encodeURIComponent(orderId)}`,
+  )
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({}))
+    throw new Error(d.detail || '查单失败')
+  }
+  return res.json()
+}
+
 export async function redeemRoomToken(roomId: number, token: string): Promise<{ expires_at: string }> {
   const res = await fetch(`/api/rooms/${roomId}/redeem`, {
     method: 'POST',

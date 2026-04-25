@@ -6,13 +6,19 @@ from typing import Optional
 from fastapi import WebSocket
 
 from .bili_client import BiliLiveClient
-from .crypto import load_cookies
-from .db import set_room_active, get_all_rooms
+from .crypto import load_cookies, decrypt_cookies
+from .db import (
+    set_room_active, get_all_rooms,
+    list_default_bots, get_default_bot_cookie_blob, delete_default_bot,
+)
 
 
 class RoomManager:
     def __init__(self):
         self._clients: dict[int, BiliLiveClient] = {}
+        # 默认机器人池：和具体监控房间无关；admin 扫码登录后在这里增减。
+        # key = bot UID。这些 client 只用于跨房间动作（批量点赞等），不连 WS。
+        self._default_bots: dict[int, BiliLiveClient] = {}
         self._ws_clients: dict[WebSocket, Optional[list[int]]] = {}
 
     # ── Client access ──
@@ -94,6 +100,51 @@ class RoomManager:
         if client:
             client.stop()
         set_room_active(room_id, False)
+
+    # ── 默认机器人池 ──
+
+    def all_default_bots(self) -> dict[int, BiliLiveClient]:
+        return self._default_bots
+
+    def default_bot(self, uid: int) -> Optional[BiliLiveClient]:
+        return self._default_bots.get(uid)
+
+    def add_default_bot(self, uid: int, cookies: dict) -> BiliLiveClient:
+        """新建/覆盖一个默认机器人 client（不连 WS，只持 cookie 供跨房间动作）。"""
+        client = BiliLiveClient(
+            room_id=0, on_event=self.broadcast,
+            cookies=cookies, is_default_bot=True,
+        )
+        client.bot_uid = uid
+        self._default_bots[uid] = client
+        return client
+
+    def remove_default_bot(self, uid: int):
+        self._default_bots.pop(uid, None)
+        delete_default_bot(uid)
+
+    def load_all_default_bots(self):
+        """启动时从 DB 把 default_bots 加载进内存池。"""
+        for row in list_default_bots():
+            uid = row["uid"]
+            if uid in self._default_bots:
+                continue
+            blob = get_default_bot_cookie_blob(uid)
+            if not blob:
+                continue
+            try:
+                cookies = decrypt_cookies(blob)
+            except Exception:
+                continue
+            if not cookies.get("SESSDATA"):
+                continue
+            client = BiliLiveClient(
+                room_id=0, on_event=self.broadcast,
+                cookies=cookies, is_default_bot=True,
+            )
+            client.bot_uid = uid
+            client.bot_name = row.get("name") or ""
+            self._default_bots[uid] = client
 
 
 manager = RoomManager()
