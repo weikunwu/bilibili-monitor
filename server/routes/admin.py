@@ -435,6 +435,213 @@ async def recharge_default_bot(uid: int, request: Request):
             }
 
 
+# ── 人气票批量投递 ──
+# admin 在房间卡里输入数量，按"每 bot 每房间每整点小时段 200 张"的 B 站限制拆
+# 到多个默认机器人上**串行**送出。
+# gift_id 直接硬编码 33988 + price 100 金瓜子（= 1 电池/张）：实测线上数据
+# 看 33988 是全平台通用主流款；少数房会出现 34003 / 34102 变种但占比极小，
+# 不值得每次 admin 操作多打一发 roomGiftConfig API。
+# 额度计帐进程内 dict，重启清零。
+
+_POPULARITY_GIFT_ID = 33988
+_POPULARITY_GIFT_PRICE = 100  # 金瓜子；100 金瓜子 = 1 电池
+_POPULARITY_PER_BOT_HOURLY = 200
+# {room_id: {hour_bucket: {bot_uid: count_sent}}}；hour_bucket = epoch // 3600
+_popularity_used: dict[int, dict[int, dict[int, int]]] = {}
+
+
+def _popularity_room_buckets(room_id: int) -> dict[int, int]:
+    """返回该房间当前小时桶的 {bot_uid: count_sent}，并清掉已过期的桶。"""
+    bucket = int(time.time() // 3600)
+    room = _popularity_used.setdefault(room_id, {})
+    for k in list(room.keys()):
+        if k < bucket:
+            del room[k]
+    return room.setdefault(bucket, {})
+
+
+def _popularity_bot_remaining(room_id: int, bot_uid: int) -> int:
+    used = _popularity_room_buckets(room_id).get(bot_uid, 0)
+    return max(0, _POPULARITY_PER_BOT_HOURLY - used)
+
+
+def _popularity_record(room_id: int, bot_uid: int, count: int) -> None:
+    bm = _popularity_room_buckets(room_id)
+    bm[bot_uid] = bm.get(bot_uid, 0) + count
+
+
+def _eligible_default_bots() -> list[BiliLiveClient]:
+    """默认机器人池里 cookie/uid 完整、不需重扫、不在冷却的可用 bot。
+    按 bot_uid 去重——同一 UID 出现多次（理论上 manager dict 已用 UID 索引
+    不会重复，但保留这一层防御性去重，未来若加入 target room bot 等其它来源
+    也能用同一函数）。"""
+    seen: set[int] = set()
+    out: list[BiliLiveClient] = []
+    for b in manager.all_default_bots().values():
+        if not b.cookies.get("SESSDATA") or not b.bot_uid:
+            continue
+        if b.bot_uid in seen:
+            continue
+        if b._needs_relogin or b._is_bot_cooling():
+            continue
+        seen.add(b.bot_uid)
+        out.append(b)
+    return out
+
+
+# 多 bot 之间的随机间隔（秒）：单 bot 内部已经按 GIFT_BATCH_INTERVAL_*
+# 隔开了，bot 与 bot 之间再加一道，避免连环 POST 被 IP 维度盯上。
+_POPULARITY_BOT_GAP_LO = 2.0
+_POPULARITY_BOT_GAP_HI = 4.0
+
+
+@router.post("/api/admin/rooms/{room_id}/popularity-vote", dependencies=admin_dep)
+async def send_popularity_vote(room_id: int, request: Request):
+    """从默认机器人池给目标房间送 N 张人气票。串行：剩余额度大的 bot 先送，
+    每个 bot 这小时内对该房间最多 200 张，遇到电池不够 / B 站拒绝就跳到下个 bot。
+    全部失败才报错；部分成功也算 ok=True，前端按 sent/requested 展示。"""
+    body = await request.json()
+    try:
+        count = int(body.get("count", 0))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "数量必须是整数")
+    if count < 100 or count % 100 != 0:
+        raise HTTPException(400, "数量必须是 100 的整数倍（最小 100）")
+
+    target = manager.get(room_id)
+    if not target:
+        raise HTTPException(404, "房间不存在")
+    if not target.streamer_uid:
+        await target.ensure_info()
+    if not target.streamer_uid:
+        raise HTTPException(400, "未取到目标房间主播 UID")
+
+    gift_id = _POPULARITY_GIFT_ID
+    gift_price = _POPULARITY_GIFT_PRICE
+
+    # 候选 bot：(bot, 这小时剩余额度, 钱包金瓜子)。剩余额度 = 200 − 已送；
+    # 钱包决定它最多送得起多少张；两者取 min 才是真正的可送上限。
+    bots = _eligible_default_bots()
+    if not bots:
+        raise HTTPException(400, "默认机器人池为空 / 全部冷却或需重扫")
+
+    candidates: list[tuple[BiliLiveClient, int, int]] = []  # (bot, cap, gold)
+    for bot in bots:
+        rem = _popularity_bot_remaining(room_id, bot.bot_uid)
+        if rem <= 0:
+            continue
+        wallet = await bot.fetch_wallet_status()
+        gold = int(wallet.get("gold", 0))
+        max_affordable = gold // gift_price
+        cap = min(rem, max_affordable)
+        if cap <= 0:
+            continue
+        candidates.append((bot, cap, gold))
+
+    if not candidates:
+        raise HTTPException(
+            400, "所有默认机器人本小时额度耗尽或电池不够",
+        )
+
+    total_capacity = sum(c[1] for c in candidates)
+    if count > total_capacity:
+        raise HTTPException(
+            429,
+            f"本小时累计可送 {total_capacity} 张（请求 {count} 张）。"
+            f"每 bot 每房间每小时上限 {_POPULARITY_PER_BOT_HOURLY}，可用 bot {len(candidates)} 个",
+        )
+
+    # 串行：剩余额度多的 bot 先送，省得反复换
+    candidates.sort(key=lambda x: x[1], reverse=True)
+    target_real_room = target.real_room_id
+    target_streamer_uid = target.streamer_uid
+    log.info(
+        f"[人气票] room={target_real_room} 请求={count} gift_id={gift_id} "
+        f"price={gift_price} 候选 bot={len(candidates)} 串行送"
+    )
+
+    sent_total = 0
+    used_bots: list[dict] = []
+    failures: list[dict] = []
+    aborted_by_cooling = False
+    for idx, (bot, cap, _gold) in enumerate(candidates):
+        if sent_total >= count:
+            break
+        send_n = min(cap, count - sent_total)
+        # 单 bot 内部走 send_gift_batches：拆 ≤GIFT_BATCH_SIZE 张/批，批间
+        # 1.5–3s 间隔，命中风控时把 cooling 信号往上抛。
+        result = await bot.send_gift_batches(
+            gift_id=gift_id, gift_price=gift_price, total=send_n,
+            target_room_id=target_real_room,
+            target_streamer_uid=target_streamer_uid,
+            log_tag="人气票",
+        )
+        sent = int(result.get("sent", 0))
+        if sent > 0:
+            _popularity_record(room_id, bot.bot_uid, sent)
+            _wallet_cache.pop(bot.bot_uid, None)
+            sent_total += sent
+            used_bots.append({"uid": bot.bot_uid, "name": bot.bot_name, "sent": sent})
+        if sent < send_n:
+            failures.append({
+                "uid": bot.bot_uid, "name": bot.bot_name,
+                "tried": send_n, "sent": sent,
+                "error": str(result.get("last_error", "")),
+                "cooling": bool(result.get("cooling")),
+            })
+        # 命中硬风控：B 站从 IP/账号关联维度可能盯上了，让后续 bot 也别再
+        # 撞同一道墙。直接 break，剩下的没送的算请求未完成。
+        if result.get("cooling"):
+            aborted_by_cooling = True
+            log.warning(
+                f"[人气票] room={target_real_room} bot={bot.bot_uid} 命中风控，"
+                f"提前终止后续 {len(candidates) - idx - 1} 个 bot"
+            )
+            break
+        # bot 与 bot 之间随机间隔，避免紧邻的 POST 被 IP 维度盯上
+        if idx < len(candidates) - 1 and sent_total < count:
+            await asyncio.sleep(random.uniform(
+                _POPULARITY_BOT_GAP_LO, _POPULARITY_BOT_GAP_HI,
+            ))
+
+    if sent_total == 0:
+        # 全部失败 → 4xx 把首例错误提到前端
+        msg = "全部失败"
+        if failures:
+            f = failures[0]
+            msg = f"全部失败，首例: {f['name'] or f['uid']} {f['error']}"
+        raise HTTPException(400, msg)
+
+    return {
+        "ok": True,
+        "room_id": room_id,
+        "requested": count,
+        "sent": sent_total,
+        "aborted_by_cooling": aborted_by_cooling,
+        "gift_id": gift_id,
+        "gift_price": gift_price,
+        "bots": used_bots,
+        "failures": failures,
+        "total_remaining_this_hour": sum(
+            _popularity_bot_remaining(room_id, b.bot_uid) for b in bots
+        ),
+    }
+
+
+@router.get("/api/admin/rooms/{room_id}/popularity-vote/quota", dependencies=admin_dep)
+async def get_popularity_quota(room_id: int):
+    """前端打开弹窗时拉一次：累计剩余 = Σ 每个可用 bot 的 (200 − 已送)。
+    不查钱包（modal 打开时不想拉一圈 wallet API），所以 remaining 是"理论上限"
+    而非"实际可送"——电池不够的 bot 也算进去。真实送出的拉去看 sent 字段。"""
+    bots = _eligible_default_bots()
+    remaining = sum(_popularity_bot_remaining(room_id, b.bot_uid) for b in bots)
+    return {
+        "remaining": remaining,
+        "per_bot_limit": _POPULARITY_PER_BOT_HOURLY,
+        "available_bot_count": len(bots),
+    }
+
+
 @router.get("/api/admin/default-bots/{uid}/recharge/status", dependencies=admin_dep)
 async def query_recharge_status(uid: int, order_id: str):
     """轮询订单状态。{status: int}。status=1 待支付；付完返回的具体值

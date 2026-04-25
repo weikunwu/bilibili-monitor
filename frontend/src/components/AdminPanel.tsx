@@ -4,6 +4,7 @@ import type { Room } from '../types'
 import {
   fetchUsers, createUser, deleteUser, assignUserRooms, updateUserRole, addRoom, removeRoom,
   createRenewalTokens, listRenewalTokens, triggerRoomLikes,
+  fetchPopularityQuota, sendPopularityVote,
   listDefaultBots, fetchDefaultBotQrCode, pollDefaultBotQrLogin, deleteDefaultBot,
   rechargeDefaultBot, queryRechargeStatus,
   type UserInfo, type RenewalToken, type DefaultBot,
@@ -58,6 +59,17 @@ export function AdminPanel({ rooms, onRoomsChanged, role: currentRole }: Props) 
   const [rechargeLoading, setRechargeLoading] = useState(false)
   const rechargeOrderRef = useRef<string | null>(null)
   const rechargeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // 人气票 modal 状态
+  const [voteOpen, setVoteOpen] = useState(false)
+  const [voteRoom, setVoteRoom] = useState<Room | null>(null)
+  const [voteCount, setVoteCount] = useState('100')
+  const [voteRemaining, setVoteRemaining] = useState<number | null>(null)
+  const [votePerBotLimit, setVotePerBotLimit] = useState(200)
+  const [voteAvailableBots, setVoteAvailableBots] = useState(0)
+  const [voteStatus, setVoteStatus] = useState<{ type: 'info' | 'success' | 'warning' | 'error'; text: string } | null>(null)
+  const [voteResult, setVoteResult] = useState<Awaited<ReturnType<typeof sendPopularityVote>> | null>(null)
+  const [voteLoading, setVoteLoading] = useState(false)
 
   useEffect(() => { loadTokens() }, [])
   useEffect(() => { if (isAdmin) loadDefaultBots() }, [isAdmin])
@@ -194,6 +206,58 @@ export function AdminPanel({ rooms, onRoomsChanged, role: currentRole }: Props) 
       setRechargeStatus(`下单失败：${(err as Error).message}`)
     } finally {
       setRechargeLoading(false)
+    }
+  }
+
+  async function openVote(r: Room) {
+    setVoteRoom(r)
+    setVoteCount('100')
+    setVoteStatus(null)
+    setVoteResult(null)
+    setVoteRemaining(null)
+    setVoteOpen(true)
+    try {
+      const q = await fetchPopularityQuota(r.room_id)
+      setVoteRemaining(q.remaining)
+      setVotePerBotLimit(q.per_bot_limit)
+      setVoteAvailableBots(q.available_bot_count)
+    } catch { /* ignore */ }
+  }
+
+  function closeVote() {
+    setVoteOpen(false)
+    setVoteStatus(null)
+    setVoteResult(null)
+  }
+
+  async function handleSubmitVote() {
+    if (!voteRoom) return
+    const n = Math.floor(Number(voteCount))
+    if (!Number.isFinite(n) || n < 100 || n % 100 !== 0) {
+      setVoteStatus({ type: 'error', text: '数量必须是 100 的整数倍（最小 100）' })
+      return
+    }
+    setVoteLoading(true)
+    setVoteStatus({ type: 'info', text: '正在串行送出（多 bot 间有 2-4s 间隔，单 bot 内每 100 张为一批）...' })
+    setVoteResult(null)
+    try {
+      const r = await sendPopularityVote(voteRoom.room_id, n)
+      setVoteRemaining(r.total_remaining_this_hour)
+      setVoteResult(r)
+      const partial = r.sent < r.requested
+      // partial 提到 warning 级别（黄色），完整成功才用 success 绿
+      const head = partial
+        ? `⚠ 请求 ${r.requested} 张，实际只送出 ${r.sent} 张`
+        : `已送 ${r.sent} 张`
+      const tail = r.aborted_by_cooling ? '（命中风控，已提前停）' : ''
+      setVoteStatus({
+        type: partial ? 'warning' : 'success',
+        text: `${head}${tail}。本小时累计剩余 ${r.total_remaining_this_hour} 张`,
+      })
+    } catch (err) {
+      setVoteStatus({ type: 'error', text: (err as Error).message })
+    } finally {
+      setVoteLoading(false)
     }
   }
 
@@ -464,6 +528,9 @@ export function AdminPanel({ rooms, onRoomsChanged, role: currentRole }: Props) 
                 >
                   自动点赞
                 </Button>
+                <Button appearance="ghost" size="xs" onClick={() => openVote(r)}>
+                  人气票
+                </Button>
                 <Button color="red" appearance="ghost" size="xs" onClick={() => handleRemoveRoom(r.room_id)}>
                   删除
                 </Button>
@@ -639,6 +706,82 @@ export function AdminPanel({ rooms, onRoomsChanged, role: currentRole }: Props) 
           )}
         </div>
       </>}
+
+      {/* 人气票 modal */}
+      <Modal open={voteOpen} onClose={closeVote} size="xs">
+        <Modal.Header>
+          <Modal.Title>
+            送人气票 → {voteRoom?.streamer_name || voteRoom?.room_id}
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <div style={{ fontSize: 13, color: '#888', marginBottom: 12, lineHeight: 1.6 }}>
+            按"每 bot 每房间每小时 {votePerBotLimit} 张"的 B 站限制把数量拆到多个默认 bot 上**串行**送出。
+            数量必须是 100 的整数倍（最小 100）。
+            {voteRemaining !== null && (
+              <>
+                <br />
+                <span style={{ color: '#7cd97e' }}>
+                  本小时累计可送：{voteRemaining} 张
+                  （{voteAvailableBots} 个可用 bot × {votePerBotLimit}/小时，未扣电池）
+                </span>
+              </>
+            )}
+          </div>
+          <Stack spacing={8} wrap style={{ marginBottom: 12 }}>
+            <InputGroup size="sm" style={{ width: 200 }}>
+              <InputGroup.Addon>数量（张）</InputGroup.Addon>
+              <Input
+                value={voteCount}
+                onChange={setVoteCount}
+                onBlur={() => {
+                  // blur 时把非整百自动 round 到最近的 100 倍数（最少 100），
+                  // 避免用户手输 250 / 99 这种被 submit 校验拦掉
+                  const n = Math.round(Number(voteCount) / 100) * 100
+                  setVoteCount(String(Math.max(100, n || 100)))
+                }}
+                type="number"
+                step={100}
+                min={100}
+              />
+            </InputGroup>
+          </Stack>
+          {voteStatus && (
+            <Message
+              type={voteStatus.type}
+              showIcon
+              style={{ marginBottom: 8 }}
+            >
+              {voteStatus.text}
+            </Message>
+          )}
+          {voteResult && (voteResult.bots.length > 0 || voteResult.failures.length > 0) && (
+            <div style={{ fontSize: 12, lineHeight: 1.7, padding: 8, background: '#14141f', border: '1px solid #2a2a4a', borderRadius: 4 }}>
+              {voteResult.bots.map((b) => (
+                <div key={`ok-${b.uid}`} style={{ color: '#7cd97e' }}>
+                  ✓ {b.name || b.uid} 送出 {b.sent} 张
+                </div>
+              ))}
+              {voteResult.failures.map((f) => (
+                <div key={`fail-${f.uid}`} style={{ color: f.cooling ? '#fb7299' : '#ffb74d' }}>
+                  {f.cooling ? '⛔' : '⚠'} {f.name || f.uid} 计划 {f.tried} 张 / 实送 {f.sent} 张 — {f.error}
+                </div>
+              ))}
+            </div>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button onClick={closeVote} appearance="subtle">关闭</Button>
+          <Button
+            onClick={handleSubmitVote}
+            appearance="primary"
+            loading={voteLoading}
+            disabled={voteRemaining === 0}
+          >
+            立即送出
+          </Button>
+        </Modal.Footer>
+      </Modal>
 
       {/* Default bot recharge modal */}
       <Modal open={rechargeOpen} onClose={closeRecharge} size="xs">
