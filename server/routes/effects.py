@@ -7,9 +7,10 @@
   OBS 叠加页 (/overlay/<room_id>/effects?token=...) 每 1.5s poll 一次
   /api/overlay/<room_id>/effects/queue，拿到就播。
 
-视频文件对外两条路：
-  • 已登录房主 /api/rooms/<id>/effects/entries/<eid>/video
-  • OBS 公开 /api/overlay/<room_id>/effects/entries/<eid>/video?token=...
+视频文件对外两条路（URL 里带 video_filename = <uuid>.<ext>，upsert 替换内容
+时 uuid 变 → URL 变 → CDN/浏览器自动失效旧缓存，所以可以放心 immutable 一年）：
+  • 已登录房主 /api/rooms/<rid>/effects/entries/<eid>/v/<filename>
+  • OBS 公开 /api/overlay/<rid>/effects/entries/<eid>/v/<filename>?token=...
 """
 
 import time
@@ -108,6 +109,8 @@ def try_trigger_entry_effect(room_id: int, uid: int) -> bool:
             "uid": uid,
             "user_name": effect["user_name"],
             "preset_key": effect.get("preset_key") or "",
+            # OBS overlay 用 video_filename 拼 URL（路径里带 uuid → 缓存能 immutable）
+            "video_filename": effect.get("video_filename") or "",
             "enqueued_at": now,
         })
         log.info(
@@ -134,6 +137,7 @@ def trigger_gift_vap(room_id: int, gift_id: int) -> bool:
                 "id": override["id"],
                 "gift_id": gift_id,
                 "gift_name": override.get("gift_name") or "",
+                "video_filename": override.get("video_filename") or "",
                 "enqueued_at": time.monotonic(),
             })
             log.info(f"[gift-vap] room={room_id} gift_id={gift_id} 自定义覆盖入队 id={override['id']}（fan-out {fan}）")
@@ -329,10 +333,15 @@ async def remove_effect(room_id: int, effect_id: int, _=Depends(require_room_acc
     return {"ok": True}
 
 
-@router.get("/api/rooms/{room_id}/effects/entries/{effect_id}/video")
-async def serve_effect_auth(room_id: int, effect_id: int, _=Depends(require_room_access)):
-    # 主播预览：要登录鉴权，不能让 CDN 共享缓存；浏览器自己缓 1 小时省往返
-    return _serve_effect_file(room_id, effect_id, cache_control="private, max-age=3600")
+@router.get("/api/rooms/{room_id}/effects/entries/{effect_id}/v/{filename}")
+async def serve_effect_auth(room_id: int, effect_id: int, filename: str, _=Depends(require_room_access)):
+    # URL 带 filename → upsert 替换时 URL 变 → 缓存自动失效，可以放心 1 年 immutable。
+    # private 因为要登录鉴权，CDN 不能共享缓存；只让主播浏览器本地缓存。
+    return _serve_effect_file(
+        room_id, effect_id,
+        expected_filename=filename,
+        cache_control="private, max-age=31536000, immutable",
+    )
 
 
 # ── OBS 公开端点（token 鉴权） ──
@@ -366,26 +375,37 @@ async def overlay_queue(room_id: int, token: str = Query(...), sid: str = Query(
     return {"events": pending, "sound_on": get_entry_effect_sound_on(room_id)}
 
 
-@router.get("/api/overlay/{room_id}/effects/entries/{effect_id}/video")
-async def serve_effect_overlay(room_id: int, effect_id: int, token: str = Query(...)):
+@router.get("/api/overlay/{room_id}/effects/entries/{effect_id}/v/{filename}")
+async def serve_effect_overlay(room_id: int, effect_id: int, filename: str, token: str = Query(...)):
     if not verify_overlay_token(room_id, token):
         raise HTTPException(403, "token 无效")
-    # OBS 浏览器源拉取：URL 里 effect_id 稳定但内容会被 upsert 替换，TTL
-    # 保守 1 小时让 CDN 边缘命中重复触发；上了方案 B（URL 带 uuid）后可放到一年
-    return _serve_effect_file(room_id, effect_id, cache_control="public, max-age=3600")
+    # OBS 浏览器源 + token 鉴权 → public 让 CF 共享缓存；filename 在 URL 里
+    # 保证 upsert 替换内容时 URL 变，CF 自动取新内容
+    return _serve_effect_file(
+        room_id, effect_id,
+        expected_filename=filename,
+        cache_control="public, max-age=31536000, immutable",
+    )
 
 
-def _serve_effect_file(room_id: int, effect_id: int, *, cache_control: str = "") -> FileResponse:
-    # 从 DB 查 filename 而不是直接拼 id — 防路径遍历 + 确认记录存在
+def _serve_effect_file(
+    room_id: int, effect_id: int, *,
+    expected_filename: str,
+    cache_control: str,
+) -> FileResponse:
+    # 从 DB 查记录而不是直接拼 URL filename — 防路径遍历 + 确认记录存在。
+    # URL filename 必须等于 DB 里的 video_filename；不等说明客户端拿着 stale URL
+    # （记录被 upsert 替换、UUID 变了），返 404 让前端 refetch list 拿新 URL。
     conn_rows = list_entry_effects(room_id)
     match: Optional[dict] = next((r for r in conn_rows if r["id"] == effect_id), None)
     if not match:
         raise HTTPException(404, "视频不存在")
+    if match["video_filename"] != expected_filename:
+        raise HTTPException(404, "filename 不匹配（视频已被替换，请刷新）")
     path = _effect_video_path(room_id, match["video_filename"])
     if not path.exists():
         raise HTTPException(404, "文件缺失")
-    headers = {"Cache-Control": cache_control} if cache_control else None
-    return FileResponse(str(path), headers=headers)
+    return FileResponse(str(path), headers={"Cache-Control": cache_control})
 
 
 # ── 礼物特效覆盖 ──
@@ -394,16 +414,21 @@ def _gift_effect_video_path(room_id: int, filename: str) -> Path:
     return GIFT_EFFECT_ROOT / str(room_id) / filename
 
 
-def _serve_gift_effect_file(room_id: int, effect_id: int, *, cache_control: str = "") -> FileResponse:
+def _serve_gift_effect_file(
+    room_id: int, effect_id: int, *,
+    expected_filename: str,
+    cache_control: str,
+) -> FileResponse:
     rows = list_gift_effects(room_id)
     match: Optional[dict] = next((r for r in rows if r["id"] == effect_id), None)
     if not match:
         raise HTTPException(404, "视频不存在")
+    if match["video_filename"] != expected_filename:
+        raise HTTPException(404, "filename 不匹配（视频已被替换，请刷新）")
     path = _gift_effect_video_path(room_id, match["video_filename"])
     if not path.exists():
         raise HTTPException(404, "文件缺失")
-    headers = {"Cache-Control": cache_control} if cache_control else None
-    return FileResponse(str(path), headers=headers)
+    return FileResponse(str(path), headers={"Cache-Control": cache_control})
 
 
 @router.get("/api/rooms/{room_id}/effects/gifts")
@@ -463,13 +488,25 @@ async def remove_gift_override(room_id: int, effect_id: int, _=Depends(require_r
     return {"ok": True}
 
 
-@router.get("/api/rooms/{room_id}/effects/gifts/{effect_id}/video")
-async def serve_gift_effect_auth(room_id: int, effect_id: int, _=Depends(require_room_access)):
-    return _serve_gift_effect_file(room_id, effect_id, cache_control="private, max-age=3600")
+@router.get("/api/rooms/{room_id}/effects/gifts/{effect_id}/v/{filename}")
+async def serve_gift_effect_auth(
+    room_id: int, effect_id: int, filename: str, _=Depends(require_room_access),
+):
+    return _serve_gift_effect_file(
+        room_id, effect_id,
+        expected_filename=filename,
+        cache_control="private, max-age=31536000, immutable",
+    )
 
 
-@router.get("/api/overlay/{room_id}/effects/gifts/{effect_id}/video")
-async def serve_gift_effect_overlay(room_id: int, effect_id: int, token: str = Query(...)):
+@router.get("/api/overlay/{room_id}/effects/gifts/{effect_id}/v/{filename}")
+async def serve_gift_effect_overlay(
+    room_id: int, effect_id: int, filename: str, token: str = Query(...),
+):
     if not verify_overlay_token(room_id, token):
         raise HTTPException(403, "token 无效")
-    return _serve_gift_effect_file(room_id, effect_id, cache_control="public, max-age=3600")
+    return _serve_gift_effect_file(
+        room_id, effect_id,
+        expected_filename=filename,
+        cache_control="public, max-age=31536000, immutable",
+    )

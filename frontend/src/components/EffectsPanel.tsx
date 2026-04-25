@@ -230,7 +230,7 @@ export function EffectsPanel({ roomId }: Props) {
                   </div>
                 ) : (
                   <video
-                    src={`/api/rooms/${r.room_id}/effects/entries/${r.id}/video`}
+                    src={`/api/rooms/${r.room_id}/effects/entries/${r.id}/v/${r.video_filename}`}
                     controls
                     preload="none"
                     className="effect-card-video"
@@ -272,7 +272,7 @@ export function EffectsPanel({ roomId }: Props) {
                     <span style={{ color: '#888' }}>—</span>
                   ) : (
                     <video
-                      src={`/api/rooms/${r.room_id}/effects/entries/${r.id}/video`}
+                      src={`/api/rooms/${r.room_id}/effects/entries/${r.id}/v/${r.video_filename}`}
                       controls
                       preload="none"
                       style={{ maxHeight: 80, maxWidth: 160, background: '#000', borderRadius: 4 }}
@@ -328,7 +328,7 @@ export function EffectsPanel({ roomId }: Props) {
                   </div>
                 </div>
                 <video
-                  src={`/api/rooms/${r.room_id}/effects/gifts/${r.id}/video`}
+                  src={`/api/rooms/${r.room_id}/effects/gifts/${r.id}/v/${r.video_filename}`}
                   controls
                   preload="none"
                   className="effect-card-video"
@@ -360,7 +360,7 @@ export function EffectsPanel({ roomId }: Props) {
               <Cell style={{ padding: 4 }}>
                 {(r: GiftEffect) => (
                   <video
-                    src={`/api/rooms/${r.room_id}/effects/gifts/${r.id}/video`}
+                    src={`/api/rooms/${r.room_id}/effects/gifts/${r.id}/v/${r.video_filename}`}
                     controls
                     preload="none"
                     style={{ maxHeight: 80, maxWidth: 160, background: '#000', borderRadius: 4 }}

@@ -23,6 +23,8 @@ interface QueuedEvent {
   json_url?: string
   gift_id?: number
   gift_name?: string
+  // entry-effect / gift_custom 才有；URL 路径里带这个让 CDN 在 upsert 后自动失效
+  video_filename?: string
   enqueued_at: number
 }
 
@@ -167,7 +169,7 @@ export function OverlayEffectsPage() {
       ) : current.kind === 'gift_custom' ? (
         <video
           key={key}
-          src={`/api/overlay/${roomId}/effects/gifts/${current.id}/video?token=${encodeURIComponent(token)}`}
+          src={`/api/overlay/${roomId}/effects/gifts/${current.id}/v/${current.video_filename}?token=${encodeURIComponent(token)}`}
           autoPlay
           muted={!soundOn}
           playsInline
@@ -186,7 +188,7 @@ export function OverlayEffectsPage() {
       ) : (
         <video
           key={key}
-          src={`/api/overlay/${roomId}/effects/entries/${current.id}/video?token=${encodeURIComponent(token)}`}
+          src={`/api/overlay/${roomId}/effects/entries/${current.id}/v/${current.video_filename}?token=${encodeURIComponent(token)}`}
           autoPlay
           muted={!soundOn}
           playsInline
