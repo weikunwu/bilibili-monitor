@@ -6,6 +6,10 @@ import react from '@vitejs/plugin-react'
 // 401 也无法跳登录。
 const ONLINE_DOMAIN = 'blackbubu.us'
 
+// 默认代理到线上；想接本地后端：VITE_PROXY_TARGET=http://localhost:8080 npm run dev
+const PROXY_HTTP = process.env.VITE_PROXY_TARGET || `https://${ONLINE_DOMAIN}`
+const PROXY_WS = PROXY_HTTP.replace(/^http/, 'ws')
+
 // 线上后端返回的 cookie 带 Secure，http://localhost 下浏览器会丢弃。
 // 本地开发时代理这里剥掉 Secure，生产不受影响。
 const stripSecure = (proxy: any) => {
@@ -23,9 +27,9 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
-      '/api': { target: `https://${ONLINE_DOMAIN}`, changeOrigin: true, configure: stripSecure },
-      '/ws': { target: `wss://${ONLINE_DOMAIN}`, ws: true, changeOrigin: true },
-      '/static': { target: `https://${ONLINE_DOMAIN}`, changeOrigin: true },
+      '/api': { target: PROXY_HTTP, changeOrigin: true, configure: stripSecure },
+      '/ws': { target: PROXY_WS, ws: true, changeOrigin: true },
+      '/static': { target: PROXY_HTTP, changeOrigin: true },
       // /login /register /forgot-password /upgrade 等都是 SPA 路由，让 Vite 走 HMR
       // 的 index.html fallback 即可，不要代理到线上（线上 index.html 里引用的 /assets
       // hash 在本地不存在，会加载失败）。

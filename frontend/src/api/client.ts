@@ -246,6 +246,15 @@ export async function removeRoom(roomId: number): Promise<void> {
   }
 }
 
+export async function triggerRoomLikes(roomId: number): Promise<{ ok: boolean; scheduled: number; eta_seconds: number }> {
+  const res = await fetch(`/api/admin/rooms/${roomId}/like`, { method: 'POST' })
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({}))
+    throw new Error(d.detail || '触发点赞失败')
+  }
+  return res.json()
+}
+
 export async function createRenewalTokens(count = 1, months = 1): Promise<string[]> {
   const res = await fetch('/api/admin/renewal-tokens', {
     method: 'POST',

@@ -17,6 +17,7 @@ from .config import (
     HEADERS, bot_ua_for_uid, FALLBACK_BOT_ROOM_ID,
     DANMU_CONF_API, DANMU_INFO_API, ROOM_INFO_API,
     MASTER_INFO_API, FINGER_SPI_API, NAV_API, SEND_GIFT_API, SEND_MSG_API,
+    LIKE_REPORT_API,
     WS_OP_AUTH, WS_OP_HEARTBEAT, PERIOD_LABELS, DANMU_PERIOD_MAP, DB_PATH,
     RARE_BLIND_MIN_PRICE, log,
 )
@@ -27,7 +28,7 @@ from .db import (
     save_event, get_command, get_room_save_danmu, get_room_auto_clip,
     get_nickname, upsert_nickname, delete_nickname, nickname_is_banned,
     set_live_started_at, get_gift_effect_test_enabled,
-    get_bot_buvid, save_bot_buvid,
+    get_bot_buvid3, save_bot_buvid3, get_bot_buvid4, save_bot_buvid4,
     get_relogin_alerted, set_relogin_alerted,
 )
 from .routes.effects import trigger_gift_vap, try_trigger_entry_effect
@@ -124,7 +125,11 @@ class BiliLiveClient:
         self.area_name = ""
         self.parent_area_name = ""
         self.announcement = ""
-        self.buvid = ""
+        # SPI 颁的设备指纹一对：buvid3（老）和 buvid4（2023 起新增）。
+        # likeReportV3 这类风控严格的端点强校验两个都要，必须成对持久化避免
+        # "同账号设备半新半旧"被识别。WS 协议层只用 buvid3。
+        self.buvid3 = ""
+        self.buvid4 = ""
         self._running = False
         self._ws = None
         self._reconnect = False
@@ -162,6 +167,9 @@ class BiliLiveClient:
         # 相邻两条之间等一个随机区间（见 DANMU_MIN_INTERVAL_LO/HI），避免被 B 站限流。
         self._send_danmu_lock = asyncio.Lock()
         self._last_send_danmu_ts: float = 0.0
+        # Admin-触发的批量点赞同房间互斥：同一房间已经在跑 1000 次点赞时
+        # 第二次请求直接拒，避免重复触发把额度打没。进程内状态、重启即清。
+        self._like_running: bool = False
         # 已播报过的 pk_id；PRE_NEW 可能被 B站 重发，用这个去重（偶发性的
         # 匹配取消没进入 START_NEW 会带来 <1% 的空播报，业务上可接受）。
         self._pk_broadcasted: set[int] = set()
@@ -186,20 +194,39 @@ class BiliLiveClient:
         return headers
 
     async def get_buvid(self):
-        # 每账号持久化 buvid：绑定后一直复用同一个设备指纹，避免每次重连
-        # 都从 finger/spi 拿新值让 B 站看到"同一账号设备不断变化"。
-        saved = get_bot_buvid(self.room_id)
-        if saved:
-            self.buvid = saved
+        # 每账号持久化 buvid3 + buvid4：绑定后复用同一对设备指纹，避免每次
+        # 重连都从 finger/spi 拿新值让 B 站看到"同一账号设备不断变化"。
+        # 两个必须成对持久化，半新半旧也是可疑信号。
+        saved3 = get_bot_buvid3(self.room_id)
+        saved4 = get_bot_buvid4(self.room_id)
+        if saved3 and saved4:
+            self.buvid3 = saved3
+            self.buvid4 = saved4
             return
+        # 任一缺就重拉 SPI（同一次返回的 b_3/b_4 配套），缺啥补啥。
         async with aiohttp.ClientSession(headers=self._make_cookie_header()) as session:
             async with session.get(FINGER_SPI_API) as resp:
                 data = await resp.json(content_type=None)
                 if data.get("code") == 0:
-                    self.buvid = data["data"].get("b_3", "")
-                    log.info(f"获取 buvid: {self.buvid[:16]}...")
-                    if self.buvid:
-                        save_bot_buvid(self.room_id, self.buvid)
+                    b3 = data["data"].get("b_3", "")
+                    b4 = data["data"].get("b_4", "")
+                    if b3:
+                        self.buvid3 = b3
+                        save_bot_buvid3(self.room_id, b3)
+                    if b4:
+                        self.buvid4 = b4
+                        save_bot_buvid4(self.room_id, b4)
+                    log.info(f"获取 buvid3: {self.buvid3[:16]}... + buvid4: {self.buvid4[:16]}...")
+
+    async def _ensure_buvid_pair(self):
+        """确保 self.buvid3 + self.buvid4 都有，用于 likeReportV3 这类要
+        buvid 验证的端点。直接复用 get_buvid 的 DB-first 逻辑。"""
+        if self.buvid3 and self.buvid4:
+            return
+        try:
+            await self.get_buvid()
+        except Exception as e:
+            log.warning(f"[buvid] room={self.real_room_id} SPI 拉失败: {e}")
 
     async def refresh_bot_identity(self):
         # 已登录但 bot_name 还没取到时，从 NAV_API 拉一次用户名/UID。
@@ -1245,7 +1272,8 @@ class BiliLiveClient:
         """换绑账号后调用：清掉上一个账号留下的 per-session 派生状态，
         让下次重连重新拉 buvid / bot_name / 重置熔断。bot_uid 由调用方
         直接覆盖成新账号的 UID，不在这里清。"""
-        self.buvid = ""
+        self.buvid3 = ""
+        self.buvid4 = ""
         self.bot_name = ""
         self._bot_cooldown_until = 0.0
         self._bot_cooldown_reason = ""
@@ -1361,7 +1389,7 @@ class BiliLiveClient:
                 self._ws = ws
                 auth_body = json.dumps({
                     "uid": self.bot_uid, "roomid": self.real_room_id,
-                    "protover": 3, "buvid": self.buvid,
+                    "protover": 3, "buvid": self.buvid3,
                     "platform": "web", "type": 2, "key": token,
                 }).encode()
                 await ws.send_bytes(make_packet(auth_body, WS_OP_AUTH))
@@ -1633,6 +1661,115 @@ class BiliLiveClient:
         except Exception as e:
             log.warning(f"[自动送礼] 异常: {e}")
             asyncio.create_task(self.send_danmu("[打个有效] 送礼失败"))
+
+    # 点赞调用：照搬抓包到的真实浏览器行为：
+    #   - POST + URL query params + 空 body（aiohttp 用 params= 自动空 body）
+    #   - WBI 签名（w_rid + wts）—— get_wbi_key + wbi_sign 复用
+    #   - Referer 必须是房间号 URL（HAR 实测通用 /live.bilibili.com/ 会被 -352）
+    #   - click_time 一次可以报多次（HAR 实测 12 一次成功）
+    # HAR 看到批与批间隔 ~6s。10/批 × 100 批 × 6s ≈ 10 分钟跑完 1000。
+    LIKE_BATCH_SIZE = 10
+    LIKE_BATCH_INTERVAL_LO = 5.5
+    LIKE_BATCH_INTERVAL_HI = 7.0
+    LIKE_MAX_TOTAL = 1500
+
+    async def send_likes(self, total: int) -> dict:
+        """用本房间机器人 cookie 上报 total 次点赞，分批走 likeReportV3。
+        返回 {sent, failed, error}；命中风控/登录失效提前停。
+        调用方需先用 _like_running 互斥。"""
+        if total <= 0:
+            return {"sent": 0, "failed": 0, "error": "total<=0"}
+        total = min(total, self.LIKE_MAX_TOTAL)
+        if not self.cookies.get("SESSDATA") or not self.bot_uid:
+            return {"sent": 0, "failed": 0, "error": "未绑定机器人"}
+        if self._is_bot_cooling():
+            self._log_cooldown_skip("send_likes")
+            return {"sent": 0, "failed": 0, "error": "机器人风控冷却中"}
+        if not self.streamer_uid:
+            await self.ensure_info()
+        if not self.streamer_uid:
+            return {"sent": 0, "failed": 0, "error": "未取到主播 UID"}
+        csrf = self.cookies.get("bili_jct", "")
+        if not csrf:
+            return {"sent": 0, "failed": 0, "error": "csrf 缺失"}
+        headers = self._make_cookie_header()
+        # 关键：Referer 必须带房间号，通用 referer 会被 -352。
+        headers["Referer"] = f"https://live.bilibili.com/{self.real_room_id}"
+        # likeReportV3 还要 cookie 里有 buvid3 + buvid4，缺任一就 -352。
+        # 实测最小 cookie 集 = 登录 5 件套 + buvid3/buvid4，bili_ticket 可省。
+        await self._ensure_buvid_pair()
+        if self.buvid3 and self.buvid4:
+            existing = headers.get("Cookie", "")
+            sep = "; " if existing else ""
+            headers["Cookie"] = f"{existing}{sep}buvid3={self.buvid3}; buvid4={self.buvid4}"
+        else:
+            return {"sent": 0, "failed": 0, "error": "buvid3/buvid4 取失败"}
+        wbi_key = await get_wbi_key(headers)
+        if not wbi_key:
+            return {"sent": 0, "failed": 0, "error": "wbi key 取失败"}
+        sent = 0
+        failed = 0
+        last_error = ""
+        batch_idx = 0
+        async with aiohttp.ClientSession(headers=headers) as session:
+            while sent + failed < total:
+                batch = min(self.LIKE_BATCH_SIZE, total - sent - failed)
+                batch_idx += 1
+                params = wbi_sign({
+                    "click_time": batch,
+                    "room_id": self.real_room_id,
+                    "uid": self.bot_uid,
+                    "anchor_id": self.streamer_uid,
+                    "web_location": "444.8",
+                    "csrf": csrf,
+                }, wbi_key)
+                cooling_now = False
+                try:
+                    async with session.post(LIKE_REPORT_API, params=params) as resp:
+                        text = await resp.text()
+                        try:
+                            data = json.loads(text)
+                        except Exception:
+                            failed += batch
+                            last_error = f"非 JSON 响应: {text[:200]}"
+                            log.warning(f"[批量点赞] room={self.real_room_id} {last_error}")
+                            break
+                        if data.get("code") == 0:
+                            sent += batch
+                            # 第一批整段打出来，方便核对响应里 data 字段；
+                            # 之后每 20 批打一次进度，1000 次大概 5 行进度日志。
+                            if batch_idx == 1:
+                                log.info(
+                                    f"[批量点赞] room={self.real_room_id} 首批响应 "
+                                    f"click_time={batch} body={text[:500]}"
+                                )
+                            elif batch_idx % 20 == 0:
+                                log.info(
+                                    f"[批量点赞] room={self.real_room_id} 进度 "
+                                    f"sent={sent}/{total} batch={batch_idx}"
+                                )
+                            self._react_to_bili_response(data, "send_likes")
+                        else:
+                            failed += batch
+                            last_error = f"code={data.get('code')} msg={data.get('message') or data.get('msg')}"
+                            log.warning(f"[批量点赞] room={self.real_room_id} 第{batch_idx}批失败: {last_error}")
+                            cooling_now = self._react_to_bili_response(data, "send_likes")
+                except Exception as e:
+                    failed += batch
+                    last_error = f"请求异常: {e}"
+                    log.warning(f"[批量点赞] room={self.real_room_id} {last_error}")
+                    break
+                if cooling_now:
+                    break
+                if sent + failed < total:
+                    await asyncio.sleep(random.uniform(
+                        self.LIKE_BATCH_INTERVAL_LO, self.LIKE_BATCH_INTERVAL_HI,
+                    ))
+        log.info(
+            f"[批量点赞] room={self.real_room_id} 完成 sent={sent} failed={failed}"
+            + (f" last_error={last_error!r}" if last_error else "")
+        )
+        return {"sent": sent, "failed": failed, "error": last_error}
 
     # 同一机器人相邻两条弹幕的间隔在 [LO, HI] 秒内随机取值。
     # 随机化既能降低"频率过快"告警命中率，也让节奏更像真人；

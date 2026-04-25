@@ -3,7 +3,8 @@ import { Input, InputGroup, Button, SelectPicker, Modal, Checkbox, Stack, Divide
 import type { Room } from '../types'
 import {
   fetchUsers, createUser, deleteUser, assignUserRooms, updateUserRole, addRoom, removeRoom,
-  createRenewalTokens, listRenewalTokens, type UserInfo, type RenewalToken,
+  createRenewalTokens, listRenewalTokens, triggerRoomLikes,
+  type UserInfo, type RenewalToken,
 } from '../api/client'
 import { confirmDialog } from '../lib/confirm'
 
@@ -25,6 +26,8 @@ export function AdminPanel({ rooms, onRoomsChanged, role: currentRole }: Props) 
   const [newRoomId, setNewRoomId] = useState('')
   const [roomError, setRoomError] = useState('')
   const [roomLoading, setRoomLoading] = useState(false)
+  const [likingRoomIds, setLikingRoomIds] = useState<Set<number>>(new Set())
+  const [likeMsg, setLikeMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   const [tokenCount, setTokenCount] = useState('1')
   const [tokenMonths, setTokenMonths] = useState('1')
@@ -124,6 +127,33 @@ export function AdminPanel({ rooms, onRoomsChanged, role: currentRole }: Props) 
       setRoomError((err as Error).message)
     } finally {
       setRoomLoading(false)
+    }
+  }
+
+  async function handleLikeRoom(roomId: number, label: string) {
+    if (likingRoomIds.has(roomId)) return
+    if (!await confirmDialog({ message: `确定用「${label}」的机器人自动点赞？\n保守频控、慢慢跑，约需 10–15 分钟`, okText: '自动点赞' })) return
+    setLikingRoomIds((prev) => new Set(prev).add(roomId))
+    setLikeMsg(null)
+    try {
+      const r = await triggerRoomLikes(roomId)
+      const mins = Math.ceil(r.eta_seconds / 60)
+      setLikeMsg({ type: 'success', text: `「${label}」已触发 ${r.scheduled} 次点赞，预计 ${mins} 分钟跑完` })
+      // 按钮锁到任务预计跑完 + 10s 兜底；服务端 _like_running 是真正的互斥
+      window.setTimeout(() => {
+        setLikingRoomIds((prev) => {
+          const next = new Set(prev)
+          next.delete(roomId)
+          return next
+        })
+      }, (r.eta_seconds + 10) * 1000)
+    } catch (err) {
+      setLikingRoomIds((prev) => {
+        const next = new Set(prev)
+        next.delete(roomId)
+        return next
+      })
+      setLikeMsg({ type: 'error', text: `「${label}」点赞失败：${(err as Error).message}` })
     }
   }
 
@@ -235,6 +265,7 @@ export function AdminPanel({ rooms, onRoomsChanged, role: currentRole }: Props) 
           </Stack>
         </form>
         {roomError && <Message type="error" showIcon style={{ marginBottom: 12 }}>{roomError}</Message>}
+        {likeMsg && <Message type={likeMsg.type} showIcon closable onClose={() => setLikeMsg(null)} style={{ marginBottom: 12 }}>{likeMsg.text}</Message>}
         <div className="admin-grid">
           {rooms.map((r) => (
             <div key={r.room_id} className="admin-card">
@@ -250,6 +281,15 @@ export function AdminPanel({ rooms, onRoomsChanged, role: currentRole }: Props) 
                 机器人: {r.bot_uid ? `${r.bot_name || 'Unknown'} (UID ${r.bot_uid})` : '未绑定'}
               </div>
               <div className="admin-card-actions">
+                <Button
+                  appearance="ghost"
+                  size="xs"
+                  loading={likingRoomIds.has(r.room_id)}
+                  disabled={!r.bot_uid || likingRoomIds.has(r.room_id)}
+                  onClick={() => handleLikeRoom(r.room_id, r.streamer_name || String(r.room_id))}
+                >
+                  自动点赞
+                </Button>
                 <Button color="red" appearance="ghost" size="xs" onClick={() => handleRemoveRoom(r.room_id)}>
                   删除
                 </Button>

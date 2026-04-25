@@ -5,11 +5,13 @@
   • staff: 普通用户 + 续费码（发/看列表），其它拒绝
 """
 
+import asyncio
 import sqlite3
 
 from fastapi import APIRouter, Depends, Request, HTTPException
 
 from ..auth import require_admin, require_admin_or_staff
+from ..config import log
 from ..db import (
     list_users, create_user, delete_user, assign_user_rooms, update_user_role,
     add_room as db_add_room, remove_room as db_remove_room, get_all_rooms,
@@ -79,6 +81,38 @@ async def add_room(request: Request):
     client = manager.add_room(room_id)
     await client.ensure_info()
     return {"ok": True, "room_id": room_id}
+
+
+@router.post("/api/admin/rooms/{room_id}/like", dependencies=admin_dep)
+async def trigger_room_likes(room_id: int):
+    """用该房间机器人 cookie 上报 1000 次点赞，分批 + 频控。
+    长任务后台跑（~30s），HTTP 立即返回；同房间互斥，重复触发返回 409。"""
+    client = manager.get(room_id)
+    if not client:
+        raise HTTPException(404, "房间不存在")
+    if not client.cookies.get("SESSDATA") or not client.bot_uid:
+        raise HTTPException(400, "该房间未绑定机器人")
+    if client._like_running:
+        raise HTTPException(409, "该房间正在点赞中，请等当前批次跑完")
+    total = 1000
+    # 预估时长：批数 × 平均间隔（前端用来锁按钮 + 给提示）
+    avg_interval = (client.LIKE_BATCH_INTERVAL_LO + client.LIKE_BATCH_INTERVAL_HI) / 2
+    eta_seconds = int((total / client.LIKE_BATCH_SIZE) * avg_interval)
+    client._like_running = True
+
+    async def _run():
+        try:
+            await client.send_likes(total)
+        except Exception as e:
+            log.warning(f"[批量点赞] room={room_id} 任务异常: {e}")
+        finally:
+            client._like_running = False
+
+    asyncio.create_task(_run())
+    return {
+        "ok": True, "room_id": room_id,
+        "scheduled": total, "eta_seconds": eta_seconds,
+    }
 
 
 @router.delete("/api/admin/rooms/{room_id}", dependencies=admin_dep)

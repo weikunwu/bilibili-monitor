@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from ..config import DB_PATH, QR_GENERATE_API, QR_POLL_API, HEADERS, log
 from ..crypto import save_cookies
-from ..db import save_bot_buvid, set_relogin_alerted
+from ..db import save_bot_buvid3, save_bot_buvid4, set_relogin_alerted
 from ..auth import require_room_access
 from ..manager import manager
 
@@ -45,7 +45,7 @@ async def bot_logout(room_id: int = Query(...), _=Depends(require_room_access)):
     # "同一设备指纹换账号"的可疑信号。
     conn = sqlite3.connect(str(DB_PATH))
     conn.execute(
-        "UPDATE rooms SET bot_cookie=NULL, bot_buvid=NULL, relogin_alerted=0 WHERE room_id=?",
+        "UPDATE rooms SET bot_cookie=NULL, bot_buvid3=NULL, bot_buvid4=NULL, relogin_alerted=0 WHERE room_id=?",
         (room_id,),
     )
     conn.commit()
@@ -97,15 +97,18 @@ async def bot_poll(request: Request, qrcode_key: str):
             val = session.cookies.get(key) or resp.cookies.get(key)
             if val:
                 cookies[key] = val
-        url_str = poll_data.get("url", "")
-        if "refresh_token=" in url_str:
-            cookies["refresh_token"] = url_str.split("refresh_token=")[-1].split("&")[0]
+        # refresh_token 在 poll 响应 data 顶层，不在 redirect URL 里。
+        # （历史代码错误地从 url 字符串里 split，永远命中不了。）
+        rt = poll_data.get("refresh_token") or ""
+        if rt:
+            cookies["refresh_token"] = rt
         save_cookies(cookies, target_room_id)
         # 绑定新账号：把上一个账号持久化的 buvid 清掉，让下次 get_buvid
         # 用新 cookies 从 finger/spi 拿一个全新的，避免"同设备指纹换账号"
         # 的可疑信号。同时清掉 relogin_alerted 标志，让新账号下次真失效时
         # 能再次发提醒。
-        save_bot_buvid(target_room_id, "")
+        save_bot_buvid3(target_room_id, "")
+        save_bot_buvid4(target_room_id, "")
         set_relogin_alerted(target_room_id, False)
         uid = int(cookies.get("DedeUserID", 0))
         client = manager.get(target_room_id)

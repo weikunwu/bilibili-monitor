@@ -188,7 +188,8 @@ def init_db():
             room_id INTEGER PRIMARY KEY,
             settings_json TEXT NOT NULL DEFAULT '{}',
             bot_cookie TEXT DEFAULT NULL,
-            bot_buvid TEXT DEFAULT NULL,
+            bot_buvid3 TEXT DEFAULT NULL,
+            bot_buvid4 TEXT DEFAULT NULL,
             active INTEGER NOT NULL DEFAULT 0,
             live_started_at TEXT,
             expires_at TEXT,
@@ -196,6 +197,19 @@ def init_db():
             relogin_alerted INTEGER NOT NULL DEFAULT 0
         )
     """)
+    # 老 DB 用的列名 bot_buvid，统一成 B 站口径的 bot_buvid3。RENAME 在
+    # SQLite 3.25+ 支持；列已经叫 bot_buvid3 / 不存在 bot_buvid 时会抛
+    # OperationalError，吞掉即可。两次运行都幂等。
+    try:
+        conn.execute("ALTER TABLE rooms RENAME COLUMN bot_buvid TO bot_buvid3")
+    except sqlite3.OperationalError:
+        pass
+    # bot_buvid4 是后加的：likeReportV3 这类风控严格的端点要 buvid3+buvid4
+    # 同时存在；老 DB 没这列就 ALTER 一下。
+    try:
+        conn.execute("ALTER TABLE rooms ADD COLUMN bot_buvid4 TEXT DEFAULT NULL")
+    except sqlite3.OperationalError:
+        pass
     conn.execute("""
         CREATE TABLE IF NOT EXISTS commands (
             id TEXT PRIMARY KEY,
@@ -444,17 +458,34 @@ def set_room_active(room_id: int, active: bool):
     conn.close()
 
 
-def get_bot_buvid(room_id: int) -> str:
-    """返回该房间 bot 持久化的 buvid；未设置返回空串。"""
+def get_bot_buvid3(room_id: int) -> str:
+    """返回该房间 bot 持久化的 buvid3 (SPI 返回的 b_3)；未设置返回空串。"""
     conn = sqlite3.connect(str(DB_PATH))
-    row = conn.execute("SELECT bot_buvid FROM rooms WHERE room_id=?", (room_id,)).fetchone()
+    row = conn.execute("SELECT bot_buvid3 FROM rooms WHERE room_id=?", (room_id,)).fetchone()
     conn.close()
     return (row[0] if row and row[0] else "") or ""
 
 
-def save_bot_buvid(room_id: int, buvid: str):
+def save_bot_buvid3(room_id: int, buvid3: str):
     conn = sqlite3.connect(str(DB_PATH))
-    conn.execute("UPDATE rooms SET bot_buvid=? WHERE room_id=?", (buvid or None, room_id))
+    conn.execute("UPDATE rooms SET bot_buvid3=? WHERE room_id=?", (buvid3 or None, room_id))
+    conn.commit()
+    conn.close()
+
+
+def get_bot_buvid4(room_id: int) -> str:
+    """返回该房间 bot 持久化的 buvid4 (SPI 返回的 b_4)；未设置返回空串。
+    buvid4 跟 buvid3 同一次 SPI 拿到、必须成对持久化，避免风控看到'同账号
+    设备半新半旧'的脱节信号。"""
+    conn = sqlite3.connect(str(DB_PATH))
+    row = conn.execute("SELECT bot_buvid4 FROM rooms WHERE room_id=?", (room_id,)).fetchone()
+    conn.close()
+    return (row[0] if row and row[0] else "") or ""
+
+
+def save_bot_buvid4(room_id: int, buvid4: str):
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.execute("UPDATE rooms SET bot_buvid4=? WHERE room_id=?", (buvid4 or None, room_id))
     conn.commit()
     conn.close()
 
