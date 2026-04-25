@@ -25,7 +25,6 @@ from ..db import (
     list_default_bots, upsert_default_bot, update_default_bot_name,
 )
 from ..manager import manager
-from .rooms import _fetch_room_gifts
 
 router = APIRouter()
 admin_dep = [Depends(require_admin)]
@@ -437,11 +436,14 @@ async def recharge_default_bot(uid: int, request: Request):
 
 # ── 人气票批量投递 ──
 # admin 在房间卡里输入数量，按"每 bot 每房间每整点小时段 200 张"的 B 站限制拆
-# 到多个默认机器人上**串行**送出。「人气票」是房间专属礼物，gift_id 一房一码，
-# 运行时通过 roomGiftConfig 动态查；price 实测 = 100 金瓜子 = 1 电池/张。
+# 到多个默认机器人上**串行**送出。
+# gift_id 直接硬编码 33988 + price 100 金瓜子（= 1 电池/张）：实测线上数据
+# 看 33988 是全平台通用主流款；少数房会出现 34003 / 34102 变种但占比极小，
+# 不值得每次 admin 操作多打一发 roomGiftConfig API。
 # 额度计帐进程内 dict，重启清零。
 
-_POPULARITY_GIFT_NAME = "人气票"
+_POPULARITY_GIFT_ID = 33988
+_POPULARITY_GIFT_PRICE = 100  # 金瓜子；100 金瓜子 = 1 电池
 _POPULARITY_PER_BOT_HOURLY = 200
 # {room_id: {hour_bucket: {bot_uid: count_sent}}}；hour_bucket = epoch // 3600
 _popularity_used: dict[int, dict[int, dict[int, int]]] = {}
@@ -513,22 +515,8 @@ async def send_popularity_vote(room_id: int, request: Request):
     if not target.streamer_uid:
         raise HTTPException(400, "未取到目标房间主播 UID")
 
-    # 找该房间的「人气票」gift_id（B站 一房一码，运行时查）
-    gifts, _streamer_uid, _real_room = await _fetch_room_gifts(room_id)
-    matched = None
-    for g in gifts:
-        name = (g.get("name") or g.get("gift_name") or "").strip()
-        if name == _POPULARITY_GIFT_NAME and g.get("coin_type") == "gold":
-            matched = g
-            break
-    if not matched:
-        raise HTTPException(400, f"该房间礼物列表里找不到「{_POPULARITY_GIFT_NAME}」")
-    gift_id = int(matched.get("id") or matched.get("gift_id") or 0)
-    gift_price = int(matched.get("price") or 0)
-    if not gift_id or gift_price <= 0:
-        raise HTTPException(
-            400, f"「{_POPULARITY_GIFT_NAME}」礼物信息异常 id={gift_id} price={gift_price}",
-        )
+    gift_id = _POPULARITY_GIFT_ID
+    gift_price = _POPULARITY_GIFT_PRICE
 
     # 候选 bot：(bot, 这小时剩余额度, 钱包金瓜子)。剩余额度 = 200 − 已送；
     # 钱包决定它最多送得起多少张；两者取 min 才是真正的可送上限。
