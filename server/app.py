@@ -27,11 +27,40 @@ from .routes import events, rooms, bot, admin, clips, overlay, afdian, effects
 
 app = FastAPI(title="狗狗机器人")
 
+
+# Fly 每月只有 30GB 出流量。给所有静态资源贴 Cache-Control，让前置 CDN
+# (Cloudflare) 能缓存边缘命中、不回源；浏览器二次访问也能直接走本地缓存
+# 不发请求。/assets/* 是 Vite 打包带 hash 的产物（内容变 → 文件名变），
+# 所以可以放心 immutable 一年；/static/* 是仓库里固定的卡片模板/边框图，
+# 改动罕见但不带 hash，给 1 天兜底，etag/last-modified 自然走条件请求。
+class CachedStaticFiles(StaticFiles):
+    def __init__(self, *args, cache_control: str = "", **kwargs):
+        self._cache_control = cache_control
+        super().__init__(*args, **kwargs)
+
+    def file_response(self, *args, **kwargs):
+        resp = super().file_response(*args, **kwargs)
+        if self._cache_control:
+            resp.headers["Cache-Control"] = self._cache_control
+        return resp
+
+
 # ── Static files ──
-app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
+app.mount(
+    "/static",
+    CachedStaticFiles(directory=BASE_DIR / "static", cache_control="public, max-age=86400"),
+    name="static",
+)
 FRONTEND_DIST = BASE_DIR / "frontend" / "dist"
 if FRONTEND_DIST.exists():
-    app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="frontend-assets")
+    app.mount(
+        "/assets",
+        CachedStaticFiles(
+            directory=FRONTEND_DIST / "assets",
+            cache_control="public, max-age=31536000, immutable",
+        ),
+        name="frontend-assets",
+    )
 
 # ── Auth middleware ──
 app.add_middleware(AuthMiddleware)

@@ -331,7 +331,8 @@ async def remove_effect(room_id: int, effect_id: int, _=Depends(require_room_acc
 
 @router.get("/api/rooms/{room_id}/effects/entries/{effect_id}/video")
 async def serve_effect_auth(room_id: int, effect_id: int, _=Depends(require_room_access)):
-    return _serve_effect_file(room_id, effect_id)
+    # 主播预览：要登录鉴权，不能让 CDN 共享缓存；浏览器自己缓 1 小时省往返
+    return _serve_effect_file(room_id, effect_id, cache_control="private, max-age=3600")
 
 
 # ── OBS 公开端点（token 鉴权） ──
@@ -369,10 +370,12 @@ async def overlay_queue(room_id: int, token: str = Query(...), sid: str = Query(
 async def serve_effect_overlay(room_id: int, effect_id: int, token: str = Query(...)):
     if not verify_overlay_token(room_id, token):
         raise HTTPException(403, "token 无效")
-    return _serve_effect_file(room_id, effect_id)
+    # OBS 浏览器源拉取：URL 里 effect_id 稳定但内容会被 upsert 替换，TTL
+    # 保守 1 小时让 CDN 边缘命中重复触发；上了方案 B（URL 带 uuid）后可放到一年
+    return _serve_effect_file(room_id, effect_id, cache_control="public, max-age=3600")
 
 
-def _serve_effect_file(room_id: int, effect_id: int) -> FileResponse:
+def _serve_effect_file(room_id: int, effect_id: int, *, cache_control: str = "") -> FileResponse:
     # 从 DB 查 filename 而不是直接拼 id — 防路径遍历 + 确认记录存在
     conn_rows = list_entry_effects(room_id)
     match: Optional[dict] = next((r for r in conn_rows if r["id"] == effect_id), None)
@@ -381,7 +384,8 @@ def _serve_effect_file(room_id: int, effect_id: int) -> FileResponse:
     path = _effect_video_path(room_id, match["video_filename"])
     if not path.exists():
         raise HTTPException(404, "文件缺失")
-    return FileResponse(str(path))
+    headers = {"Cache-Control": cache_control} if cache_control else None
+    return FileResponse(str(path), headers=headers)
 
 
 # ── 礼物特效覆盖 ──
@@ -390,7 +394,7 @@ def _gift_effect_video_path(room_id: int, filename: str) -> Path:
     return GIFT_EFFECT_ROOT / str(room_id) / filename
 
 
-def _serve_gift_effect_file(room_id: int, effect_id: int) -> FileResponse:
+def _serve_gift_effect_file(room_id: int, effect_id: int, *, cache_control: str = "") -> FileResponse:
     rows = list_gift_effects(room_id)
     match: Optional[dict] = next((r for r in rows if r["id"] == effect_id), None)
     if not match:
@@ -398,7 +402,8 @@ def _serve_gift_effect_file(room_id: int, effect_id: int) -> FileResponse:
     path = _gift_effect_video_path(room_id, match["video_filename"])
     if not path.exists():
         raise HTTPException(404, "文件缺失")
-    return FileResponse(str(path))
+    headers = {"Cache-Control": cache_control} if cache_control else None
+    return FileResponse(str(path), headers=headers)
 
 
 @router.get("/api/rooms/{room_id}/effects/gifts")
@@ -460,11 +465,11 @@ async def remove_gift_override(room_id: int, effect_id: int, _=Depends(require_r
 
 @router.get("/api/rooms/{room_id}/effects/gifts/{effect_id}/video")
 async def serve_gift_effect_auth(room_id: int, effect_id: int, _=Depends(require_room_access)):
-    return _serve_gift_effect_file(room_id, effect_id)
+    return _serve_gift_effect_file(room_id, effect_id, cache_control="private, max-age=3600")
 
 
 @router.get("/api/overlay/{room_id}/effects/gifts/{effect_id}/video")
 async def serve_gift_effect_overlay(room_id: int, effect_id: int, token: str = Query(...)):
     if not verify_overlay_token(room_id, token):
         raise HTTPException(403, "token 无效")
-    return _serve_gift_effect_file(room_id, effect_id)
+    return _serve_gift_effect_file(room_id, effect_id, cache_control="public, max-age=3600")

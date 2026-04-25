@@ -33,6 +33,8 @@ from ..recorder import CLIP_ROOT, FFMPEG_LOCK
 
 router = APIRouter()
 
+_CLIP_CACHE_HEADERS = {"Cache-Control": "private, max-age=86400"}
+
 
 def _room_dir(room_id: int) -> Path:
     return CLIP_ROOT / str(room_id)
@@ -139,7 +141,9 @@ async def get_clip_file(room_id: int, name: str, ext: str, _=Depends(require_roo
     if not p.exists():
         raise HTTPException(404, "not found")
     media_type = "video/mp4" if ext == "mp4" else "application/json"
-    return FileResponse(p, media_type=media_type, filename=p.name)
+    # Clip 文件名带时间戳唯一不变，内容写入后只删不改；72h 后磁盘清盘。
+    # auth 限定 → private（不让 CDN 共享缓存），浏览器自己缓 1 天省回源。
+    return FileResponse(p, media_type=media_type, filename=p.name, headers=_CLIP_CACHE_HEADERS)
 
 
 @router.get("/api/rooms/{room_id}/clips/{name}/compose")
@@ -163,12 +167,12 @@ async def compose_and_serve(room_id: int, name: str, _=Depends(require_room_acce
         overlays = [o for o in (meta.get("overlays") or []) if o.get("vap_mp4") and o.get("vap_json")]
         if not overlays:
             # Nothing to composite — serve base as-is.
-            return FileResponse(base_mp4, media_type="video/mp4", filename=base_mp4.name)
+            return FileResponse(base_mp4, media_type="video/mp4", filename=base_mp4.name, headers=_CLIP_CACHE_HEADERS)
 
         ok = await _do_composite(base_mp4, overlays, out_mp4)
         if not ok:
             raise HTTPException(500, "composite failed (server memory tight?)")
-    return FileResponse(out_mp4, media_type="video/mp4", filename=out_mp4.name)
+    return FileResponse(out_mp4, media_type="video/mp4", filename=out_mp4.name, headers=_CLIP_CACHE_HEADERS)
 
 
 async def _do_composite(base_mp4: Path, overlays: list, out_mp4: Path) -> bool:
