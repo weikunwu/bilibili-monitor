@@ -25,6 +25,7 @@ from ..db import (
     list_default_bots, upsert_default_bot, update_default_bot_name,
 )
 from ..manager import manager
+from .rooms import _fetch_room_gifts
 
 router = APIRouter()
 admin_dep = [Depends(require_admin)]
@@ -432,6 +433,188 @@ async def recharge_default_bot(uid: int, request: Request):
                 "pay_center_params": d.get("pay_center_params"),
                 "expire": int(d.get("expire", 300)),
             }
+
+
+# ── 人气票批量投递 ──
+# admin 在房间卡里输入数量，按"每 bot 每房间每整点小时段 200 张"的 B 站限制拆
+# 到多个默认机器人上**串行**送出。「人气票」是房间专属礼物，gift_id 一房一码，
+# 运行时通过 roomGiftConfig 动态查；price 实测 = 100 金瓜子 = 1 电池/张。
+# 额度计帐进程内 dict，重启清零。
+
+_POPULARITY_GIFT_NAME = "人气票"
+_POPULARITY_PER_BOT_HOURLY = 200
+# {room_id: {hour_bucket: {bot_uid: count_sent}}}；hour_bucket = epoch // 3600
+_popularity_used: dict[int, dict[int, dict[int, int]]] = {}
+
+
+def _popularity_room_buckets(room_id: int) -> dict[int, int]:
+    """返回该房间当前小时桶的 {bot_uid: count_sent}，并清掉已过期的桶。"""
+    bucket = int(time.time() // 3600)
+    room = _popularity_used.setdefault(room_id, {})
+    for k in list(room.keys()):
+        if k < bucket:
+            del room[k]
+    return room.setdefault(bucket, {})
+
+
+def _popularity_bot_remaining(room_id: int, bot_uid: int) -> int:
+    used = _popularity_room_buckets(room_id).get(bot_uid, 0)
+    return max(0, _POPULARITY_PER_BOT_HOURLY - used)
+
+
+def _popularity_record(room_id: int, bot_uid: int, count: int) -> None:
+    bm = _popularity_room_buckets(room_id)
+    bm[bot_uid] = bm.get(bot_uid, 0) + count
+
+
+def _eligible_default_bots() -> list[BiliLiveClient]:
+    """默认机器人池里 cookie/uid 完整、不需重扫、不在冷却的可用 bot。"""
+    return [
+        b for b in manager.all_default_bots().values()
+        if b.cookies.get("SESSDATA") and b.bot_uid
+        and not b._needs_relogin and not b._is_bot_cooling()
+    ]
+
+
+@router.post("/api/admin/rooms/{room_id}/popularity-vote", dependencies=admin_dep)
+async def send_popularity_vote(room_id: int, request: Request):
+    """从默认机器人池给目标房间送 N 张人气票。串行：剩余额度大的 bot 先送，
+    每个 bot 这小时内对该房间最多 200 张，遇到电池不够 / B 站拒绝就跳到下个 bot。
+    全部失败才报错；部分成功也算 ok=True，前端按 sent/requested 展示。"""
+    body = await request.json()
+    try:
+        count = int(body.get("count", 0))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "数量必须是整数")
+    if count < 1:
+        raise HTTPException(400, "数量必须 ≥ 1")
+
+    target = manager.get(room_id)
+    if not target:
+        raise HTTPException(404, "房间不存在")
+    if not target.streamer_uid:
+        await target.ensure_info()
+    if not target.streamer_uid:
+        raise HTTPException(400, "未取到目标房间主播 UID")
+
+    # 找该房间的「人气票」gift_id（B站 一房一码，运行时查）
+    gifts, _streamer_uid, _real_room = await _fetch_room_gifts(room_id)
+    matched = None
+    for g in gifts:
+        name = (g.get("name") or g.get("gift_name") or "").strip()
+        if name == _POPULARITY_GIFT_NAME and g.get("coin_type") == "gold":
+            matched = g
+            break
+    if not matched:
+        raise HTTPException(400, f"该房间礼物列表里找不到「{_POPULARITY_GIFT_NAME}」")
+    gift_id = int(matched.get("id") or matched.get("gift_id") or 0)
+    gift_price = int(matched.get("price") or 0)
+    if not gift_id or gift_price <= 0:
+        raise HTTPException(
+            400, f"「{_POPULARITY_GIFT_NAME}」礼物信息异常 id={gift_id} price={gift_price}",
+        )
+
+    # 候选 bot：(bot, 这小时剩余额度, 钱包金瓜子)。剩余额度 = 200 − 已送；
+    # 钱包决定它最多送得起多少张；两者取 min 才是真正的可送上限。
+    bots = _eligible_default_bots()
+    if not bots:
+        raise HTTPException(400, "默认机器人池为空 / 全部冷却或需重扫")
+
+    candidates: list[tuple[BiliLiveClient, int, int]] = []  # (bot, cap, gold)
+    for bot in bots:
+        rem = _popularity_bot_remaining(room_id, bot.bot_uid)
+        if rem <= 0:
+            continue
+        wallet = await bot.fetch_wallet_status()
+        gold = int(wallet.get("gold", 0))
+        max_affordable = gold // gift_price
+        cap = min(rem, max_affordable)
+        if cap <= 0:
+            continue
+        candidates.append((bot, cap, gold))
+
+    if not candidates:
+        raise HTTPException(
+            400, "所有默认机器人本小时额度耗尽或电池不够",
+        )
+
+    total_capacity = sum(c[1] for c in candidates)
+    if count > total_capacity:
+        raise HTTPException(
+            429,
+            f"本小时累计可送 {total_capacity} 张（请求 {count} 张）。"
+            f"每 bot 每房间每小时上限 {_POPULARITY_PER_BOT_HOURLY}，可用 bot {len(candidates)} 个",
+        )
+
+    # 串行：剩余额度多的 bot 先送，省得反复换
+    candidates.sort(key=lambda x: x[1], reverse=True)
+    target_real_room = target.real_room_id
+    target_streamer_uid = target.streamer_uid
+    log.info(
+        f"[人气票] room={target_real_room} 请求={count} gift_id={gift_id} "
+        f"price={gift_price} 候选 bot={len(candidates)} 串行送"
+    )
+
+    sent_total = 0
+    used_bots: list[dict] = []
+    failures: list[dict] = []
+    for bot, cap, _gold in candidates:
+        if sent_total >= count:
+            break
+        send_n = min(cap, count - sent_total)
+        result = await bot._send_gift_raw(
+            gift_id=gift_id, gift_num=send_n, gift_price=gift_price,
+            target_room_id=target_real_room,
+            target_streamer_uid=target_streamer_uid,
+            log_tag="人气票",
+        )
+        if result.get("code") == 0:
+            _popularity_record(room_id, bot.bot_uid, send_n)
+            _wallet_cache.pop(bot.bot_uid, None)
+            sent_total += send_n
+            used_bots.append({"uid": bot.bot_uid, "name": bot.bot_name, "sent": send_n})
+        else:
+            failures.append({
+                "uid": bot.bot_uid, "name": bot.bot_name, "tried": send_n,
+                "code": result.get("code"),
+                "message": str(result.get("message", "")),
+            })
+
+    if sent_total == 0:
+        # 全部失败 → 4xx 把首例错误提到前端
+        msg = "全部失败"
+        if failures:
+            f = failures[0]
+            msg = f"全部失败，首例: {f['name'] or f['uid']} code={f['code']} msg={f['message']!r}"
+        raise HTTPException(400, msg)
+
+    return {
+        "ok": True,
+        "room_id": room_id,
+        "requested": count,
+        "sent": sent_total,
+        "gift_id": gift_id,
+        "gift_price": gift_price,
+        "bots": used_bots,
+        "failures": failures,
+        "total_remaining_this_hour": sum(
+            _popularity_bot_remaining(room_id, b.bot_uid) for b in bots
+        ),
+    }
+
+
+@router.get("/api/admin/rooms/{room_id}/popularity-vote/quota", dependencies=admin_dep)
+async def get_popularity_quota(room_id: int):
+    """前端打开弹窗时拉一次：累计剩余 = Σ 每个可用 bot 的 (200 − 已送)。
+    不查钱包（modal 打开时不想拉一圈 wallet API），所以 remaining 是"理论上限"
+    而非"实际可送"——电池不够的 bot 也算进去。真实送出的拉去看 sent 字段。"""
+    bots = _eligible_default_bots()
+    remaining = sum(_popularity_bot_remaining(room_id, b.bot_uid) for b in bots)
+    return {
+        "remaining": remaining,
+        "per_bot_limit": _POPULARITY_PER_BOT_HOURLY,
+        "available_bot_count": len(bots),
+    }
 
 
 @router.get("/api/admin/default-bots/{uid}/recharge/status", dependencies=admin_dep)

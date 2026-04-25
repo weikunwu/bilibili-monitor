@@ -1694,33 +1694,64 @@ class BiliLiveClient:
         gift_id = config.get("gift_id", 31036)
         gift_num = config.get("gift_num", 1)
         gift_price = config.get("gift_price", 100)
+        result = await self._send_gift_raw(
+            gift_id=gift_id, gift_num=gift_num, gift_price=gift_price,
+            target_room_id=self.real_room_id, target_streamer_uid=self.streamer_uid,
+            log_tag=f"自动送礼·room={self.real_room_id}",
+        )
+        if result.get("code") != 0:
+            asyncio.create_task(self.send_danmu("[打个有效] 送礼失败"))
+
+    async def _send_gift_raw(
+        self,
+        *,
+        gift_id: int,
+        gift_num: int,
+        gift_price: int,
+        target_room_id: int,
+        target_streamer_uid: int,
+        log_tag: str,
+    ) -> dict:
+        """跨房间送礼底层。返回 {code, message, data?}；网络/解析异常时 code = -1。
+        调用方负责 cookie / 冷却前置检查；不发兜底弹幕。"""
         csrf = self.cookies.get("bili_jct", "")
+        if not csrf:
+            return {"code": -1, "message": "csrf 缺失"}
         payload = {
-            "uid": self.bot_uid, "gift_id": gift_id, "ruid": self.streamer_uid,
+            "uid": self.bot_uid, "gift_id": gift_id, "ruid": target_streamer_uid,
             "gift_num": gift_num, "coin_type": "gold", "platform": "pc",
-            "biz_code": "Live", "biz_id": self.real_room_id,
+            "biz_code": "Live", "biz_id": target_room_id,
             "rnd": int(time.time()), "price": gift_price,
             "csrf_token": csrf, "csrf": csrf,
         }
+        # 跨房间送礼时 Referer 必须带目标房间号，跟 send_likes 同一坑。
+        headers = self._make_cookie_header()
+        headers["Referer"] = f"https://live.bilibili.com/{target_room_id}"
         try:
-            async with aiohttp.ClientSession(headers=self._make_cookie_header()) as session:
+            async with aiohttp.ClientSession(headers=headers) as session:
                 async with session.post(SEND_GIFT_API, data=payload) as resp:
                     text = await resp.text()
-                    log.info(f"[自动送礼] HTTP {resp.status}, body: {text[:500]}")
+                    log.info(f"[{log_tag}] {self.log_id} HTTP {resp.status} body: {text[:500]}")
                     try:
                         data = json.loads(text)
                     except Exception:
-                        log.warning(f"[自动送礼] 非JSON响应: {text[:500]}")
-                        return
+                        log.warning(f"[{log_tag}] {self.log_id} 非JSON响应: {text[:200]}")
+                        return {"code": -1, "message": "非JSON响应"}
                     self._react_to_bili_response(data, "send_gift")
                     if data.get("code") == 0:
-                        log.info(f"[自动送礼] 房间 {self.room_id} 送出礼物 gift_id={gift_id} x{gift_num}")
+                        log.info(
+                            f"[{log_tag}] {self.log_id} → room={target_room_id} "
+                            f"gift_id={gift_id} x{gift_num} 成功"
+                        )
                     else:
-                        log.warning(f"[自动送礼] 失败: {data}")
-                        asyncio.create_task(self.send_danmu("[打个有效] 送礼失败"))
+                        log.warning(
+                            f"[{log_tag}] {self.log_id} → room={target_room_id} "
+                            f"失败: code={data.get('code')} msg={data.get('message')!r}"
+                        )
+                    return data
         except Exception as e:
-            log.warning(f"[自动送礼] 异常: {e}")
-            asyncio.create_task(self.send_danmu("[打个有效] 送礼失败"))
+            log.warning(f"[{log_tag}] {self.log_id} 异常: {e}")
+            return {"code": -1, "message": f"异常: {e}"}
 
     # 点赞调用：照搬抓包到的真实浏览器行为：
     #   - POST + URL query params + 空 body（aiohttp 用 params= 自动空 body）

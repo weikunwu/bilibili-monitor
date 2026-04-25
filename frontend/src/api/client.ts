@@ -312,6 +312,38 @@ export async function triggerRoomLikes(roomId: number): Promise<{
   return res.json()
 }
 
+export async function fetchPopularityQuota(
+  roomId: number,
+): Promise<{ remaining: number; per_bot_limit: number; available_bot_count: number }> {
+  const res = await fetch(`/api/admin/rooms/${roomId}/popularity-vote/quota`)
+  if (!res.ok) return { remaining: 0, per_bot_limit: 200, available_bot_count: 0 }
+  return res.json()
+}
+
+export async function sendPopularityVote(
+  roomId: number, count: number,
+): Promise<{
+  ok: boolean
+  requested: number
+  sent: number
+  gift_id: number
+  gift_price: number
+  bots: { uid: number; name: string; sent: number }[]
+  failures: { uid: number; name: string; tried: number; code: number; message: string }[]
+  total_remaining_this_hour: number
+}> {
+  const res = await fetch(`/api/admin/rooms/${roomId}/popularity-vote`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ count }),
+  })
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({}))
+    throw new Error(d.detail || '送人气票失败')
+  }
+  return res.json()
+}
+
 export async function createRenewalTokens(count = 1, months = 1): Promise<string[]> {
   const res = await fetch('/api/admin/renewal-tokens', {
     method: 'POST',
