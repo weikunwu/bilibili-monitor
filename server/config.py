@@ -83,9 +83,6 @@ DANMU_INFO_API = "https://api.live.bilibili.com/xlive/web-room/v1/index/getDanmu
 ROOM_INFO_API = "https://api.live.bilibili.com/room/v1/Room/get_info"
 H5_ROOM_INFO_API = "https://api.live.bilibili.com/xlive/web-room/v1/index/getH5InfoByRoom"
 SEND_GIFT_API = "https://api.live.bilibili.com/gift/v2/Live/send"
-# 新版送礼：跨房间（人气票 dispatch）走这个，要 WBI 签名 + 全字段，跟 web 端
-# 真实流量对齐过 IP 维度风控。老 SEND_GIFT_API 还活着，给「打个有效」用。
-SEND_GOLD_API = "https://api.live.bilibili.com/xlive/revenue/v1/gift/sendGold"
 SEND_MSG_API = "https://api.live.bilibili.com/msg/send"
 LIKE_REPORT_API = "https://api.live.bilibili.com/xlive/app-ucenter/v1/like_info_v3/like/likeReportV3"
 MASTER_INFO_API = "https://api.live.bilibili.com/live_user/v1/Master/info"
