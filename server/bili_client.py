@@ -16,13 +16,13 @@ import aiohttp
 from .config import (
     HEADERS, bot_ua_for_uid, FALLBACK_BOT_ROOM_ID,
     DANMU_CONF_API, DANMU_INFO_API, ROOM_INFO_API,
-    MASTER_INFO_API, FINGER_SPI_API, NAV_API, SEND_GIFT_API, SEND_MSG_API,
+    MASTER_INFO_API, FINGER_SPI_API, NAV_API, SEND_GIFT_API, SEND_GOLD_API, SEND_MSG_API,
     LIKE_REPORT_API, WALLET_STATUS_API,
     WS_OP_AUTH, WS_OP_HEARTBEAT, PERIOD_LABELS, DANMU_PERIOD_MAP, DB_PATH,
     RARE_BLIND_MIN_PRICE, log,
 )
 from .protocol import make_packet, parse_packets, handle_message, build_guard_event
-from .bili_api import get_wbi_key, wbi_sign, fetch_user_avatar
+from .bili_api import get_wbi_key, wbi_sign, fetch_user_avatar, invalidate_wbi_key
 from . import recorder, gift_catalog
 from .db import (
     save_event, get_command, get_room_save_danmu, get_room_auto_clip,
@@ -376,6 +376,11 @@ class BiliLiveClient:
             await self.get_room_info()
 
     async def get_danmu_info(self):
+        """拉房间 WS 连接配置：token + wss host 列表。
+        已登录态必须走 getDanmuInfo（带 wbi 签名）—— 拿到的 token 才跟 SESSDATA
+        绑定，ws 服务器认证才不会拒。getConf 给已登录用户返回的 token 不匹配，
+        会触发持续重连风暴（参见 PR #20 postmortem）。
+        未登录或 getDanmuInfo 失败时回落到 getConf。"""
         headers = self._make_cookie_header()
         if self.cookies.get("SESSDATA"):
             wbi_key = await get_wbi_key(headers)
@@ -392,7 +397,8 @@ class BiliLiveClient:
                             log.warning(f"getDanmuInfo 失败 (code={data.get('code')}), 回退到 getConf")
         async with aiohttp.ClientSession(headers=headers) as session:
             async with session.get(
-                DANMU_CONF_API, params={"room_id": self.real_room_id, "platform": "pc", "player": "web"},
+                DANMU_CONF_API,
+                params={"room_id": self.real_room_id, "platform": "pc", "player": "web"},
             ) as resp:
                 data = await resp.json(content_type=None)
                 if data.get("code") == 0:
@@ -1728,7 +1734,9 @@ class BiliLiveClient:
         last_error = ""
         while sent + failed < total:
             batch = min(self.GIFT_BATCH_SIZE, total - sent - failed)
-            result = await self._send_gift_raw(
+            # 跨房间送礼走新 API（sendGold + WBI + 全字段），过 IP 维度风控。
+            # 老 _send_gift_raw 留给本房间「打个有效」继续用。
+            result = await self._send_gold_gift_raw(
                 gift_id=gift_id, gift_num=batch, gift_price=gift_price,
                 target_room_id=target_room_id,
                 target_streamer_uid=target_streamer_uid,
@@ -1739,7 +1747,7 @@ class BiliLiveClient:
             else:
                 failed += batch
                 last_error = f"code={result.get('code')} msg={result.get('message')!r}"
-                # _react_to_bili_response 已在 _send_gift_raw 里跑过；此处只
+                # _react_to_bili_response 已在 _send_gold_gift_raw 里跑过；此处只
                 # 看它有没有把 bot 拉进 cooling，把信号往上抛供调用方决定
                 # 是否停掉**整个 dispatch**（多 bot 都别再撞同一道墙）。
                 if self._is_bot_cooling():
@@ -1761,7 +1769,11 @@ class BiliLiveClient:
         target_streamer_uid: int,
         log_tag: str,
     ) -> dict:
-        """跨房间送礼底层。返回 {code, message, data?}；网络/解析异常时 code = -1。
+        """老送礼 API（gift/v2/Live/send）—— form body，无 WBI 签名。
+        线上证据：本房间「打个有效」长期跑这个端点 code:0 全成功。
+        跨房间送礼**别用这个**——B 站对跨房间走老 API 越来越严，用
+        _send_gold_gift_raw（sendGold + WBI 签名 + buvid + 全字段）。
+        返回 {code, message, data?}；网络/解析异常时 code = -1。
         调用方负责 cookie / 冷却前置检查；不发兜底弹幕。"""
         csrf = self.cookies.get("bili_jct", "")
         if not csrf:
@@ -1773,7 +1785,6 @@ class BiliLiveClient:
             "rnd": int(time.time()), "price": gift_price,
             "csrf_token": csrf, "csrf": csrf,
         }
-        # 跨房间送礼时 Referer 必须带目标房间号，跟 send_likes 同一坑。
         headers = self._make_cookie_header()
         headers["Referer"] = f"https://live.bilibili.com/{target_room_id}"
         try:
@@ -1787,6 +1798,98 @@ class BiliLiveClient:
                         log.warning(f"[{log_tag}] {self.log_id} 非JSON响应: {text[:200]}")
                         return {"code": -1, "message": "非JSON响应"}
                     self._react_to_bili_response(data, "send_gift")
+                    if data.get("code") == 0:
+                        log.info(
+                            f"[{log_tag}] {self.log_id} → room={target_room_id} "
+                            f"gift_id={gift_id} x{gift_num} 成功"
+                        )
+                    else:
+                        log.warning(
+                            f"[{log_tag}] {self.log_id} → room={target_room_id} "
+                            f"失败: code={data.get('code')} msg={data.get('message')!r}"
+                        )
+                    return data
+        except Exception as e:
+            log.warning(f"[{log_tag}] {self.log_id} 异常: {e}")
+            return {"code": -1, "message": f"异常: {e}"}
+
+    async def _send_gold_gift_raw(
+        self,
+        *,
+        gift_id: int,
+        gift_num: int,
+        gift_price: int,
+        target_room_id: int,
+        target_streamer_uid: int,
+        log_tag: str,
+    ) -> dict:
+        """新送礼 API（xlive/revenue/v1/gift/sendGold）—— POST + 全部 query +
+        空 body + WBI 签名。HAR 抓包 web 端真实流量，跨房间送礼用这个过 IP 维度
+        风控。要 buvid3+buvid4，缺任一就 -352。
+        返回 {code, message, data?}；网络/解析异常时 code = -1。"""
+        csrf = self.cookies.get("bili_jct", "")
+        if not csrf:
+            return {"code": -1, "message": "csrf 缺失"}
+        # 跨房间送礼必带 buvid3+buvid4
+        await self._ensure_buvid_pair()
+        if not (self.buvid3 and self.buvid4):
+            return {"code": -1, "message": "buvid3/buvid4 取失败"}
+
+        headers = self._make_cookie_header()
+        headers["Referer"] = f"https://live.bilibili.com/{target_room_id}"
+        headers["Origin"] = "https://live.bilibili.com"
+        existing = headers.get("Cookie", "")
+        sep = "; " if existing else ""
+        headers["Cookie"] = f"{existing}{sep}buvid3={self.buvid3}; buvid4={self.buvid4}"
+
+        wbi_key = await get_wbi_key(headers)
+        if not wbi_key:
+            return {"code": -1, "message": "wbi key 取失败"}
+
+        # HAR 实测的全字段；live_statistics / statistics 是 JSON 字符串走 query
+        params = wbi_sign({
+            "uid": self.bot_uid,
+            "gift_id": gift_id,
+            "ruid": target_streamer_uid,
+            "send_ruid": 0,
+            "gift_num": gift_num,
+            "coin_type": "gold",
+            "bag_id": 0,
+            "platform": "pc",
+            "biz_code": "Live",
+            "biz_id": target_room_id,
+            "storm_beat_id": 0,
+            "metadata": "",
+            "price": gift_price,
+            "receive_users": "",
+            "live_statistics": json.dumps({
+                "pc_client": "pcWeb", "jumpfrom": "71004", "room_category": "0",
+                "source_event": 0, "trackid": "-99998",
+                "official_channel": {"program_room_id": "-99998", "program_up_id": "-99998"},
+            }, separators=(",", ":")),
+            "statistics": json.dumps(
+                {"platform": 5, "pc_client": "pcWeb", "appId": 100},
+                separators=(",", ":"),
+            ),
+            "web_location": "444.8",
+            "csrf": csrf,
+        }, wbi_key)
+
+        try:
+            async with aiohttp.ClientSession(headers=headers) as session:
+                # 跟 send_likes 同款：POST + query params + 空 body
+                async with session.post(SEND_GOLD_API, params=params) as resp:
+                    text = await resp.text()
+                    log.info(
+                        f"[{log_tag}] {self.log_id} HTTP {resp.status} "
+                        f"body: {text[:500]}"
+                    )
+                    try:
+                        data = json.loads(text)
+                    except Exception:
+                        log.warning(f"[{log_tag}] {self.log_id} 非JSON响应: {text[:200]}")
+                        return {"code": -1, "message": "非JSON响应"}
+                    self._react_to_bili_response(data, "send_gold")
                     if data.get("code") == 0:
                         log.info(
                             f"[{log_tag}] {self.log_id} → room={target_room_id} "
@@ -2062,6 +2165,10 @@ class BiliLiveClient:
                 f"{flow} 硬风控 code={code} msg={msg!r} (第{self._bot_cooldown_count}次)",
                 backoff,
             )
+            # -352/-799 也可能是 wbi mixin_key 轮换后老 key 被拒；显式清缓存
+            # 让下次 get_wbi_key 重拉一次。多余调用代价小（一次 nav），漏调代价大
+            # （所有 wbi 端点持续 -352 直到下次 fly redeploy）。
+            invalidate_wbi_key()
             return True
         return False
 
