@@ -15,7 +15,7 @@ import aiohttp
 
 from .config import (
     HEADERS, bot_ua_for_uid, FALLBACK_BOT_ROOM_ID,
-    DANMU_CONF_API, DANMU_INFO_API, ROOM_INFO_API,
+    DANMU_CONF_API, ROOM_INFO_API,
     MASTER_INFO_API, FINGER_SPI_API, NAV_API, SEND_GIFT_API, SEND_GOLD_API, SEND_MSG_API,
     LIKE_REPORT_API, WALLET_STATUS_API,
     WS_OP_AUTH, WS_OP_HEARTBEAT, PERIOD_LABELS, DANMU_PERIOD_MAP, DB_PATH,
@@ -376,23 +376,15 @@ class BiliLiveClient:
             await self.get_room_info()
 
     async def get_danmu_info(self):
+        """拉房间 WS 连接配置：token + wss host 列表。统一走老接口
+        room/v1/Danmu/getConf —— 不要 wbi 签名也能用，本地实测未登录态拿到的
+        WS 推送里 user_name / 弹幕 / 礼物字段完整无打码（B 站网页未登录的昵称
+        遮蔽是前端 UI 行为，跟 WS 协议层无关）。少一处 wbi 依赖。"""
         headers = self._make_cookie_header()
-        if self.cookies.get("SESSDATA"):
-            wbi_key = await get_wbi_key(headers)
-            if wbi_key:
-                params = wbi_sign({"id": self.real_room_id, "type": 0}, wbi_key)
-                async with aiohttp.ClientSession(headers=headers) as session:
-                    async with session.get(DANMU_INFO_API, params=params) as resp:
-                        data = await resp.json(content_type=None)
-                        if data.get("code") == 0:
-                            d = data["data"]
-                            log.info("使用 getDanmuInfo (已登录)")
-                            return {"token": d["token"], "host_list": d.get("host_list", [])}
-                        else:
-                            log.warning(f"getDanmuInfo 失败 (code={data.get('code')}), 回退到 getConf")
         async with aiohttp.ClientSession(headers=headers) as session:
             async with session.get(
-                DANMU_CONF_API, params={"room_id": self.real_room_id, "platform": "pc", "player": "web"},
+                DANMU_CONF_API,
+                params={"room_id": self.real_room_id, "platform": "pc", "player": "web"},
             ) as resp:
                 data = await resp.json(content_type=None)
                 if data.get("code") == 0:
