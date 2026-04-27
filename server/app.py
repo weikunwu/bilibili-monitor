@@ -1,6 +1,7 @@
 """FastAPI 应用组装和启动"""
 
 import asyncio
+import time
 
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
@@ -10,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 from datetime import datetime, timezone, timedelta
 
-from .config import BASE_DIR, CLIP_RETENTION_HOURS, log
+from .config import BASE_DIR, CLIP_RETENTION_HOURS, DATA_DIR, log
 from .db import (
     init_db, cleanup_old_events, mark_events_clip_expired,
     get_expired_active_rooms, get_expired_rooms_for_reminder, incr_expired_reminder_count,
@@ -21,12 +22,42 @@ from .routes.effects import (
     purge_stale_cooldowns as purge_entry_effect_cooldowns,
     purge_orphan_effect_files,
 )
-from . import turnstile
+from . import turnstile, notify
 from .manager import manager
 from . import recorder, effect_catalog, gift_catalog
 from .routes import events, rooms, bot, admin, clips, overlay, afdian, effects
 
 app = FastAPI(title="狗狗机器人")
+
+
+# 启动状态 sentinel：检测上次进程是否被 SIGKILL/OOM 杀掉。
+# 干净退出 = uvicorn 正常关时 on_event("shutdown") 改写成 STOPPED；
+# OOM/SIGKILL = 不会触发任何 hook，文件停留在 RUNNING → 下次启动时检测到 → 推送告警。
+_BOOT_SENTINEL = DATA_DIR / "boot_state.txt"
+
+
+def _read_boot_sentinel() -> tuple[str, int]:
+    try:
+        parts = _BOOT_SENTINEL.read_text().strip().split()
+        if len(parts) >= 2:
+            return parts[0], int(parts[1])
+    except (OSError, ValueError):
+        pass
+    return "", 0
+
+
+def _write_boot_sentinel(state: str, ts: int) -> None:
+    try:
+        _BOOT_SENTINEL.write_text(f"{state} {ts}\n")
+    except OSError as e:
+        log.warning(f"[boot] sentinel write fail: {e}")
+
+
+@app.on_event("shutdown")
+async def _mark_clean_shutdown():
+    state, _ = _read_boot_sentinel()
+    if state == "RUNNING":
+        _write_boot_sentinel("STOPPED", int(time.time()))
 
 
 # Fly 每月只有 30GB 出流量。给所有静态资源贴 Cache-Control，让前置 CDN
@@ -259,6 +290,8 @@ async def main(port: int, listen: bool = True):
     manager.load_all()
     manager.load_all_default_bots()
 
+    asyncio.create_task(_check_unclean_restart())
+
     config = uvicorn.Config(app, host="0.0.0.0", port=port, log_level="info")
     server = uvicorn.Server(config)
 
@@ -274,9 +307,66 @@ async def main(port: int, listen: bool = True):
         _periodic_clip_cleanup(),
         _periodic_expiration_check(),
         _periodic_memory_cleanup(),
+        _periodic_memory_log(),
         effect_catalog.run_periodic(),
         *run_tasks,
     )
+
+
+async def _check_unclean_restart():
+    """启动时读 boot sentinel：RUNNING 状态意味着上次进程被外力杀掉
+    （OOM / SIGKILL / fly health-check 失败），推送告警。"""
+    try:
+        state, ts = _read_boot_sentinel()
+        now = int(time.time())
+        if state == "RUNNING" and ts:
+            uptime_min = max(0, (now - ts) // 60)
+            boot_str = datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+            log.warning(f"[boot] 上次未干净退出 (上次启动 {boot_str}, 运行 {uptime_min} 分钟)")
+            await notify.send(
+                "bilibili-monitor 异常重启",
+                f"上次启动: {boot_str}\n"
+                f"运行 {uptime_min} 分钟后被杀（无 graceful shutdown）\n"
+                f"疑似 OOM / fly health-check 失败 —— "
+                f"飞行中的 clip finalize、bot 任务都会被打断。"
+            )
+        _write_boot_sentinel("RUNNING", now)
+    except Exception as e:
+        log.warning(f"[boot] check err: {e}")
+
+
+# 256MB VM；这个值之上 OOM kill 风险显著上升，留 50MB 裕度给突发。
+# 触发后 30 分钟冷却，避免持续高位时每分钟刷一条推送。
+_MEM_ALERT_THRESHOLD_MB = 200
+_MEM_ALERT_COOLDOWN_SEC = 1800
+_last_mem_alert_ts = 0.0
+
+
+async def _periodic_memory_log():
+    """每 60 秒记一次 RSS；超过阈值时推送告警（30 分钟冷却）。
+    256MB VM 接近 OOM 前能从日志看出趋势，事后排障也能回答"是不是又涨爆了"。
+    /proc/self/status 是 Linux only —— macOS 本地开发会静默 noop。"""
+    global _last_mem_alert_ts
+    while True:
+        await asyncio.sleep(60)
+        try:
+            with open("/proc/self/status") as f:
+                for line in f:
+                    if line.startswith("VmRSS:"):
+                        rss_mb = int(line.split()[1]) // 1024
+                        log.info(f"[mem] RSS={rss_mb} MB")
+                        now = time.time()
+                        if rss_mb >= _MEM_ALERT_THRESHOLD_MB and now - _last_mem_alert_ts >= _MEM_ALERT_COOLDOWN_SEC:
+                            _last_mem_alert_ts = now
+                            log.warning(f"[mem] RSS={rss_mb}MB 超阈值 {_MEM_ALERT_THRESHOLD_MB}MB")
+                            await notify.send(
+                                "bilibili-monitor 内存高",
+                                f"RSS = {rss_mb} MB (阈值 {_MEM_ALERT_THRESHOLD_MB} MB / VM 总 256 MB)\n"
+                                f"接近 OOM kill 阈值，建议 ssh 看 /proc 或重启释放。"
+                            )
+                        break
+        except Exception:
+            pass
 
 
 async def _periodic_memory_cleanup():
