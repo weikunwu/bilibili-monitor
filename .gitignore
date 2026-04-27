@@ -5,6 +5,7 @@ __pycache__/
 *.pyo
 
 # Runtime data
+data/
 gifts.db
 cookies.json
 .cookie_secret

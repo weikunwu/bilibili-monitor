@@ -53,18 +53,23 @@ export function DanmuPanel({ roomId }: Props) {
     })
   }, [roomId, timeFrom, timeTo])
 
-  // 当前页：分页参数或筛选变了才重拉
+  // 当前页：分页参数或筛选变了才重拉。立刻清空旧结果，避免翻页时先闪
+  // 一下上一页内容；cancelled 防止快速连点时旧响应盖掉新响应。
   useEffect(() => {
     if (!timeFrom || !timeTo) return
+    let cancelled = false
+    setEvents([])
     fetchEventsPage(roomId, 'danmu', {
       timeFrom, timeTo,
       userNames: selectedUsers.length > 0 ? selectedUsers : undefined,
       offset: (page - 1) * pageSize,
       limit: pageSize,
     }).then(({ events, total }) => {
+      if (cancelled) return
       setEvents(events)
       setTotal(total)
     })
+    return () => { cancelled = true }
   }, [roomId, timeFrom, timeTo, selectedUsers, page, pageSize])
 
   return (
