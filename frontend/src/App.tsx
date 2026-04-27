@@ -82,7 +82,7 @@ export default function App() {
         />
       } />
       <Route path="/room/:roomId" element={
-        <Navigate to="live" replace />
+        <Navigate to="reactive" replace />
       } />
       <Route path="/room/:roomId/:tab" element={
         <RoomPage
@@ -121,7 +121,7 @@ function HomePage({ rooms, currentUser, onRoomsChanged }: { rooms: Room[]; curre
       <div className="page-scroll">
       <RoomList
         rooms={rooms}
-        onSelectRoom={(id) => navigate(`/room/${id}/all`)}
+        onSelectRoom={(id) => navigate(`/room/${id}/reactive`)}
         onRoomsChanged={onRoomsChanged}
         onBindBot={(id) => setBindRoomId(id)}
         isAdmin={currentUser?.role === 'admin'}
@@ -164,7 +164,7 @@ function RoomPage({ rooms, currentUser, onRoomsChanged }: {
   const { roomId: roomIdStr, tab: tabStr } = useParams()
   const navigate = useNavigate()
   const roomId = Number(roomIdStr)
-  const activeTab = (VALID_TABS.includes(tabStr as TabType) ? tabStr : TAB_LIVE) as TabType
+  const activeTab = (VALID_TABS.includes(tabStr as TabType) ? tabStr : TAB_REACTIVE) as TabType
 
   const [events, setEvents] = useState<LiveEvent[]>([])
   const [autoScroll, setAutoScroll] = useLocalStorage('autoScroll', true)

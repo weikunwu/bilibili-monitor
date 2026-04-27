@@ -1,8 +1,8 @@
 import { Sidenav, Nav } from 'rsuite'
-import { Radio, Gift, Image, BarChart3, MessageCircle, MessageSquare, Wrench, Tag, Sparkles, Heart } from 'lucide-react'
+import { Gift, Image, BarChart3, MessageCircle, MessageSquare, Wrench, Tag, Sparkles, Heart } from 'lucide-react'
 import type { TabType } from '../types'
 import {
-  TAB_LIVE, TAB_REALTIME, TAB_EVENTS, TAB_BLINDBOX, TAB_DANMU,
+  TAB_REALTIME, TAB_EVENTS, TAB_BLINDBOX, TAB_DANMU,
   TAB_REACTIVE, TAB_AUTOMATION, TAB_NICKNAMES, TAB_EFFECTS, TAB_WEEKLY,
 } from '../lib/constants'
 import { useIsMobile } from '../hooks/useIsMobile'
@@ -29,9 +29,11 @@ const GROUPS: Group[] = [
     ],
   },
   {
-    label: '实时',
+    label: '配置',
     items: [
-      { type: TAB_LIVE, label: '直播流', icon: <Radio size={16} /> },
+      { type: TAB_REACTIVE, label: '互动回复', icon: <MessageCircle size={16} /> },
+      { type: TAB_AUTOMATION, label: '指令 & 功能', icon: <Wrench size={16} /> },
+      { type: TAB_NICKNAMES, label: '昵称管理', icon: <Tag size={16} /> },
     ],
   },
   {
@@ -42,14 +44,13 @@ const GROUPS: Group[] = [
       { type: TAB_DANMU, label: '弹幕历史', icon: <MessageSquare size={16} /> },
     ],
   },
-  {
-    label: '配置',
-    items: [
-      { type: TAB_REACTIVE, label: '互动回复', icon: <MessageCircle size={16} /> },
-      { type: TAB_AUTOMATION, label: '指令 & 功能', icon: <Wrench size={16} /> },
-      { type: TAB_NICKNAMES, label: '昵称管理', icon: <Tag size={16} /> },
-    ],
-  },
+  // 直播流 tab 暂时隐藏不删除（路由 /room/:id/live 仍可手动访问）：
+  // {
+  //   label: '实时',
+  //   items: [
+  //     { type: TAB_LIVE, label: '直播流', icon: <Radio size={16} /> },
+  //   ],
+  // },
 ]
 
 interface Props {
