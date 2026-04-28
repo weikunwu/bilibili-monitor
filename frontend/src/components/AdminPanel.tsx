@@ -54,9 +54,12 @@ export function AdminPanel({ rooms, onRoomsChanged, role: currentRole }: Props) 
   const [rechargeOpen, setRechargeOpen] = useState(false)
   const [rechargeBot, setRechargeBot] = useState<DefaultBot | null>(null)
   const [rechargeYuan, setRechargeYuan] = useState('30')
-  const [rechargeChannel, setRechargeChannel] = useState<'qr' | 'cash'>('cash')
+  const [rechargeChannel, setRechargeChannel] = useState<'qr' | 'cash'>('qr')
   const [rechargeStatus, setRechargeStatus] = useState('')
   const [rechargeLoading, setRechargeLoading] = useState(false)
+  // qr 渠道下单成功后存 B 站收银台 url（pay-v2/cashier/qrpay?...payToken=xxx），
+  // 渲染成二维码贴在 modal 里给 admin 用支付宝/微信扫，省得跳新标签页。
+  const [rechargeQrUrl, setRechargeQrUrl] = useState('')
   const rechargeOrderRef = useRef<string | null>(null)
   const rechargeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -72,7 +75,8 @@ export function AdminPanel({ rooms, onRoomsChanged, role: currentRole }: Props) 
   const [voteLoading, setVoteLoading] = useState(false)
 
   useEffect(() => { loadTokens() }, [])
-  useEffect(() => { if (isAdmin) loadDefaultBots() }, [isAdmin])
+  // AdminPanel 只对 admin/staff 渲染（路由层已过滤），所以无条件拉默认机器人列表
+  useEffect(() => { loadDefaultBots() }, [])
 
   async function loadDefaultBots(force = false) {
     setDefaultBotsLoading(true)
@@ -147,14 +151,16 @@ export function AdminPanel({ rooms, onRoomsChanged, role: currentRole }: Props) 
     cleanupRecharge()
     setRechargeOpen(false)
     setRechargeStatus('')
+    setRechargeQrUrl('')
   }
 
   function openRecharge(b: DefaultBot) {
     cleanupRecharge()
     setRechargeBot(b)
     setRechargeYuan('30')
-    setRechargeChannel('cash')
+    setRechargeChannel('qr')
     setRechargeStatus('')
+    setRechargeQrUrl('')
     setRechargeOpen(true)
   }
 
@@ -167,24 +173,27 @@ export function AdminPanel({ rooms, onRoomsChanged, role: currentRole }: Props) 
     }
     setRechargeLoading(true)
     setRechargeStatus('正在创建订单...')
+    setRechargeQrUrl('')
     try {
       const r = await rechargeDefaultBot(rechargeBot.uid, yuan, rechargeChannel)
       rechargeOrderRef.current = r.order_id
-      // 打开 B 站 支付页：QR 直接拿到的 url；cash 把 pay_center_params JSON
-      // 编进 cashier-desk 的 ?params= 里。
-      let payUrl = ''
+      // QR 渠道：把 B 站收银台 url 渲染成二维码贴在 modal 里，admin 拿手机
+      // 用支付宝/微信扫一下就跳到 B 站收银台完成付款。
+      // cash 渠道：cashier-desk 没法在小窗口里渲染（X-Frame 拒绝 iframe），
+      // 只能新标签页跳。
       if (rechargeChannel === 'qr' && r.code_url) {
-        payUrl = r.code_url
+        setRechargeQrUrl(r.code_url)
+        setRechargeStatus('请用支付宝或微信扫下方二维码完成付款，本窗口会自动检测')
       } else if (rechargeChannel === 'cash' && r.pay_center_params) {
         const params = encodeURIComponent(JSON.stringify(r.pay_center_params))
-        payUrl = `https://pay.bilibili.com/pay-v2-web/cashier/cashier-desk?params=${params}`
+        const payUrl = `https://pay.bilibili.com/pay-v2-web/cashier/cashier-desk?params=${params}`
+        window.open(payUrl, '_blank')
+        setRechargeStatus('已打开 B 站支付页，请在新标签页完成支付。本窗口会自动检测')
       } else {
         setRechargeStatus('B站没有返回支付链接，请重试')
         setRechargeLoading(false)
         return
       }
-      window.open(payUrl, '_blank')
-      setRechargeStatus('已打开 B 站支付页，请在新标签页完成支付。本窗口会自动检测')
       // 轮询订单状态：B 站 return status=1 是待支付，付完 ≠ 1（具体值实测）
       rechargeTimerRef.current = setInterval(async () => {
         if (!rechargeOrderRef.current || !rechargeBot) return
@@ -486,7 +495,7 @@ export function AdminPanel({ rooms, onRoomsChanged, role: currentRole }: Props) 
       {isAdmin && <>
         <Divider />
 
-        {/* ── Room management ── */}
+        {/* ── Room management ── 仅 admin */}
         <h3 style={{ color: '#fb7299', marginBottom: 16, fontSize: 16 }}>房间管理</h3>
         <form onSubmit={handleAddRoom}>
           <Stack spacing={8} wrap style={{ marginBottom: 16 }}>
@@ -541,82 +550,83 @@ export function AdminPanel({ rooms, onRoomsChanged, role: currentRole }: Props) 
             <div className="admin-card-meta" style={{ gridColumn: '1 / -1' }}>暂无房间</div>
           )}
         </div>
+      </>}
 
-        <Divider style={{ borderColor: '#2a2a4a' }} />
-
-        {/* ── Default bots ── */}
-        <h3 style={{ color: '#fb7299', marginBottom: 8, fontSize: 16 }}>默认机器人</h3>
-        <div style={{ fontSize: 13, color: '#888', marginBottom: 12, lineHeight: 1.6 }}>
-          不绑定具体房间的 bot 池，扫码登录后参与批量点赞等跨房间动作。
-          每次「自动点赞」会从「房间机器人 + 默认机器人」里随机抽 5 个集中刷。
-        </div>
-        <Stack spacing={8} style={{ marginBottom: 12 }}>
-          <Button appearance="primary" size="sm" onClick={openAddDefaultBot}>
-            扫码添加机器人
-          </Button>
-          <Button
-            appearance="ghost" size="sm"
-            loading={defaultBotsLoading}
-            onClick={() => loadDefaultBots(true)}
-          >
-            刷新电池
-          </Button>
-        </Stack>
-        {defaultBotMsg && (
-          <Message
-            type={defaultBotMsg.type}
-            showIcon closable
-            onClose={() => setDefaultBotMsg(null)}
-            style={{ marginBottom: 12 }}
-          >
-            {defaultBotMsg.text}
-          </Message>
-        )}
-        <div className="admin-grid">
-          {defaultBots.map((b) => {
-            const status = b.needs_relogin ? '需重扫' : b.cooling ? '风控冷却' : b.in_memory ? '在线' : '未加载'
-            const statusColor = b.needs_relogin ? '#fb7299' : b.cooling ? '#ffb74d' : b.in_memory ? '#7cd97e' : '#888'
-            return (
-              <div key={b.uid} className="admin-card">
-                <div className="admin-card-head">
-                  <div className="admin-card-title" title={b.name || String(b.uid)}>
-                    {b.name || `UID ${b.uid}`}
-                  </div>
-                  <span style={{ fontSize: 11, color: statusColor }}>{status}</span>
+      {/* ── Default bots ── admin + staff 都能看 */}
+      <Divider style={{ borderColor: '#2a2a4a' }} />
+      <h3 style={{ color: '#fb7299', marginBottom: 8, fontSize: 16 }}>默认机器人</h3>
+      <div style={{ fontSize: 13, color: '#888', marginBottom: 12, lineHeight: 1.6 }}>
+        不绑定具体房间的 bot 池，扫码登录后参与批量点赞等跨房间动作。
+        每次「自动点赞」会从「房间机器人 + 默认机器人」里随机抽 5 个集中刷。
+      </div>
+      <Stack spacing={8} style={{ marginBottom: 12 }}>
+        <Button appearance="primary" size="sm" onClick={openAddDefaultBot}>
+          扫码添加机器人
+        </Button>
+        <Button
+          appearance="ghost" size="sm"
+          loading={defaultBotsLoading}
+          onClick={() => loadDefaultBots(true)}
+        >
+          刷新电池
+        </Button>
+      </Stack>
+      {defaultBotMsg && (
+        <Message
+          type={defaultBotMsg.type}
+          showIcon closable
+          onClose={() => setDefaultBotMsg(null)}
+          style={{ marginBottom: 12 }}
+        >
+          {defaultBotMsg.text}
+        </Message>
+      )}
+      <div className="admin-grid">
+        {defaultBots.map((b) => {
+          const status = b.needs_relogin ? '需重扫' : b.cooling ? '风控冷却' : b.in_memory ? '在线' : '未加载'
+          const statusColor = b.needs_relogin ? '#fb7299' : b.cooling ? '#ffb74d' : b.in_memory ? '#7cd97e' : '#888'
+          return (
+            <div key={b.uid} className="admin-card">
+              <div className="admin-card-head">
+                <div className="admin-card-title" title={b.name || String(b.uid)}>
+                  {b.name || `UID ${b.uid}`}
                 </div>
-                <div className="admin-card-meta">
-                  UID: {b.uid}
-                  <br />
-                  电池: {b.battery === null ? '?' : b.battery.toLocaleString()}
-                  <br />
-                  添加时间: {(b.created_at || '').slice(0, 16)}
-                </div>
-                <div className="admin-card-actions">
-                  <Button
-                    appearance="ghost" size="xs"
-                    disabled={!b.in_memory}
-                    onClick={() => openRecharge(b)}
-                  >
-                    充值
-                  </Button>
-                  <Button
-                    color="red" appearance="ghost" size="xs"
-                    onClick={() => handleDeleteDefaultBot(b.uid, b.name)}
-                  >
-                    删除
-                  </Button>
-                </div>
+                <span style={{ fontSize: 11, color: statusColor }}>{status}</span>
               </div>
-            )
-          })}
-          {defaultBots.length === 0 && (
-            <div className="admin-card-meta" style={{ gridColumn: '1 / -1' }}>暂无默认机器人</div>
-          )}
-        </div>
+              <div className="admin-card-meta">
+                UID: {b.uid}
+                <br />
+                电池: {b.battery === null ? '?' : b.battery.toLocaleString()}
+                <br />
+                添加时间: {(b.created_at || '').slice(0, 16)}
+              </div>
+              <div className="admin-card-actions">
+                <Button
+                  appearance="ghost" size="xs"
+                  disabled={!b.in_memory}
+                  onClick={() => openRecharge(b)}
+                >
+                  充值
+                </Button>
+                <Button
+                  color="red" appearance="ghost" size="xs"
+                  onClick={() => handleDeleteDefaultBot(b.uid, b.name)}
+                >
+                  删除
+                </Button>
+              </div>
+            </div>
+          )
+        })}
+        {defaultBots.length === 0 && (
+          <div className="admin-card-meta" style={{ gridColumn: '1 / -1' }}>暂无默认机器人</div>
+        )}
+      </div>
 
+      {isAdmin && <>
         <Divider style={{ borderColor: '#2a2a4a' }} />
 
-        {/* ── User management ── */}
+        {/* ── User management ── 仅 admin */}
         <h3 style={{ color: '#fb7299', marginBottom: 16, fontSize: 16 }}>用户管理</h3>
 
         <form onSubmit={handleCreate}>
@@ -792,8 +802,8 @@ export function AdminPanel({ rooms, onRoomsChanged, role: currentRole }: Props) 
         </Modal.Header>
         <Modal.Body>
           <div style={{ fontSize: 13, color: '#888', marginBottom: 12, lineHeight: 1.6 }}>
-            后端用 bot cookie 调 B 站接口下单，新标签页打开 B 站支付页面付款。
-            付款完成后本窗口会自动检测并刷新电池数。
+            后端用 bot cookie 调 B 站接口下单。微信/支付宝扫下方二维码即可付款；
+            PayPal/信用卡会跳新标签页。付款完成后本窗口自动检测并刷新电池数。
           </div>
           <Stack spacing={8} wrap style={{ marginBottom: 12 }}>
             <InputGroup size="sm" style={{ width: 160 }}>
@@ -806,13 +816,34 @@ export function AdminPanel({ rooms, onRoomsChanged, role: currentRole }: Props) 
                 { label: 'PayPal / 信用卡', value: 'cash' },
               ]}
               value={rechargeChannel}
-              onChange={(v) => v && setRechargeChannel(v as 'qr' | 'cash')}
+              onChange={(v) => {
+                if (!v) return
+                setRechargeChannel(v as 'qr' | 'cash')
+                // 渠道一变，旧的二维码就废了；同时清掉轮询，等下次提交
+                setRechargeQrUrl('')
+                cleanupRecharge()
+              }}
               size="sm"
               searchable={false}
               cleanable={false}
               style={{ width: 220 }}
             />
           </Stack>
+          {rechargeQrUrl && (
+            <div style={{ textAlign: 'center', marginBottom: 12 }}>
+              <img
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(rechargeQrUrl)}`}
+                alt="支付二维码"
+                style={{ width: 220, height: 220, background: '#fff', padding: 8, borderRadius: 4 }}
+              />
+              <div style={{ fontSize: 12, color: '#888', marginTop: 6 }}>
+                用支付宝或微信扫码 ·{' '}
+                <a href={rechargeQrUrl} target="_blank" rel="noreferrer" style={{ color: '#3498ff' }}>
+                  或在新标签页打开
+                </a>
+              </div>
+            </div>
+          )}
           {rechargeStatus && (
             <div style={{ fontSize: 12, color: '#aaa', padding: 8, background: '#14141f', borderRadius: 4 }}>
               {rechargeStatus}

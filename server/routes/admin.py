@@ -248,7 +248,7 @@ async def _get_battery_cached(client, uid: int, force: bool) -> int | None:
     return battery
 
 
-@router.get("/api/admin/default-bots", dependencies=admin_dep)
+@router.get("/api/admin/default-bots", dependencies=staff_dep)
 async def get_default_bots(force: int = 0):
     """返回 [{uid, name, has_cookie, created_at, in_memory, needs_relogin,
     cooling, battery}]。100 金瓜子 = 1 电池。
@@ -271,7 +271,7 @@ async def get_default_bots(force: int = 0):
     return out
 
 
-@router.get("/api/admin/default-bots/qrcode", dependencies=admin_dep)
+@router.get("/api/admin/default-bots/qrcode", dependencies=staff_dep)
 async def default_bot_qrcode():
     _gc_default_bot_qr()
     session = req.Session()
@@ -284,7 +284,7 @@ async def default_bot_qrcode():
     return {"url": data["data"]["url"], "qrcode_key": qrcode_key}
 
 
-@router.get("/api/admin/default-bots/poll", dependencies=admin_dep)
+@router.get("/api/admin/default-bots/poll", dependencies=staff_dep)
 async def default_bot_poll(qrcode_key: str = Query(...)):
     entry = _default_bot_qr_sessions.get(qrcode_key)
     if not entry:
@@ -330,7 +330,7 @@ async def default_bot_poll(qrcode_key: str = Query(...)):
         return {"code": code, "message": "未知状态"}
 
 
-@router.delete("/api/admin/default-bots/{uid}", dependencies=admin_dep)
+@router.delete("/api/admin/default-bots/{uid}", dependencies=staff_dep)
 async def remove_default_bot(uid: int):
     if manager.default_bot(uid) is None and uid not in {b["uid"] for b in list_default_bots()}:
         raise HTTPException(404, "机器人不存在")
@@ -368,7 +368,7 @@ async def _recharge_headers(client) -> dict:
     return headers
 
 
-@router.post("/api/admin/default-bots/{uid}/recharge", dependencies=admin_dep)
+@router.post("/api/admin/default-bots/{uid}/recharge", dependencies=staff_dep)
 async def recharge_default_bot(uid: int, request: Request):
     """下单。body: {yuan: int, channel: 'qr' | 'cash'}.
     返回 {order_id, code_url?, pay_center_params?, expire}。"""
@@ -642,7 +642,7 @@ async def get_popularity_quota(room_id: int):
     }
 
 
-@router.get("/api/admin/default-bots/{uid}/recharge/status", dependencies=admin_dep)
+@router.get("/api/admin/default-bots/{uid}/recharge/status", dependencies=staff_dep)
 async def query_recharge_status(uid: int, order_id: str):
     """轮询订单状态。{status: int}。status=1 待支付；付完返回的具体值
     （2 / 3 等）要实测——前端拿到 != 1 就当成功，再调 wallet 刷新电池。"""
