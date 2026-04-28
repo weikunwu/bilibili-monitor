@@ -53,6 +53,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     "/robots.txt", "/sitemap.xml", "/styles.css.map", "/favicon.ico",
                     "/api/afdian/webhook") \
                 or path.startswith("/api/register/") or path.startswith("/api/password-reset/") \
+                or path.startswith("/api/payments/notify/") \
                 or path.startswith("/static/") or path.startswith("/assets/"):
             return await call_next(request)
         # /overlay/* 是公开的 OBS 叠加页 (SPA + 公开 API)，不需要登录

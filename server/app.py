@@ -15,6 +15,7 @@ from .config import BASE_DIR, CLIP_RETENTION_HOURS, DATA_DIR, log
 from .db import (
     init_db, cleanup_old_events, mark_events_clip_expired,
     get_expired_active_rooms, get_expired_rooms_for_reminder, incr_expired_reminder_count,
+    list_pending_payment_orders, expire_stale_pending_orders, apply_payment_order,
 )
 from .auth import AuthMiddleware, get_session_user, get_user_allowed_rooms, handle_login, handle_logout, handle_change_password, handle_send_register_code, handle_register, handle_send_reset_code, handle_reset_password, purge_stale_rate_limits as purge_auth_rate_limits
 from .routes.rooms import purge_stale_rate_limits as purge_room_rate_limits
@@ -25,7 +26,7 @@ from .routes.effects import (
 from . import turnstile, notify
 from .manager import manager
 from . import recorder, effect_catalog, gift_catalog
-from .routes import events, rooms, bot, admin, clips, overlay, afdian, effects
+from .routes import events, rooms, bot, admin, clips, overlay, afdian, effects, payments
 
 app = FastAPI(title="狗狗机器人")
 
@@ -156,6 +157,7 @@ app.include_router(clips.router)
 app.include_router(overlay.router)
 app.include_router(afdian.router)
 app.include_router(effects.router)
+app.include_router(payments.router)
 
 
 @app.post("/api/auth")
@@ -308,6 +310,7 @@ async def main(port: int, listen: bool = True):
         _periodic_expiration_check(),
         _periodic_memory_cleanup(),
         _periodic_memory_log(),
+        _periodic_payment_reconcile(),
         effect_catalog.run_periodic(),
         *run_tasks,
     )
@@ -443,3 +446,35 @@ async def _periodic_expiration_check():
         except Exception as e:
             log.warning(f"[expiration check] {e}")
         await asyncio.sleep(60)
+
+
+async def _periodic_payment_reconcile():
+    """每 5 分钟扫一次 pending 付款订单做对账：
+      • 仍 pending 且创建后 ≤ 24h → 调 alipay.query_order 兜底（防 notify 丢/我们停过服）
+        查到已支付 → apply_payment_order 续期房间
+      • 仍 pending 且创建后 > 24h → 标记 expired，避免表越堆越大
+    场景：用户扫码付完立刻关浏览器 + 我们 notify 没收到（fly 重启正好那一刻、
+    支付宝重试间隔 > 我们前端轮询超时），不靠这个 task 房间永远不会续期。"""
+    from .payments import alipay
+    while True:
+        try:
+            pending = list_pending_payment_orders(within_hours=24)
+            for o in pending:
+                if o["provider"] != "alipay":
+                    continue
+                otn = o["out_trade_no"]
+                try:
+                    status, ext = await alipay.query_order(otn)
+                except Exception as e:
+                    log.warning(f"[payment-reconcile] query 异常 {otn}: {e}")
+                    continue
+                if status == "paid":
+                    ok, info = apply_payment_order(otn, external_trade_no=ext, raw_json="reconcile")
+                    if ok:
+                        log.info(f"[payment-reconcile] 兜底应用成功 {otn} → expires_at={info}")
+            n = expire_stale_pending_orders(older_than_hours=24)
+            if n > 0:
+                log.info(f"[payment-reconcile] 把 {n} 条超 24h 未付订单标记 expired")
+        except Exception as e:
+            log.warning(f"[payment-reconcile] {e}")
+        await asyncio.sleep(300)
