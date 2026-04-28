@@ -120,7 +120,12 @@ async def create_order(out_trade_no: str, yuan: int, subject: str, notify_url: s
     resp = data.get("alipay_trade_precreate_response") or {}
     if resp.get("code") != "10000":
         log.warning(f"[alipay] precreate 失败 out_trade_no={out_trade_no} resp={resp}")
-        raise RuntimeError(f"支付宝下单失败: {resp.get('msg')} {resp.get('sub_msg', '')}".strip())
+        sub_msg = resp.get("sub_msg") or ""
+        # 应用还没上线 / 没签约当面付：把 alipay 内部错误码翻成用户看得懂的话术。
+        # 审批 1–3 天，期间用户点"立即购买"会撞这个；上线后自动消失。
+        if "应用未上线" in sub_msg or "未上线" in sub_msg:
+            raise RuntimeError("支付宝续费正在接入中，敬请期待")
+        raise RuntimeError(f"支付宝下单失败: {resp.get('msg')} {sub_msg}".strip())
     qr = resp.get("qr_code") or ""
     if not qr:
         raise RuntimeError("支付宝下单返回无 qr_code")
