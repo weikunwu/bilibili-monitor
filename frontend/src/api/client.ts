@@ -449,6 +449,62 @@ export async function queryRechargeStatus(
   return res.json()
 }
 
+export interface RenewalPlan {
+  id: string
+  months: number
+  yuan: number
+  label: string
+}
+
+export interface PaymentPlansInfo {
+  plans: RenewalPlan[]
+  channels: { alipay: boolean }
+}
+
+export async function fetchPaymentPlans(): Promise<PaymentPlansInfo> {
+  const res = await fetch('/api/payments/plans')
+  if (!res.ok) return { plans: [], channels: { alipay: false } }
+  return res.json()
+}
+
+export interface PaymentOrder {
+  out_trade_no: string
+  code_url: string
+  channel: 'alipay'
+  expire: number
+  yuan: number
+  months: number
+}
+
+export async function createPaymentOrder(
+  roomId: number, planId: string, channel: 'alipay',
+): Promise<PaymentOrder> {
+  const res = await fetch(`/api/rooms/${roomId}/payments/order`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ plan_id: planId, channel }),
+  })
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({}))
+    throw new Error(d.detail || '下单失败')
+  }
+  return res.json()
+}
+
+export interface PaymentStatus {
+  status: 'pending' | 'paid' | 'expired' | 'rejected'
+  expires_at?: string
+}
+
+export async function fetchPaymentStatus(outTradeNo: string): Promise<PaymentStatus> {
+  const res = await fetch(`/api/payments/order/${encodeURIComponent(outTradeNo)}/status`)
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({}))
+    throw new Error(d.detail || '查单失败')
+  }
+  return res.json()
+}
+
 export async function redeemRoomToken(roomId: number, token: string): Promise<{ expires_at: string }> {
   const res = await fetch(`/api/rooms/${roomId}/redeem`, {
     method: 'POST',

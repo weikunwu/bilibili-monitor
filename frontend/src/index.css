@@ -488,3 +488,22 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
   .nicknames-hint { font-size: 12px; line-height: 1.5; }
   .banned-words-list { padding: 0 12px; }
 }
+
+/* 续费套餐卡片 grid（扫码续费 modal） */
+.plan-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.plan-card { background: #1a1a2e; border: 1px solid #2a2a4a; border-radius: 10px;
+  padding: 16px 12px; text-align: center; position: relative;
+  display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.plan-card.recommended { border: 2px solid #00d68f; padding: 15px 11px; }
+.plan-card-recommended-tag { position: absolute; top: 0; right: 0;
+  background: #00d68f; color: #002b1c; font-size: 11px;
+  padding: 2px 8px; border-bottom-left-radius: 8px; border-top-right-radius: 8px;
+  font-weight: 600; }
+.plan-card-days { font-size: 18px; font-weight: 700; color: #e0e0e0; }
+.plan-card-price { font-size: 32px; font-weight: 700; color: #e0e0e0; line-height: 1; margin-top: 4px; }
+.plan-card-price-symbol { font-size: 18px; font-weight: 600; vertical-align: top;
+  margin-right: 2px; color: #aaa; }
+.plan-card-permonth { font-size: 11px; color: #888; margin-bottom: 4px; }
+.plan-card .rs-btn { width: 100%; }
+
+@media (max-width: 480px) { .plan-grid { grid-template-columns: 1fr; } }

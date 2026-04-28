@@ -56,6 +56,29 @@ AFDIAN_PLANS: dict[str, int] = {
 }
 AFDIAN_QUERY_ORDER_API = "https://afdian.com/api/open/query-order"
 
+# ── 用户自助扫码续费（支付宝当面付）──
+# 改档位定价就改这张表；id 是稳定 key，前端拿到 id 提交到后端再反查 months/yuan，
+# 不让前端直接传金额避免被绕过。
+RENEWAL_PLANS: list[dict] = [
+    {"id": "month",     "months": 1,  "yuan": 21,  "label": "月卡 · 1 个月"},
+    {"id": "season",    "months": 3,  "yuan": 58,  "label": "季卡 · 3 个月"},
+    {"id": "half_year", "months": 6,  "yuan": 111, "label": "半年卡 · 6 个月"},
+    {"id": "year",      "months": 12, "yuan": 211, "label": "年卡 · 12 个月"},
+]
+RENEWAL_PLANS_BY_ID = {p["id"]: p for p in RENEWAL_PLANS}
+
+# 支付通道总开关：env 没填齐就关掉，前端直接看不见入口。
+ALIPAY_APP_ID = os.environ.get("ALIPAY_APP_ID", "")
+ALIPAY_APP_PRIVATE_KEY = os.environ.get("ALIPAY_APP_PRIVATE_KEY", "")
+ALIPAY_PUBLIC_KEY = os.environ.get("ALIPAY_PUBLIC_KEY", "")
+ALIPAY_GATEWAY = os.environ.get("ALIPAY_GATEWAY", "https://openapi.alipay.com/gateway.do")
+ALIPAY_ENABLED = bool(ALIPAY_APP_ID and ALIPAY_APP_PRIVATE_KEY and ALIPAY_PUBLIC_KEY)
+
+# 异步通知回调基址。生产用，线下不接 notify（前端走主动 query 兜底已经覆盖了）。
+PAYMENT_NOTIFY_BASE = "https://blackbubu.us"
+# 前端轮询查单的最长间隔（秒）。订单 expire 默认 600s 由前端控制超时。
+PAYMENT_ORDER_TTL_SEC = 600
+
 # 盲盒爆出查询门槛：单次爆出价值（电池）大于此才算"稀有爆出"。
 # gift_catalog 和 handle_rare_blind_by_gift 共用这个阈值，保证入缓存的礼物
 # 一定能被查到；不然会出现 "本月<低价礼物>" 命中缓存但查询结果永远是 0。

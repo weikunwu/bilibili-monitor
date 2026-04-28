@@ -1,11 +1,16 @@
-import { useEffect, useState } from 'react'
-import { MdCircle } from 'react-icons/md'
+import { useEffect, useRef, useState } from 'react'
+import { MdCircle, MdConfirmationNumber, MdLogout } from 'react-icons/md'
+import { SiAlipay } from 'react-icons/si'
 import { Button, ButtonToolbar, IconButton, Input, Modal, Stack, Tag, useToaster, Message } from 'rsuite'
 import PlayOutlineIcon from '@rsuite/icons/PlayOutline'
 import CloseOutlineIcon from '@rsuite/icons/CloseOutline'
 import ChangeListIcon from '@rsuite/icons/ChangeList'
 import TrashIcon from '@rsuite/icons/Trash'
-import { botLogout, bindRoomSelf, unbindRoomSelf, redeemRoomToken } from '../api/client'
+import {
+  botLogout, bindRoomSelf, unbindRoomSelf, redeemRoomToken,
+  fetchPaymentPlans, createPaymentOrder, fetchPaymentStatus,
+  type RenewalPlan, type PaymentOrder,
+} from '../api/client'
 import { confirmDialog } from '../lib/confirm'
 import type { Room } from '../types'
 
@@ -108,6 +113,104 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
   const [redeeming, setRedeeming] = useState(false)
 
   const [afdianTarget, setAfdianTarget] = useState<Room | null>(null)
+
+  // ── 扫码续费（支付宝）── 单一 modal 走两步：先选档位，再显示 QR + 轮询。
+  const [payTarget, setPayTarget] = useState<Room | null>(null)
+  const [payPlans, setPayPlans] = useState<RenewalPlan[]>([])
+  const [payAlipayEnabled, setPayAlipayEnabled] = useState(false)
+  const [paySelectedPlan, setPaySelectedPlan] = useState<string>('')
+  const [paySubmitting, setPaySubmitting] = useState(false)
+  const [payOrder, setPayOrder] = useState<PaymentOrder | null>(null)
+  const [payStatusText, setPayStatusText] = useState('')
+  const [payStatusKind, setPayStatusKind] = useState<'info' | 'success' | 'error' | 'warning'>('info')
+  const payTimerRef = useRef<number | null>(null)
+  const payOrderRef = useRef<string>('')
+
+  function cleanupPayTimer() {
+    if (payTimerRef.current) { window.clearInterval(payTimerRef.current); payTimerRef.current = null }
+    payOrderRef.current = ''
+  }
+
+  function closePay() {
+    cleanupPayTimer()
+    setPayTarget(null)
+    setPayOrder(null)
+    setPaySelectedPlan('')
+    setPayStatusText('')
+    setPayStatusKind('info')
+  }
+
+  async function openPay(r: Room) {
+    cleanupPayTimer()
+    setPayTarget(r)
+    setPayOrder(null)
+    setPaySelectedPlan('')
+    setPayStatusText('')
+    setPayStatusKind('info')
+    try {
+      const info = await fetchPaymentPlans()
+      setPayPlans(info.plans)
+      setPayAlipayEnabled(info.channels.alipay)
+      if (info.plans.length > 0) setPaySelectedPlan(info.plans[0].id)
+      if (!info.channels.alipay) {
+        setPayStatusText('当前未配置在线支付通道')
+        setPayStatusKind('error')
+      }
+    } catch {
+      setPayStatusText('加载档位失败')
+      setPayStatusKind('error')
+    }
+  }
+
+  async function handleCreatePayOrder(channel: 'alipay', planId: string) {
+    if (!payTarget || !planId) return
+    setPaySubmitting(true)
+    setPayStatusText('正在创建订单...')
+    setPayStatusKind('info')
+    try {
+      const order = await createPaymentOrder(payTarget.room_id, planId, channel)
+      setPayOrder(order)
+      payOrderRef.current = order.out_trade_no
+      setPayStatusText('请用支付宝扫上方二维码完成付款，本窗口会自动检测')
+      setPayStatusKind('info')
+      // 轮询：3s 一次直到 paid / expired，或者订单 expire 到点。
+      const startedAt = Date.now()
+      payTimerRef.current = window.setInterval(async () => {
+        if (!payOrderRef.current) return
+        if (Date.now() - startedAt > order.expire * 1000) {
+          cleanupPayTimer()
+          setPayStatusText('订单已超时，请重新发起')
+          setPayStatusKind('warning')
+          return
+        }
+        try {
+          const s = await fetchPaymentStatus(order.out_trade_no)
+          if (s.status === 'paid') {
+            cleanupPayTimer()
+            setPayStatusText('支付成功，房间已续费')
+            setPayStatusKind('success')
+            onRoomsChanged?.()
+            window.setTimeout(() => closePay(), 1500)
+          } else if (s.status === 'rejected') {
+            cleanupPayTimer()
+            setPayStatusText('订单异常（金额不符），请联系客服处理。请勿再扫此二维码')
+            setPayStatusKind('error')
+          } else if (s.status === 'expired') {
+            cleanupPayTimer()
+            setPayStatusText('订单已关闭，请重新发起')
+            setPayStatusKind('warning')
+          }
+        } catch { /* 偶发查单失败不中断轮询 */ }
+      }, 3000)
+    } catch (err) {
+      setPayStatusText(`下单失败：${(err as Error).message}`)
+      setPayStatusKind('error')
+    } finally {
+      setPaySubmitting(false)
+    }
+  }
+
+  useEffect(() => () => cleanupPayTimer(), [])
 
   // 拉取所有房间的最新主播资料：一次批量请求，backend 内部并发限流。
   const [streamerInfo, setStreamerInfo] = useState<Map<number, StreamerInfo>>(() => new Map(streamerInfoCache))
@@ -282,6 +385,69 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
           <Button onClick={() => setAfdianTarget(null)} appearance="subtle">关闭</Button>
         </Modal.Footer>
       </Modal>
+      <Modal open={payTarget !== null} onClose={() => !paySubmitting && closePay()} size="sm">
+        <Modal.Header>
+          <Modal.Title>选择套餐</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <div style={{ fontSize: 13, color: '#888', marginBottom: 12, lineHeight: 1.6 }}>
+            房间 <b>{payTarget?.streamer_name || payTarget?.room_id}</b>
+          </div>
+          {!payOrder && (
+            <div className="plan-grid">
+              {payPlans.map((p) => {
+                // 季卡（3 个月）作为推荐档位
+                const recommended = p.id === 'season'
+                const days = p.months * 30
+                const perMonth = (p.yuan / p.months).toFixed(1)
+                const isLoading = paySubmitting && paySelectedPlan === p.id
+                return (
+                  <div
+                    key={p.id}
+                    className={recommended ? 'plan-card recommended' : 'plan-card'}
+                  >
+                    {recommended && <span className="plan-card-recommended-tag">推荐</span>}
+                    <div className="plan-card-days">{days}天</div>
+                    <div className="plan-card-price">
+                      <span className="plan-card-price-symbol">¥</span>{p.yuan}
+                    </div>
+                    <div className="plan-card-permonth">约 {perMonth} 元/30天</div>
+                    <Button
+                      appearance="primary"
+                      color={recommended ? 'green' : 'blue'}
+                      size="sm"
+                      disabled={!payAlipayEnabled || (paySubmitting && !isLoading)}
+                      loading={isLoading}
+                      onClick={() => {
+                        setPaySelectedPlan(p.id)
+                        handleCreatePayOrder('alipay', p.id)
+                      }}
+                    >立即购买</Button>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+          {payOrder && (
+            <Stack direction="column" spacing={10} alignItems="center">
+              <img
+                alt="支付二维码"
+                width={220} height={220}
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(payOrder.code_url)}`}
+              />
+              <div style={{ fontSize: 12, color: '#888' }}>
+                支付宝 · ¥{payOrder.yuan} · {payOrder.months} 个月
+              </div>
+            </Stack>
+          )}
+          {payStatusText && (
+            <Message type={payStatusKind} style={{ marginTop: 12 }}>{payStatusText}</Message>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button onClick={closePay} appearance="subtle" disabled={paySubmitting}>关闭</Button>
+        </Modal.Footer>
+      </Modal>
       <Modal open={unbindTarget !== null} onClose={() => !unbinding && setUnbindTarget(null)} size="xs">
         <Modal.Header>
           <Modal.Title>解绑房间</Modal.Title>
@@ -372,8 +538,14 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
                   )}
                   <Button
                     size="sm" color="yellow" appearance="ghost" style={{ width: 132 }}
+                    startIcon={<MdConfirmationNumber />}
                     onClick={(e) => { e.stopPropagation(); openRedeem(r) }}
                   >续费机器人</Button>
+                  <Button
+                    size="sm" color="orange" appearance="ghost" style={{ width: 132 }}
+                    startIcon={<SiAlipay />}
+                    onClick={(e) => { e.stopPropagation(); openPay(r) }}
+                  >支付宝续费</Button>
                   {AFDIAN_ENABLED && (
                     <Button
                       size="sm" color="orange" appearance="ghost" style={{ width: 132 }}
@@ -427,6 +599,7 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
                   {r.bot_uid ? (
                     <Button
                       size="sm" color="red" appearance="ghost" style={{ width: 132 }}
+                      startIcon={<MdLogout />}
                       onClick={async (e) => {
                         e.stopPropagation()
                         if (!await confirmDialog({ message: `解绑 ${r.bot_name || '机器人'}？会清除 cookie 并停止监控。`, danger: true, okText: '解绑' })) return

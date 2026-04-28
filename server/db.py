@@ -372,6 +372,30 @@ def init_db():
             processed_at TEXT NOT NULL DEFAULT (datetime('now'))
         )
     """)
+    # 用户自助扫码续费订单。out_trade_no 是我们自己生成的本地订单号（主键），
+    # provider+external_trade_no 是支付宝/微信侧的订单号，供查单 + 防重放。
+    # status: pending/paid/expired/canceled。paid 即已应用到 rooms.expires_at。
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS payment_orders (
+            out_trade_no TEXT PRIMARY KEY,
+            provider TEXT NOT NULL,
+            room_id INTEGER NOT NULL,
+            user_id INTEGER,
+            plan_id TEXT NOT NULL,
+            months INTEGER NOT NULL,
+            yuan INTEGER NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            code_url TEXT NOT NULL DEFAULT '',
+            external_trade_no TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            paid_at TEXT,
+            raw_json TEXT
+        )
+    """)
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_payment_orders_room_status "
+        "ON payment_orders(room_id, status, created_at)"
+    )
     # 进场特效：每个 (room_id, uid) 一条记录。
     # 两种来源二选一：
     #   • 上传视频：video_filename 非空，落磁盘到 ENTRY_EFFECT_ROOT
@@ -921,6 +945,198 @@ def set_gift_effect_test_enabled(room_id: int, on: bool) -> None:
     s = get_room_settings(room_id)
     s["gift_effect_test_enabled"] = bool(on)
     save_room_settings(room_id, s)
+
+
+def create_payment_order(
+    out_trade_no: str, provider: str, room_id: int, user_id: int | None,
+    plan_id: str, months: int, yuan: int, code_url: str,
+) -> None:
+    """落库一个 pending 状态的扫码订单。out_trade_no 必须本地唯一。"""
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.execute(
+        "INSERT INTO payment_orders "
+        "(out_trade_no, provider, room_id, user_id, plan_id, months, yuan, code_url) "
+        "VALUES (?,?,?,?,?,?,?,?)",
+        (out_trade_no, provider, room_id, user_id, plan_id, months, yuan, code_url),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_payment_order(out_trade_no: str) -> dict | None:
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.row_factory = sqlite3.Row
+    row = conn.execute(
+        "SELECT * FROM payment_orders WHERE out_trade_no=?", (out_trade_no,)
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def mark_payment_order_rejected(out_trade_no: str, raw_json: str = "") -> bool:
+    """金额校验不过等异常情况：把 pending 订单标 rejected 落地。
+    apply_payment_order 看到 rejected 会拒绝续期，前端轮询也能看到这个状态
+    引导用户走客服。已 paid 的订单不会被覆盖。"""
+    conn = sqlite3.connect(str(DB_PATH))
+    cur = conn.execute(
+        "UPDATE payment_orders SET status='rejected', raw_json=? "
+        "WHERE out_trade_no=? AND status='pending'",
+        (raw_json, out_trade_no),
+    )
+    n = cur.rowcount
+    conn.commit()
+    conn.close()
+    return n > 0
+
+
+def reverse_payment_order(out_trade_no: str, raw_json: str = "") -> tuple[bool, str]:
+    """退款回滚：把 paid 订单标记 refunded，房间 expires_at 倒推 months*30 天。
+    返回:
+      • (True, new_expires_at) 成功
+      • (False, "not_found")
+      • (False, "already_refunded") 重复回调
+      • (False, "not_paid:<status>") 订单本来就没成功过
+    expires_at 倒推后允许早于 now —— 房间会立刻进入"已到期"状态，下个 periodic
+    expiration check 自动停掉它。"""
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        row = conn.execute(
+            "SELECT room_id, months, status FROM payment_orders WHERE out_trade_no=?",
+            (out_trade_no,),
+        ).fetchone()
+        if not row:
+            conn.execute("ROLLBACK")
+            return False, "not_found"
+        room_id, months, status = int(row[0]), int(row[1]), row[2]
+        if status == "refunded":
+            conn.execute("ROLLBACK")
+            return False, "already_refunded"
+        if status != "paid":
+            conn.execute("ROLLBACK")
+            return False, f"not_paid:{status}"
+        new_exp_str = ""
+        exp_row = conn.execute(
+            "SELECT expires_at FROM rooms WHERE room_id=?", (room_id,)
+        ).fetchone()
+        if exp_row and exp_row[0]:
+            try:
+                cur = datetime.strptime(exp_row[0], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+                new_exp = cur - timedelta(days=30 * months)
+                new_exp_str = new_exp.strftime("%Y-%m-%d %H:%M:%S")
+                conn.execute(
+                    "UPDATE rooms SET expires_at=? WHERE room_id=?",
+                    (new_exp_str, room_id),
+                )
+            except ValueError:
+                pass
+        now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        conn.execute(
+            "UPDATE payment_orders SET status='refunded', paid_at=?, raw_json=? "
+            "WHERE out_trade_no=?",
+            (now_utc, raw_json, out_trade_no),
+        )
+        conn.execute("COMMIT")
+        return True, new_exp_str or "ok"
+    except Exception as e:
+        conn.execute("ROLLBACK")
+        return False, f"error:{e}"
+    finally:
+        conn.close()
+
+
+def list_pending_payment_orders(within_hours: int = 24) -> list[dict]:
+    """对账用：返回最近 within_hours 内创建的 pending 订单，给 reconcile task 主动 query。"""
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=within_hours)).strftime("%Y-%m-%d %H:%M:%S")
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        "SELECT out_trade_no, provider, room_id, months, yuan, created_at "
+        "FROM payment_orders WHERE status='pending' AND created_at >= ? "
+        "ORDER BY created_at ASC",
+        (cutoff,),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def expire_stale_pending_orders(older_than_hours: int = 24) -> int:
+    """把 created_at 早于指定阈值的 pending 订单标记 expired，避免表里堆未付订单。
+    返回扫到的行数。"""
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=older_than_hours)).strftime("%Y-%m-%d %H:%M:%S")
+    conn = sqlite3.connect(str(DB_PATH))
+    cur = conn.execute(
+        "UPDATE payment_orders SET status='expired' "
+        "WHERE status='pending' AND created_at < ?",
+        (cutoff,),
+    )
+    n = cur.rowcount
+    conn.commit()
+    conn.close()
+    return n
+
+
+def apply_payment_order(
+    out_trade_no: str, external_trade_no: str = "", raw_json: str = "",
+) -> tuple[bool, str]:
+    """幂等地把已支付订单应用到房间：
+      - 订单不存在 → (False, "not_found")
+      - 已是 paid → (False, "already_paid")
+      - 房间不存在 → (False, "room_not_found")
+      - 成功 → (True, new_expires_at_utc)
+    基准和 redeem_renewal_token 一致：max(now, expires_at) + months*30d。"""
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        row = conn.execute(
+            "SELECT room_id, months, status FROM payment_orders WHERE out_trade_no=?",
+            (out_trade_no,),
+        ).fetchone()
+        if not row:
+            conn.execute("ROLLBACK")
+            return False, "not_found"
+        room_id, months, status = int(row[0]), int(row[1]), row[2]
+        if status == "paid":
+            conn.execute("ROLLBACK")
+            return False, "already_paid"
+        if status == "rejected":
+            # 之前 notify 阶段已经因金额不符等原因拒绝过；polling/reconcile
+            # 路径 query_order 看到 paid 不能再绕过校验把它应用上。
+            conn.execute("ROLLBACK")
+            return False, "rejected"
+        exp_row = conn.execute(
+            "SELECT expires_at FROM rooms WHERE room_id=?", (room_id,)
+        ).fetchone()
+        if not exp_row:
+            conn.execute("ROLLBACK")
+            return False, "room_not_found"
+        now_utc = datetime.now(timezone.utc)
+        base = now_utc
+        if exp_row[0]:
+            try:
+                cur = datetime.strptime(exp_row[0], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+                if cur > base:
+                    base = cur
+            except ValueError:
+                pass
+        new_exp = base + timedelta(days=30 * months)
+        new_exp_str = new_exp.strftime("%Y-%m-%d %H:%M:%S")
+        conn.execute(
+            "UPDATE rooms SET expires_at=?, expired_reminder_count=0 WHERE room_id=?",
+            (new_exp_str, room_id),
+        )
+        conn.execute(
+            "UPDATE payment_orders SET status='paid', paid_at=?, "
+            "external_trade_no=?, raw_json=? WHERE out_trade_no=?",
+            (now_utc.strftime("%Y-%m-%d %H:%M:%S"), external_trade_no, raw_json, out_trade_no),
+        )
+        conn.execute("COMMIT")
+        return True, new_exp_str
+    except Exception as e:
+        conn.execute("ROLLBACK")
+        return False, f"error:{e}"
+    finally:
+        conn.close()
 
 
 def apply_afdian_order(
