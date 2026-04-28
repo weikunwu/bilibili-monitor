@@ -115,9 +115,21 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
   const [afdianTarget, setAfdianTarget] = useState<Room | null>(null)
 
   // ── 扫码续费（支付宝）── 单一 modal 走两步：先选档位，再显示 QR + 轮询。
+  // payAlipayEnabled 在挂载时拉一次 /api/payments/plans 决定，控制"支付宝续费"
+  // 按钮是否渲染。env 缺 ALIPAY_PUBLIC_KEY → channels.alipay=false → 整颗按钮
+  // 不出现在房间卡上，用户看不到入口（不是 disabled 灰按钮）。
   const [payTarget, setPayTarget] = useState<Room | null>(null)
   const [payPlans, setPayPlans] = useState<RenewalPlan[]>([])
   const [payAlipayEnabled, setPayAlipayEnabled] = useState(false)
+
+  useEffect(() => {
+    fetchPaymentPlans()
+      .then((info) => {
+        setPayPlans(info.plans)
+        setPayAlipayEnabled(info.channels.alipay)
+      })
+      .catch(() => { /* 拉失败默认 disabled，按钮不出现 */ })
+  }, [])
   const [paySelectedPlan, setPaySelectedPlan] = useState<string>('')
   const [paySubmitting, setPaySubmitting] = useState(false)
   const [payOrder, setPayOrder] = useState<PaymentOrder | null>(null)
@@ -541,11 +553,13 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
                     startIcon={<MdConfirmationNumber />}
                     onClick={(e) => { e.stopPropagation(); openRedeem(r) }}
                   >续费机器人</Button>
-                  <Button
-                    size="sm" color="orange" appearance="ghost" style={{ width: 132 }}
-                    startIcon={<SiAlipay />}
-                    onClick={(e) => { e.stopPropagation(); openPay(r) }}
-                  >支付宝续费</Button>
+                  {payAlipayEnabled && (
+                    <Button
+                      size="sm" color="orange" appearance="ghost" style={{ width: 132 }}
+                      startIcon={<SiAlipay />}
+                      onClick={(e) => { e.stopPropagation(); openPay(r) }}
+                    >支付宝续费</Button>
+                  )}
                   {AFDIAN_ENABLED && (
                     <Button
                       size="sm" color="orange" appearance="ghost" style={{ width: 132 }}
