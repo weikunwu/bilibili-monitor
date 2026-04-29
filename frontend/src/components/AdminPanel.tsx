@@ -575,7 +575,7 @@ export function AdminPanel({ rooms, onRoomsChanged, role: currentRole }: Props) 
       <h3 style={{ color: '#fb7299', marginBottom: 8, fontSize: 16 }}>默认机器人</h3>
       <div style={{ fontSize: 13, color: '#888', marginBottom: 12, lineHeight: 1.6 }}>
         不绑定具体房间的 bot 池，扫码登录后参与批量点赞等跨房间动作。
-        每次「自动点赞」会从默认机器人池里随机抽 5 个集中刷。
+        「自动点赞」按次数从默认池抽 bot：每 1000 次 1 个。
       </div>
       <Stack spacing={8} style={{ marginBottom: 12 }}>
         <Button appearance="primary" size="sm" onClick={openAddDefaultBot}>
@@ -853,7 +853,7 @@ export function AdminPanel({ rooms, onRoomsChanged, role: currentRole }: Props) 
         </Modal.Header>
         <Modal.Body>
           <div style={{ fontSize: 13, color: '#888', marginBottom: 12, lineHeight: 1.6 }}>
-            从默认机器人池抽最多 5 个 bot 平均分摊点赞次数，单 bot 内部限频，
+            按次数从默认池抽 bot：每 1000 次 1 个，单 bot 内部限频，
             约 10–15 分钟跑完。次数必须是 1000 的整数倍（1000–7000）。
           </div>
           <Stack spacing={8} wrap style={{ marginBottom: 12 }}>
