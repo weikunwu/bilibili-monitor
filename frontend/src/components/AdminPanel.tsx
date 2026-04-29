@@ -3,8 +3,9 @@ import { Input, InputGroup, Button, SelectPicker, Modal, Checkbox, Stack, Divide
 import type { Room } from '../types'
 import {
   fetchUsers, createUser, deleteUser, assignUserRooms, updateUserRole, addRoom, removeRoom,
-  createRenewalTokens, listRenewalTokens, triggerRoomLikes,
+  createRenewalTokens, listRenewalTokens,
   fetchPopularityQuota, sendPopularityVote,
+  popularityLikes, popularityVote,
   listDefaultBots, fetchDefaultBotQrCode, pollDefaultBotQrLogin, deleteDefaultBot,
   rechargeDefaultBot, queryRechargeStatus,
   type UserInfo, type RenewalToken, type DefaultBot,
@@ -29,8 +30,12 @@ export function AdminPanel({ rooms, onRoomsChanged, role: currentRole }: Props) 
   const [newRoomId, setNewRoomId] = useState('')
   const [roomError, setRoomError] = useState('')
   const [roomLoading, setRoomLoading] = useState(false)
-  const [likingRoomIds, setLikingRoomIds] = useState<Set<number>>(new Set())
-  const [likeMsg, setLikeMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  // 自动点赞 modal（房间卡片按钮触发）
+  const [likeModalOpen, setLikeModalOpen] = useState(false)
+  const [likeModalRoom, setLikeModalRoom] = useState<Room | null>(null)
+  const [likeModalCount, setLikeModalCount] = useState('5000')
+  const [likeModalLoading, setLikeModalLoading] = useState(false)
+  const [likeModalStatus, setLikeModalStatus] = useState<{ type: 'info' | 'success' | 'error'; text: string } | null>(null)
 
   const [tokenCount, setTokenCount] = useState('1')
   const [tokenMonths, setTokenMonths] = useState('1')
@@ -62,6 +67,14 @@ export function AdminPanel({ rooms, onRoomsChanged, role: currentRole }: Props) 
   const [rechargeQrUrl, setRechargeQrUrl] = useState('')
   const rechargeOrderRef = useRef<string | null>(null)
   const rechargeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // 人气工具：任意直播间号 → 默认池刷点赞 / 送人气票
+  const [popRoomId, setPopRoomId] = useState('')
+  const [popLikeCount, setPopLikeCount] = useState('5000')
+  const [popVoteCount, setPopVoteCount] = useState('100')
+  const [popLikeLoading, setPopLikeLoading] = useState(false)
+  const [popVoteLoading, setPopVoteLoading] = useState(false)
+  const [popMsg, setPopMsg] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null)
 
   // 人气票 modal 状态
   const [voteOpen, setVoteOpen] = useState(false)
@@ -377,30 +390,95 @@ export function AdminPanel({ rooms, onRoomsChanged, role: currentRole }: Props) 
     }
   }
 
-  async function handleLikeRoom(roomId: number, label: string) {
-    if (likingRoomIds.has(roomId)) return
-    if (!await confirmDialog({ message: `确定为「${label}」自动点赞？\n随机抽多个机器人集中点赞，保守频控、慢慢跑，约需 10–15 分钟`, okText: '自动点赞' })) return
-    setLikingRoomIds((prev) => new Set(prev).add(roomId))
-    setLikeMsg(null)
+  async function handlePopLikes() {
+    const rid = Number(popRoomId)
+    const cnt = Number(popLikeCount)
+    if (!rid || rid <= 0) {
+      setPopMsg({ type: 'error', text: '请输入有效房间号' })
+      return
+    }
+    if (!cnt || cnt < 1000 || cnt > 7000 || cnt % 1000 !== 0) {
+      setPopMsg({ type: 'error', text: '点赞次数必须是 1000 的整数倍（1000–7000）' })
+      return
+    }
+    if (!await confirmDialog({ message: `确定给房间 ${rid} 刷 ${cnt} 次点赞？\n保守频控，慢慢跑`, okText: '刷点赞' })) return
+    setPopLikeLoading(true)
+    setPopMsg(null)
     try {
-      const r = await triggerRoomLikes(roomId)
+      const r = await popularityLikes(rid, cnt)
       const mins = Math.ceil(r.eta_seconds / 60)
-      setLikeMsg({ type: 'success', text: `「${label}」已用 ${r.bot_count} 个机器人触发共 ${r.scheduled} 次点赞，预计 ${mins} 分钟跑完` })
-      // 按钮锁到任务预计跑完 + 10s 兜底；服务端 _like_running 是真正的互斥
-      window.setTimeout(() => {
-        setLikingRoomIds((prev) => {
-          const next = new Set(prev)
-          next.delete(roomId)
-          return next
-        })
-      }, (r.eta_seconds + 10) * 1000)
+      const label = r.streamer_name || r.room_title || `房间 ${rid}`
+      setPopMsg({ type: 'success', text: `「${label}」已用 ${r.bot_count} 个机器人触发共 ${r.scheduled} 次点赞，预计 ${mins} 分钟跑完` })
     } catch (err) {
-      setLikingRoomIds((prev) => {
-        const next = new Set(prev)
-        next.delete(roomId)
-        return next
+      setPopMsg({ type: 'error', text: `刷点赞失败：${(err as Error).message}` })
+    } finally {
+      setPopLikeLoading(false)
+    }
+  }
+
+  async function handlePopVote() {
+    const rid = Number(popRoomId)
+    const cnt = Number(popVoteCount)
+    if (!rid || rid <= 0) {
+      setPopMsg({ type: 'error', text: '请输入有效房间号' })
+      return
+    }
+    if (!cnt || cnt < 100 || cnt % 100 !== 0) {
+      setPopMsg({ type: 'error', text: '人气票数必须是 100 的整数倍（最小 100）' })
+      return
+    }
+    if (!await confirmDialog({ message: `确定给房间 ${rid} 送 ${cnt} 张人气票？\n串行送出，命中风控会提前停`, okText: '送人气票' })) return
+    setPopVoteLoading(true)
+    setPopMsg(null)
+    try {
+      const r = await popularityVote(rid, cnt)
+      const label = r.streamer_name || r.room_title || `房间 ${rid}`
+      const baseText = `「${label}」请求 ${r.requested} 张，实送 ${r.sent} 张`
+      if (r.failures.length > 0 || r.aborted_by_cooling) {
+        const tail = r.aborted_by_cooling ? '（命中风控提前终止）' : `（部分失败 ${r.failures.length} bot）`
+        setPopMsg({ type: 'warning', text: baseText + tail })
+      } else {
+        setPopMsg({ type: 'success', text: baseText })
+      }
+    } catch (err) {
+      setPopMsg({ type: 'error', text: `送人气票失败：${(err as Error).message}` })
+    } finally {
+      setPopVoteLoading(false)
+    }
+  }
+
+  function openLikeModal(r: Room) {
+    setLikeModalRoom(r)
+    setLikeModalCount('5000')
+    setLikeModalStatus(null)
+    setLikeModalOpen(true)
+  }
+
+  function closeLikeModal() {
+    setLikeModalOpen(false)
+    setLikeModalStatus(null)
+  }
+
+  async function handleSubmitLike() {
+    if (!likeModalRoom) return
+    const n = Math.floor(Number(likeModalCount))
+    if (!Number.isFinite(n) || n < 1000 || n > 7000 || n % 1000 !== 0) {
+      setLikeModalStatus({ type: 'error', text: '点赞数必须是 1000 的整数倍（1000–7000）' })
+      return
+    }
+    setLikeModalLoading(true)
+    setLikeModalStatus({ type: 'info', text: '已下发，正在并行刷赞...' })
+    try {
+      const r = await popularityLikes(likeModalRoom.room_id, n)
+      const mins = Math.ceil(r.eta_seconds / 60)
+      setLikeModalStatus({
+        type: 'success',
+        text: `已用 ${r.bot_count} 个机器人触发共 ${r.scheduled} 次点赞，预计 ${mins} 分钟跑完`,
       })
-      setLikeMsg({ type: 'error', text: `「${label}」点赞失败：${(err as Error).message}` })
+    } catch (err) {
+      setLikeModalStatus({ type: 'error', text: (err as Error).message })
+    } finally {
+      setLikeModalLoading(false)
     }
   }
 
@@ -492,72 +570,12 @@ export function AdminPanel({ rooms, onRoomsChanged, role: currentRole }: Props) 
           ))
         )}
       </div>
-      {isAdmin && <>
-        <Divider />
-
-        {/* ── Room management ── 仅 admin */}
-        <h3 style={{ color: '#fb7299', marginBottom: 16, fontSize: 16 }}>房间管理</h3>
-        <form onSubmit={handleAddRoom}>
-          <Stack spacing={8} wrap style={{ marginBottom: 16 }}>
-            <Input
-              placeholder="房间号"
-              value={newRoomId}
-              onChange={setNewRoomId}
-              size="sm"
-              style={{ width: 160 }}
-            />
-            <Button type="submit" appearance="primary" size="sm" loading={roomLoading}>
-              添加房间
-            </Button>
-          </Stack>
-        </form>
-        {roomError && <Message type="error" showIcon style={{ marginBottom: 12 }}>{roomError}</Message>}
-        {likeMsg && <Message type={likeMsg.type} showIcon closable onClose={() => setLikeMsg(null)} style={{ marginBottom: 12 }}>{likeMsg.text}</Message>}
-        <div className="admin-grid">
-          {rooms.map((r) => (
-            <div key={r.room_id} className="admin-card">
-              <div className="admin-card-head">
-                <div className="admin-card-title" title={r.streamer_name || String(r.room_id)}>
-                  {r.streamer_name || r.room_id}
-                </div>
-              </div>
-              <div className="admin-card-meta">
-                房间号: {r.room_id}
-                {r.real_room_id !== r.room_id && <> · 真实 ID: {r.real_room_id}</>}
-                <br />
-                机器人: {r.bot_uid ? `${r.bot_name || 'Unknown'} (UID ${r.bot_uid})` : '未绑定'}
-              </div>
-              <div className="admin-card-actions">
-                <Button
-                  appearance="ghost"
-                  size="xs"
-                  loading={likingRoomIds.has(r.room_id)}
-                  disabled={!r.bot_uid || likingRoomIds.has(r.room_id)}
-                  onClick={() => handleLikeRoom(r.room_id, r.streamer_name || String(r.room_id))}
-                >
-                  自动点赞
-                </Button>
-                <Button appearance="ghost" size="xs" onClick={() => openVote(r)}>
-                  人气票
-                </Button>
-                <Button color="red" appearance="ghost" size="xs" onClick={() => handleRemoveRoom(r.room_id)}>
-                  删除
-                </Button>
-              </div>
-            </div>
-          ))}
-          {rooms.length === 0 && (
-            <div className="admin-card-meta" style={{ gridColumn: '1 / -1' }}>暂无房间</div>
-          )}
-        </div>
-      </>}
-
       {/* ── Default bots ── admin + staff 都能看 */}
       <Divider style={{ borderColor: '#2a2a4a' }} />
       <h3 style={{ color: '#fb7299', marginBottom: 8, fontSize: 16 }}>默认机器人</h3>
       <div style={{ fontSize: 13, color: '#888', marginBottom: 12, lineHeight: 1.6 }}>
         不绑定具体房间的 bot 池，扫码登录后参与批量点赞等跨房间动作。
-        每次「自动点赞」会从「房间机器人 + 默认机器人」里随机抽 5 个集中刷。
+        每次「自动点赞」会从默认机器人池里随机抽 5 个集中刷。
       </div>
       <Stack spacing={8} style={{ marginBottom: 12 }}>
         <Button appearance="primary" size="sm" onClick={openAddDefaultBot}>
@@ -622,6 +640,115 @@ export function AdminPanel({ rooms, onRoomsChanged, role: currentRole }: Props) 
           <div className="admin-card-meta" style={{ gridColumn: '1 / -1' }}>暂无默认机器人</div>
         )}
       </div>
+
+      {/* ── 人气工具 ── admin + staff 都能用 */}
+      <Divider style={{ borderColor: '#2a2a4a' }} />
+      <h3 style={{ color: '#fb7299', marginBottom: 8, fontSize: 16 }}>人气工具</h3>
+      <div style={{ fontSize: 13, color: '#888', marginBottom: 12, lineHeight: 1.6 }}>
+        对任意 B 站直播间手动刷人气；房间不必在「房间管理」里。
+        点赞和人气票都从默认机器人池抽 bot，电池/额度共用。
+      </div>
+      <Stack spacing={8} wrap style={{ marginBottom: 8 }}>
+        <InputGroup size="sm" style={{ width: 220 }}>
+          <InputGroup.Addon>房间号</InputGroup.Addon>
+          <Input value={popRoomId} onChange={setPopRoomId} placeholder="例如 22747736" />
+        </InputGroup>
+      </Stack>
+      <Stack spacing={8} wrap style={{ marginBottom: 12 }}>
+        <InputGroup size="sm" style={{ width: 200 }}>
+          <InputGroup.Addon>点赞次数</InputGroup.Addon>
+          <Input
+            value={popLikeCount}
+            onChange={setPopLikeCount}
+            onBlur={() => {
+              const n = Math.round(Number(popLikeCount) / 1000) * 1000
+              setPopLikeCount(String(Math.max(1000, Math.min(7000, n || 1000))))
+            }}
+            type="number" step={1000} min={1000} max={7000}
+          />
+        </InputGroup>
+        <Button
+          appearance="primary" size="sm"
+          loading={popLikeLoading} disabled={popLikeLoading || popVoteLoading}
+          onClick={handlePopLikes}
+        >
+          刷点赞
+        </Button>
+        <InputGroup size="sm" style={{ width: 220 }}>
+          <InputGroup.Addon>人气票（张）</InputGroup.Addon>
+          <Input value={popVoteCount} onChange={setPopVoteCount} type="number" step={100} min={100} />
+        </InputGroup>
+        <Button
+          appearance="primary" size="sm"
+          loading={popVoteLoading} disabled={popLikeLoading || popVoteLoading}
+          onClick={handlePopVote}
+        >
+          送人气票
+        </Button>
+      </Stack>
+      {popMsg && (
+        <Message
+          type={popMsg.type}
+          showIcon closable
+          onClose={() => setPopMsg(null)}
+          style={{ marginBottom: 12 }}
+        >
+          {popMsg.text}
+        </Message>
+      )}
+
+      {isAdmin && <>
+        <Divider />
+
+        {/* ── Room management ── 仅 admin */}
+        <h3 style={{ color: '#fb7299', marginBottom: 16, fontSize: 16 }}>房间管理</h3>
+        <form onSubmit={handleAddRoom}>
+          <Stack spacing={8} wrap style={{ marginBottom: 16 }}>
+            <Input
+              placeholder="房间号"
+              value={newRoomId}
+              onChange={setNewRoomId}
+              size="sm"
+              style={{ width: 160 }}
+            />
+            <Button type="submit" appearance="primary" size="sm" loading={roomLoading}>
+              添加房间
+            </Button>
+          </Stack>
+        </form>
+        {roomError && <Message type="error" showIcon style={{ marginBottom: 12 }}>{roomError}</Message>}
+        <div className="admin-grid">
+          {rooms.map((r) => (
+            <div key={r.room_id} className="admin-card">
+              <div className="admin-card-head">
+                <div className="admin-card-title" title={r.streamer_name || String(r.room_id)}>
+                  {r.streamer_name || r.room_id}
+                </div>
+              </div>
+              <div className="admin-card-meta">
+                房间号: {r.room_id}
+                {r.real_room_id !== r.room_id && <> · 真实 ID: {r.real_room_id}</>}
+                <br />
+                机器人: {r.bot_uid ? `${r.bot_name || 'Unknown'} (UID ${r.bot_uid})` : '未绑定'}
+              </div>
+              <div className="admin-card-actions">
+                <Button appearance="ghost" size="xs" onClick={() => openLikeModal(r)}>
+                  自动点赞
+                </Button>
+                <Button appearance="ghost" size="xs" onClick={() => openVote(r)}>
+                  人气票
+                </Button>
+                <Button color="red" appearance="ghost" size="xs" onClick={() => handleRemoveRoom(r.room_id)}>
+                  删除
+                </Button>
+              </div>
+            </div>
+          ))}
+          {rooms.length === 0 && (
+            <div className="admin-card-meta" style={{ gridColumn: '1 / -1' }}>暂无房间</div>
+          )}
+        </div>
+      </>}
 
       {isAdmin && <>
         <Divider style={{ borderColor: '#2a2a4a' }} />
@@ -716,6 +843,46 @@ export function AdminPanel({ rooms, onRoomsChanged, role: currentRole }: Props) 
           )}
         </div>
       </>}
+
+      {/* 自动点赞 modal —— 房间卡片按钮触发 */}
+      <Modal open={likeModalOpen} onClose={closeLikeModal} size="xs">
+        <Modal.Header>
+          <Modal.Title>
+            自动点赞 → {likeModalRoom?.streamer_name || likeModalRoom?.room_id}
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <div style={{ fontSize: 13, color: '#888', marginBottom: 12, lineHeight: 1.6 }}>
+            从默认机器人池抽最多 5 个 bot 平均分摊点赞次数，单 bot 内部限频，
+            约 10–15 分钟跑完。次数必须是 1000 的整数倍（1000–7000）。
+          </div>
+          <Stack spacing={8} wrap style={{ marginBottom: 12 }}>
+            <InputGroup size="sm" style={{ width: 220 }}>
+              <InputGroup.Addon>点赞次数</InputGroup.Addon>
+              <Input
+                value={likeModalCount}
+                onChange={setLikeModalCount}
+                onBlur={() => {
+                  const n = Math.round(Number(likeModalCount) / 1000) * 1000
+                  setLikeModalCount(String(Math.max(1000, Math.min(7000, n || 1000))))
+                }}
+                type="number" step={1000} min={1000} max={7000}
+              />
+            </InputGroup>
+          </Stack>
+          {likeModalStatus && (
+            <Message type={likeModalStatus.type} showIcon style={{ marginBottom: 8 }}>
+              {likeModalStatus.text}
+            </Message>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button onClick={closeLikeModal} appearance="subtle">关闭</Button>
+          <Button onClick={handleSubmitLike} appearance="primary" loading={likeModalLoading}>
+            自动点赞
+          </Button>
+        </Modal.Footer>
+      </Modal>
 
       {/* 人气票 modal */}
       <Modal open={voteOpen} onClose={closeVote} size="xs">

@@ -297,21 +297,6 @@ export async function removeRoom(roomId: number): Promise<void> {
   }
 }
 
-export async function triggerRoomLikes(roomId: number): Promise<{
-  ok: boolean
-  scheduled: number
-  eta_seconds: number
-  bot_count: number
-  bots: { uid: number; name: string }[]
-}> {
-  const res = await fetch(`/api/admin/rooms/${roomId}/like`, { method: 'POST' })
-  if (!res.ok) {
-    const d = await res.json().catch(() => ({}))
-    throw new Error(d.detail || '触发点赞失败')
-  }
-  return res.json()
-}
-
 export async function fetchPopularityQuota(
   roomId: number,
 ): Promise<{ remaining: number; per_bot_limit: number; available_bot_count: number }> {
@@ -337,6 +322,60 @@ export async function sendPopularityVote(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ count }),
+  })
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({}))
+    throw new Error(d.detail || '送人气票失败')
+  }
+  return res.json()
+}
+
+export async function popularityLikes(
+  roomId: number, count: number,
+): Promise<{
+  ok: boolean
+  room_id: number
+  real_room_id: number
+  room_title: string
+  streamer_name: string
+  scheduled: number
+  eta_seconds: number
+  bot_count: number
+  bots: { uid: number; name: string; plan: number }[]
+}> {
+  const res = await fetch('/api/admin/popularity/likes', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ room_id: roomId, count }),
+  })
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({}))
+    throw new Error(d.detail || '触发点赞失败')
+  }
+  return res.json()
+}
+
+export async function popularityVote(
+  roomId: number, count: number,
+): Promise<{
+  ok: boolean
+  room_id: number
+  real_room_id: number
+  room_title: string
+  streamer_name: string
+  requested: number
+  sent: number
+  aborted_by_cooling: boolean
+  gift_id: number
+  gift_price: number
+  bots: { uid: number; name: string; sent: number }[]
+  failures: { uid: number; name: string; tried: number; sent: number; error: string; cooling: boolean }[]
+  total_remaining_this_hour: number
+}> {
+  const res = await fetch('/api/admin/popularity/vote', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ room_id: roomId, count }),
   })
   if (!res.ok) {
     const d = await res.json().catch(() => ({}))
