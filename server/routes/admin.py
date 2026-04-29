@@ -6,6 +6,7 @@
 """
 
 import asyncio
+import math
 import random
 import sqlite3
 import time
@@ -92,8 +93,11 @@ async def add_room(request: Request):
     return {"ok": True, "room_id": room_id}
 
 
-_LIKE_MAX_BOTS = 5
-# 同一目标房间互斥：dispatch 期间不允许重复触发（避免 5×N 个 bot 撞同一房间）
+# 每 bot 分到的点赞目标：对齐 B 站每号每房每天 1000 的限制。
+# 注意 BiliLiveClient.LIKE_MAX_TOTAL=1500 是单次 send_likes 的硬上限（含 buffer，
+# 因为上报数量与实际入账不是 1:1），分配口径用这个 1000。
+_LIKE_PER_BOT_TARGET = 1000
+# 同一目标房间互斥：dispatch 期间不允许重复触发（避免多 bot 撞同一房间）
 _like_dispatch_running: set[int] = set()
 
 
@@ -211,17 +215,17 @@ def _select_like_candidates() -> list[BiliLiveClient]:
 
 @router.post("/api/admin/popularity/likes", dependencies=staff_dep)
 async def popularity_likes(request: Request):
-    """对任意 B 站直播间号刷 N 次点赞。N 平均分给 ≤ _LIKE_MAX_BOTS 个 bot，
-    每 bot ≤ LIKE_MAX_TOTAL；房间不必在 manager 里。"""
+    """对任意 B 站直播间号刷 N 次点赞。bot 数 = ceil(count/_LIKE_PER_BOT_TARGET)，
+    上限是当前可用默认 bot 数；每 bot 分到 ≤ _LIKE_PER_BOT_TARGET。
+    房间不必在 manager 里。"""
     body = await request.json()
     try:
         room_id = int(body.get("room_id", 0))
         count = int(body.get("count", 0))
     except (TypeError, ValueError):
         raise HTTPException(400, "room_id / count 必须是整数")
-    max_total = _LIKE_MAX_BOTS * BiliLiveClient.LIKE_MAX_TOTAL
-    if count <= 0 or count > max_total:
-        raise HTTPException(400, f"点赞数必须在 1..{max_total}")
+    if count <= 0:
+        raise HTTPException(400, "点赞数必须 > 0")
     if room_id in _like_dispatch_running:
         raise HTTPException(409, "该房间正在点赞中，请等当前批次跑完")
 
@@ -230,11 +234,18 @@ async def popularity_likes(request: Request):
     candidates = _select_like_candidates()
     if not candidates:
         raise HTTPException(400, "当前没有可用的默认机器人（全部在跑/冷却中）")
-    n_bots = min(_LIKE_MAX_BOTS, len(candidates))
+    max_total = len(candidates) * _LIKE_PER_BOT_TARGET
+    if count > max_total:
+        raise HTTPException(
+            400,
+            f"点赞数 {count} 超过上限：当前 {len(candidates)} 个可用 bot × "
+            f"{_LIKE_PER_BOT_TARGET}/bot = {max_total}",
+        )
+    n_bots = min(math.ceil(count / _LIKE_PER_BOT_TARGET), len(candidates))
     selected = candidates[:n_bots]
     base, rem = divmod(count, n_bots)
     plan = [
-        min(BiliLiveClient.LIKE_MAX_TOTAL, base + (1 if i < rem else 0))
+        min(_LIKE_PER_BOT_TARGET, base + (1 if i < rem else 0))
         for i in range(n_bots)
     ]
 
