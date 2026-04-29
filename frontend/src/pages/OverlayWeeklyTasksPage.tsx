@@ -33,6 +33,8 @@ export function OverlayWeeklyTasksPage() {
     cycleEndTime: 0,
   })
   const [error, setError] = useState<string>('')
+  // 房间未开启监听时藏掉整张卡，但保持 poll —— 用户重启监听后下一轮就能恢复。
+  const [inactive, setInactive] = useState<boolean>(false)
 
   // 透明背景，方便 OBS 浏览器源叠加。
   useEffect(() => {
@@ -60,9 +62,17 @@ export function OverlayWeeklyTasksPage() {
           clearInterval(iv)
           return
         }
+        if (r.status === 409) {
+          if (!cancelled) {
+            setInactive(true)
+            setError('')
+          }
+          return
+        }
         if (!r.ok) throw new Error(`HTTP ${r.status}`)
         const d = await r.json()
         if (!cancelled) {
+          setInactive(false)
           setData({
             count: Number(d.count) || 0,
             milestones: Array.isArray(d.milestones) && d.milestones.length
@@ -100,7 +110,9 @@ export function OverlayWeeklyTasksPage() {
     && (data.cycleEndTime <= 0 || nowSec < data.cycleEndTime)
   const critLive = data.plusStatus === 1 && data.plusTarget > 0
   let mode: 'hidden' | 'weekly' | 'crit'
-  if (!hasCycle) {
+  if (inactive) {
+    mode = 'hidden'
+  } else if (!hasCycle) {
     mode = critLive ? 'crit' : 'weekly'
   } else if (inCollectionPhase) {
     mode = 'weekly'

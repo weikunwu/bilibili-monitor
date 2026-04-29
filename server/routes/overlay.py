@@ -313,6 +313,12 @@ async def overlay_weekly_tasks(
         raise HTTPException(status_code=403, detail="invalid overlay token")
     if is_room_expired(room_id):
         raise HTTPException(status_code=410, detail="房间已到期")
+    # 房间没在监听中就不让 overlay 继续刷 —— 否则 B 站心动接口被空打、主播也会
+    # 误以为 overlay 还正常工作但其实弹幕/礼物那一栏已经不再更新。前端收到 409
+    # 把卡藏掉但继续 poll，用户再点"开始监听"即可自动恢复。
+    client = manager.get(room_id)
+    if client is None or not client._running:
+        raise HTTPException(status_code=409, detail="房间未开启监听")
 
     ruid = await _resolve_streamer_uid(room_id)
     if not ruid:
