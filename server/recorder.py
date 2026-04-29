@@ -86,11 +86,14 @@ class RecorderSession:
         self.room_id = room_id
         self.cookies = cookies or {}
         self._segments: deque[_Segment] = deque()
-        self._init_path: Optional[str] = None   # on-disk init.mp4
+        self._init_path: Optional[str] = None   # on-disk init.mp4 (fmp4 only)
         self._init_bytes: Optional[bytes] = None  # last-known init content (for rotation detection)
         self._buf_dir = SEG_BUF_ROOT / str(room_id)
         self._m3u8_url: str = ""
         self._seg_host: str = ""  # URL prefix for relative segment URIs
+        # "fmp4" 优先 (1s 段，剪辑窗口精度好)；B 站没下发 fmp4 的房间退回 "ts"
+        # (3-6s 段，无 init 段，ffmpeg remux 时走 mpegts → mp4 路径)。
+        self._format: str = ""
         self._seen_seqs: set[int] = set()
         self._running = False
         self._task: Optional[asyncio.Task] = None
@@ -132,6 +135,7 @@ class RecorderSession:
             except OSError: pass
             self._init_path = None
         self._init_bytes = None
+        self._format = ""
         log.info(f"[recorder] room {self.room_id} stop")
 
     # Clip window parameters.
@@ -249,8 +253,9 @@ class RecorderSession:
                     f"keeping {len(run)}/{len(selected)} segments to avoid broken bitstream"
                 )
             selected = run
+            is_fmp4 = self._format == "fmp4"
             init_path = self._init_path
-            if not init_path:
+            if is_fmp4 and not init_path:
                 log.warning(f"[recorder] room {self.room_id} clip: no init segment")
                 return
 
@@ -264,11 +269,15 @@ class RecorderSession:
             base_name = f"{ts_name}_{safe_label}"
             base_path = out_dir / f"{base_name}.mp4"
 
-            # Concatenate init + segment files on disk (low-memory; one 64KB
-            # chunk at a time). Output to a temp .m4s that ffmpeg will remux.
-            with tempfile.NamedTemporaryFile(suffix=".m4s", delete=False) as fp:
+            # Concatenate segment files on disk (low-memory; one 64KB chunk at
+            # a time). fmp4: init.mp4 + .m4s 段 → temp .m4s（自描述 fragmented mp4）。
+            # ts: 直接 cat .ts 段 → temp .ts（MPEG-TS 字节流可直拼），ffmpeg
+            # 走 mpegts demuxer + mp4 muxer + aac_adtstoasc 转封装。
+            sources = ([init_path] if is_fmp4 else []) + [s.path for s in selected]
+            tmp_suffix = ".m4s" if is_fmp4 else ".ts"
+            with tempfile.NamedTemporaryFile(suffix=tmp_suffix, delete=False) as fp:
                 raw_path = fp.name
-                for src in [init_path] + [s.path for s in selected]:
+                for src in sources:
                     with open(src, "rb") as f:
                         while True:
                             chunk = f.read(65536)
@@ -279,10 +288,15 @@ class RecorderSession:
                 # ultra-lean x264) pushes the VM over the 256MB limit given the
                 # main app + HLS clients already in residence. The client-side
                 # compose handles scaling anyway, so the base can stay native.
+                cmd = ["ffmpeg", "-y", "-i", raw_path, "-c", "copy"]
+                if not is_fmp4:
+                    # MPEG-TS 里 AAC 是 ADTS 帧；mp4 muxer 要求 ASC 头，得过这个
+                    # bsf。新版 ffmpeg 多数情况会自动插入，但显式更稳。
+                    cmd += ["-bsf:a", "aac_adtstoasc"]
+                cmd += ["-movflags", "+faststart", str(base_path)]
                 async with FFMPEG_LOCK:
                     proc = await asyncio.create_subprocess_exec(
-                        "ffmpeg", "-y", "-i", raw_path, "-c", "copy",
-                        "-movflags", "+faststart", str(base_path),
+                        *cmd,
                         stdout=asyncio.subprocess.DEVNULL,
                         stderr=asyncio.subprocess.PIPE,
                     )
@@ -357,7 +371,7 @@ class RecorderSession:
                         timeout=aiohttp.ClientTimeout(total=8),
                     )
                     if not await self._resolve_playurl():
-                        log.warning(f"[recorder] room {self.room_id} 无可用 fmp4 HLS 流")
+                        log.warning(f"[recorder] room {self.room_id} 无可用 HLS 流 (fmp4/ts 均无)")
                     else:
                         backoff = self.BACKOFF_START_SEC
                         self._last_data_ts = time.time()
@@ -404,8 +418,10 @@ class RecorderSession:
         # Compositing moved to the browser (clipCompose.ts)，服务端录屏只做 remux，
         # 所以分辨率主要受磁盘/带宽制约，不再像以前那样卡 ffmpeg 重编码内存。
         # 720p ~2Mbps × 35s rolling buffer ≈ 9MB/房间（/tmp 走 tmpfs 要算进 VM 预算）。
+        # format=1,2: 优先 fmp4 (TARGETDURATION=1s, 切片精度好)，B 站没给 fmp4
+        # 转码档的房间退回 ts (3–6s 段，需要 ffmpeg mpegts→mp4 转封装)。
         params = {
-            "room_id": self.room_id, "protocol": "1", "format": "2",
+            "room_id": self.room_id, "protocol": "1", "format": "1,2",
             "codec": "0", "qn": 150, "platform": "web", "ptype": 8,
         }
         async with self._session.get(PLAYURL_API + "?" + urlencode(params)) as r:
@@ -419,11 +435,14 @@ class RecorderSession:
         data_d = data.get("data") or {}
         info = data_d.get("playurl_info") or {}
         playurl = info.get("playurl") or {}
+        fmp4_url: Optional[str] = None
+        ts_url: Optional[str] = None
         for s in playurl.get("stream") or []:
             if s.get("protocol_name") != "http_hls":
                 continue
             for fmt in s.get("format", []):
-                if fmt.get("format_name") != "fmp4":
+                fname = fmt.get("format_name")
+                if fname not in ("fmp4", "ts"):
                     continue
                 for codec in fmt.get("codec", []):
                     urls = codec.get("url_info", [])
@@ -431,10 +450,44 @@ class RecorderSession:
                     if not urls or not base:
                         continue
                     m3u8 = urls[0]["host"] + base + urls[0]["extra"]
-                    self._m3u8_url = m3u8
-                    self._seg_host = m3u8.rsplit("/", 1)[0] + "/"
-                    return True
-        return False
+                    if fname == "fmp4" and fmp4_url is None:
+                        fmp4_url = m3u8
+                    elif fname == "ts" and ts_url is None:
+                        ts_url = m3u8
+                    break
+        chosen_fmt = "fmp4" if fmp4_url else ("ts" if ts_url else "")
+        if not chosen_fmt:
+            return False
+        # 第一次成功 resolve：把决定打出来便于排查。fmp4 是 happy path 走 INFO；
+        # ts 回落走 WARNING，方便 grep "fmp4 不可用" 一把捞出所有降级房间。
+        # 后续 re-resolve（token 续期 / playlist stale）静默，除非 format 真的翻转。
+        if self._format == "":
+            if chosen_fmt == "fmp4":
+                log.info(f"[recorder] room {self.room_id} 选 fmp4")
+            else:
+                log.warning(
+                    f"[recorder] room {self.room_id} fmp4 不可用，回落 ts "
+                    f"(B 站没给这房间转 fmp4，clip 段粒度从 1s 退到 3-6s)"
+                )
+        # 同一场播里 B 站极少切换转码档，但万一切了：fmp4 init 解码不了 ts 字节流
+        # （反之亦然），把累积 buffer 全清掉，避免 finalize 时拼出黑屏 clip。
+        if self._format and self._format != chosen_fmt:
+            log.info(f"[recorder] room {self.room_id} format flipped "
+                     f"{self._format}→{chosen_fmt}, dropping buffer")
+            for s in self._segments:
+                try: os.unlink(s.path)
+                except OSError: pass
+            self._segments.clear()
+            self._seen_seqs.clear()
+            if self._init_path:
+                try: os.unlink(self._init_path)
+                except OSError: pass
+                self._init_path = None
+            self._init_bytes = None
+        self._format = chosen_fmt
+        self._m3u8_url = fmp4_url or ts_url  # type: ignore[assignment]
+        self._seg_host = self._m3u8_url.rsplit("/", 1)[0] + "/"
+        return True
 
     async def _poll_once(self):
         async with self._session.get(self._m3u8_url) as r:
@@ -479,7 +532,7 @@ class RecorderSession:
                 log.info(f"[recorder] room {self.room_id} playlist recovered")
                 self._empty_playlist = False
         elif not self._empty_playlist:
-            log.info(f"[recorder] room {self.room_id} empty playlist (no EXT-X-MAP, no segments)")
+            log.info(f"[recorder] room {self.room_id} empty playlist")
             self._empty_playlist = True
 
         # Refetch init.mp4 every poll and compare bytes — B站 keeps the URI
@@ -487,6 +540,8 @@ class RecorderSession:
         # restarts and the embedded SPS/avcC silently changes. URI-based
         # caching gives us a stale init, which makes every subsequent frame
         # decode to black. ~1KB per poll is cheap insurance.
+        # ts 流没有 EXT-X-MAP / init 段（每个 .ts 段自带 PAT/PMT），所以这块
+        # 直接跳过，下游 finalize_clip 也不会去拼 init。
         if init_uri:
             init_url = init_uri if init_uri.startswith("http") else self._seg_host + init_uri
             try:
@@ -538,7 +593,8 @@ class RecorderSession:
                 # up if it's still in the playlist window.
                 continue
             self._seen_seqs.add(seq)
-            seg_path = self._buf_dir / f"{seq}.m4s"
+            seg_ext = "m4s" if self._format == "fmp4" else "ts"
+            seg_path = self._buf_dir / f"{seq}.{seg_ext}"
             seg_path.write_bytes(body)
             self._segments.append(_Segment(seq, dur, str(seg_path), len(body), time.time()))
 
@@ -584,6 +640,27 @@ async def stop_for(room_id: int):
     s = _sessions.pop(room_id, None)
     if s:
         await s.stop()
+
+
+def list_active_status() -> list[dict]:
+    """Snapshot of every active recorder session — admin / debug introspection.
+
+    Use case: 排查 "为什么这房间没出 clip"。`format=""` 表示 resolve 还没成功
+    （B 站 playurl 一直不给可用 stream），`format="ts"` 表示走的是降级链路。
+    """
+    now = time.time()
+    out = []
+    for rid, s in _sessions.items():
+        out.append({
+            "room_id": rid,
+            "running": s._running,
+            "format": s._format,           # "fmp4" | "ts" | ""（未 resolve）
+            "segments": len(s._segments),
+            "last_data_age_sec": round(now - s._last_data_ts, 1) if s._last_data_ts else None,
+            "empty_playlist": s._empty_playlist,
+        })
+    out.sort(key=lambda r: (r["format"] != "fmp4", r["room_id"]))  # ts/未 resolve 排在前
+    return out
 
 
 def cleanup_old_clips(max_age_hours: int = 24):
