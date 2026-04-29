@@ -1911,6 +1911,9 @@ class BiliLiveClient:
     #   - Referer 必须是房间号 URL（HAR 实测通用 /live.bilibili.com/ 会被 -352）
     #   - click_time 一次可以报多次（HAR 实测 12 一次成功）
     # HAR 看到批与批间隔 ~6s。10/批 × 100 批 × 6s ≈ 10 分钟跑完 1000。
+    # LIKE_MAX_TOTAL 是单 bot 单次 send_likes 的硬上限（含 buffer，因为接口
+    # 上报数量与实际入账有偏差，不是 1:1）。**分配口径**用上层
+    # _LIKE_PER_BOT_TARGET = 1000 决定 bot 数，不用这个常量。
     LIKE_BATCH_SIZE = 10
     LIKE_BATCH_INTERVAL_LO = 5.5
     LIKE_BATCH_INTERVAL_HI = 7.0
