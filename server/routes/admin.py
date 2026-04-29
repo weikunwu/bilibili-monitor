@@ -16,7 +16,9 @@ from fastapi import APIRouter, Depends, Query, Request, HTTPException
 
 from ..auth import require_admin, require_admin_or_staff
 from ..bili_client import BiliLiveClient
-from ..config import HEADERS, QR_GENERATE_API, QR_POLL_API, log
+from ..config import (
+    HEADERS, MASTER_INFO_API, QR_GENERATE_API, QR_POLL_API, ROOM_INFO_API, log,
+)
 from ..crypto import encrypt_cookies
 from ..db import (
     list_users, create_user, delete_user, assign_user_rooms, update_user_role,
@@ -90,96 +92,160 @@ async def add_room(request: Request):
     return {"ok": True, "room_id": room_id}
 
 
-_LIKE_PER_BOT = 1000
 _LIKE_MAX_BOTS = 5
 # 同一目标房间互斥：dispatch 期间不允许重复触发（避免 5×N 个 bot 撞同一房间）
 _like_dispatch_running: set[int] = set()
 
 
-@router.post("/api/admin/rooms/{room_id}/like", dependencies=admin_dep)
-async def trigger_room_likes(room_id: int):
-    """从默认机器人池 + 目标房间自己的 bot 里抽 _LIKE_MAX_BOTS 个，每个给目标
-    房间刷 _LIKE_PER_BOT 次点赞。目标房间 bot 优先入选；不借用别的监控房间的 bot
-    （避免拿别主播的号给本房刷赞影响他们的风控）。每个 bot 自己限频、并行执行，
-    dispatch 后台跑；同一目标房间未跑完前重复触发返回 409。"""
+async def _resolve_room_info(room_id: int) -> tuple[int, int, str, str]:
+    """display room_id → (real_room_id, streamer_uid, room_title, streamer_name)。
+    托管房间走现有 BiliLiveClient（避免重复打 API）；非托管直接打 ROOM_INFO_API。
+    无副作用——不写 DB、不动 manager。"""
+    if room_id <= 0:
+        raise HTTPException(400, "请输入有效房间号")
     target = manager.get(room_id)
-    if not target:
-        raise HTTPException(404, "房间不存在")
-    if room_id in _like_dispatch_running:
-        raise HTTPException(409, "该房间正在点赞中，请等当前批次跑完")
-    if not target.streamer_uid:
-        await target.ensure_info()
-    if not target.streamer_uid:
-        raise HTTPException(400, "未取到目标房间主播 UID")
-    target_real_room_id = target.real_room_id
-    target_streamer_uid = target.streamer_uid
+    if target:
+        if not target.streamer_uid:
+            await target.ensure_info()
+        if target.streamer_uid:
+            return (
+                target.real_room_id, target.streamer_uid,
+                target.room_title or "", target.streamer_name or "",
+            )
+    async with aiohttp.ClientSession(headers=HEADERS) as session:
+        async with session.get(ROOM_INFO_API, params={"room_id": room_id}) as resp:
+            data = await resp.json(content_type=None)
+        if data.get("code") != 0:
+            raise HTTPException(400, f"房间号无效: {data.get('message') or data.get('code')}")
+        info = data.get("data") or {}
+        real_room_id = int(info.get("room_id") or room_id)
+        streamer_uid = int(info.get("uid") or 0)
+        room_title = info.get("title") or ""
+        if not streamer_uid:
+            raise HTTPException(400, "未取到目标房间主播 UID")
+        streamer_name = ""
+        try:
+            async with session.get(MASTER_INFO_API, params={"uid": streamer_uid}) as resp:
+                d = await resp.json(content_type=None)
+                if d.get("code") == 0:
+                    streamer_name = ((d.get("data") or {}).get("info") or {}).get("uname") or ""
+        except Exception:
+            pass
+        return real_room_id, streamer_uid, room_title, streamer_name
 
-    # 候选池：默认机器人池 + 目标房间自己的 bot；不借用其他监控房间的 bot。
-    # 全部要求有 bot cookie + 没在跑别的点赞 + 没在风控冷却。
-    pool = list(manager.all_default_bots().values()) + [target]
-    candidates = [
-        c for c in pool
-        if c.cookies.get("SESSDATA") and c.bot_uid
-        and not c._like_running and not c._is_bot_cooling()
-    ]
-    if not candidates:
-        raise HTTPException(400, "当前没有可用的机器人（全部未绑定/在跑/冷却中）")
 
-    # 当前房间的 bot 优先入选，剩下从其它候选里随机抽
-    if target in candidates:
-        others = [c for c in candidates if c is not target]
-        random.shuffle(others)
-        selected = [target] + others[:_LIKE_MAX_BOTS - 1]
-    else:
-        random.shuffle(candidates)
-        selected = candidates[:_LIKE_MAX_BOTS]
-
-    per_bot = _LIKE_PER_BOT
+async def _run_likes_dispatch(
+    dispatch_room_id: int,
+    target_real_room_id: int,
+    target_streamer_uid: int,
+    selected: list[BiliLiveClient],
+    plan: list[int],
+    *,
+    log_tag: str,
+) -> dict:
+    """启动后台 task，让 selected[i] 给目标房间刷 plan[i] 次点赞。互斥锁
+    用 dispatch_room_id；调用前 caller 已校验过非占用。selected 必须非空，
+    每个 bot 已被 caller 标记 _like_running=True。"""
+    actual_total = sum(plan)
     avg_interval = (BiliLiveClient.LIKE_BATCH_INTERVAL_LO + BiliLiveClient.LIKE_BATCH_INTERVAL_HI) / 2
-    eta_seconds = int((per_bot / BiliLiveClient.LIKE_BATCH_SIZE) * avg_interval)
-    total = per_bot * len(selected)
+    eta_seconds = int((max(plan) / BiliLiveClient.LIKE_BATCH_SIZE) * avg_interval)
 
-    for bot in selected:
-        bot._like_running = True
-    _like_dispatch_running.add(room_id)
+    _like_dispatch_running.add(dispatch_room_id)
     bot_summary = ", ".join(
-        f"{b.bot_uid}({b.bot_name or '?'}@"
-        f"{'default' if b.is_default_bot else f'room{b.real_room_id}'})"
-        for b in selected
+        f"{b.bot_uid}({b.bot_name or '?'}:{n})" for b, n in zip(selected, plan)
     )
     log.info(
-        f"[批量点赞-dispatch] target=room{target_real_room_id}(anchor_uid={target_streamer_uid}) "
-        f"per_bot={per_bot} bots={len(selected)} → [{bot_summary}]"
+        f"[{log_tag}-dispatch] target=room{target_real_room_id}(anchor_uid={target_streamer_uid}) "
+        f"total={actual_total} bots={len(selected)} → [{bot_summary}]"
     )
 
-    async def _run_one(bot: BiliLiveClient):
+    async def _run_one(bot: BiliLiveClient, n: int):
         log.info(
-            f"[批量点赞] bot={bot.bot_uid}({bot.bot_name or '?'}) → target=room{target_real_room_id} 开始 total={per_bot}"
+            f"[{log_tag}] bot={bot.bot_uid}({bot.bot_name or '?'}) → "
+            f"target=room{target_real_room_id} 开始 total={n}"
         )
         try:
             await bot.send_likes(
-                per_bot,
-                target_room_id=target_real_room_id,
+                n, target_room_id=target_real_room_id,
                 target_streamer_uid=target_streamer_uid,
             )
         except Exception as e:
-            log.warning(f"[批量点赞] bot={bot.bot_uid} → room={target_real_room_id} 异常: {e}")
+            log.warning(f"[{log_tag}] bot={bot.bot_uid} → room={target_real_room_id} 异常: {e}")
         finally:
             bot._like_running = False
 
     async def _run_all():
         try:
-            await asyncio.gather(*(_run_one(b) for b in selected), return_exceptions=True)
+            await asyncio.gather(
+                *(_run_one(b, n) for b, n in zip(selected, plan)),
+                return_exceptions=True,
+            )
         finally:
-            _like_dispatch_running.discard(room_id)
-            log.info(f"[批量点赞-dispatch] target=room{target_real_room_id} 全部 bot 跑完，dispatch 释放")
+            _like_dispatch_running.discard(dispatch_room_id)
+            log.info(
+                f"[{log_tag}-dispatch] target=room{target_real_room_id} 全部 bot 跑完，dispatch 释放"
+            )
 
     asyncio.create_task(_run_all())
     return {
-        "ok": True, "room_id": room_id,
-        "scheduled": total, "eta_seconds": eta_seconds,
+        "scheduled": actual_total,
+        "eta_seconds": eta_seconds,
         "bot_count": len(selected),
-        "bots": [{"uid": b.bot_uid, "name": b.bot_name} for b in selected],
+        "bots": [
+            {"uid": b.bot_uid, "name": b.bot_name, "plan": n}
+            for b, n in zip(selected, plan)
+        ],
+    }
+
+
+def _select_like_candidates() -> list[BiliLiveClient]:
+    """默认机器人池里 cookie 完整 + 没在跑别的点赞 + 没在风控冷却。已 shuffle。"""
+    candidates = [
+        b for b in manager.all_default_bots().values()
+        if b.cookies.get("SESSDATA") and b.bot_uid
+        and not b._like_running and not b._is_bot_cooling()
+    ]
+    random.shuffle(candidates)
+    return candidates
+
+
+@router.post("/api/admin/popularity/likes", dependencies=staff_dep)
+async def popularity_likes(request: Request):
+    """对任意 B 站直播间号刷 N 次点赞。N 平均分给 ≤ _LIKE_MAX_BOTS 个 bot，
+    每 bot ≤ LIKE_MAX_TOTAL；房间不必在 manager 里。"""
+    body = await request.json()
+    try:
+        room_id = int(body.get("room_id", 0))
+        count = int(body.get("count", 0))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "room_id / count 必须是整数")
+    max_total = _LIKE_MAX_BOTS * BiliLiveClient.LIKE_MAX_TOTAL
+    if count <= 0 or count > max_total:
+        raise HTTPException(400, f"点赞数必须在 1..{max_total}")
+    if room_id in _like_dispatch_running:
+        raise HTTPException(409, "该房间正在点赞中，请等当前批次跑完")
+
+    real_room_id, streamer_uid, room_title, streamer_name = await _resolve_room_info(room_id)
+
+    candidates = _select_like_candidates()
+    if not candidates:
+        raise HTTPException(400, "当前没有可用的默认机器人（全部在跑/冷却中）")
+    n_bots = min(_LIKE_MAX_BOTS, len(candidates))
+    selected = candidates[:n_bots]
+    base, rem = divmod(count, n_bots)
+    plan = [
+        min(BiliLiveClient.LIKE_MAX_TOTAL, base + (1 if i < rem else 0))
+        for i in range(n_bots)
+    ]
+
+    for bot in selected:
+        bot._like_running = True
+    result = await _run_likes_dispatch(
+        room_id, real_room_id, streamer_uid, selected, plan, log_tag="人气-点赞",
+    )
+    return {
+        "ok": True, "room_id": room_id, "real_room_id": real_room_id,
+        "room_title": room_title, "streamer_name": streamer_name, **result,
     }
 
 
@@ -495,26 +561,18 @@ _POPULARITY_BOT_GAP_LO = 2.0
 _POPULARITY_BOT_GAP_HI = 4.0
 
 
-@router.post("/api/admin/rooms/{room_id}/popularity-vote", dependencies=admin_dep)
-async def send_popularity_vote(room_id: int, request: Request):
-    """从默认机器人池给目标房间送 N 张人气票。串行：剩余额度大的 bot 先送，
-    每个 bot 这小时内对该房间最多 200 张，遇到电池不够 / B 站拒绝就跳到下个 bot。
-    全部失败才报错；部分成功也算 ok=True，前端按 sent/requested 展示。"""
-    body = await request.json()
-    try:
-        count = int(body.get("count", 0))
-    except (TypeError, ValueError):
-        raise HTTPException(400, "数量必须是整数")
+async def _run_popularity_vote(
+    accounting_room_id: int,
+    target_real_room: int,
+    target_streamer_uid: int,
+    count: int,
+) -> dict:
+    """串行从默认池给目标房间送 N 张人气票。剩余额度大的 bot 先送，
+    每 bot 这小时对该房间最多 _POPULARITY_PER_BOT_HOURLY 张；命中风控/电池不够
+    跳下个；全失败 raise 4xx，部分成功 ok=True。
+    accounting_room_id 用于本进程内的 hourly 计帐桶（display ID 即可）。"""
     if count < 100 or count % 100 != 0:
         raise HTTPException(400, "数量必须是 100 的整数倍（最小 100）")
-
-    target = manager.get(room_id)
-    if not target:
-        raise HTTPException(404, "房间不存在")
-    if not target.streamer_uid:
-        await target.ensure_info()
-    if not target.streamer_uid:
-        raise HTTPException(400, "未取到目标房间主播 UID")
 
     gift_id = _POPULARITY_GIFT_ID
     gift_price = _POPULARITY_GIFT_PRICE
@@ -527,7 +585,7 @@ async def send_popularity_vote(room_id: int, request: Request):
 
     candidates: list[tuple[BiliLiveClient, int, int]] = []  # (bot, cap, gold)
     for bot in bots:
-        rem = _popularity_bot_remaining(room_id, bot.bot_uid)
+        rem = _popularity_bot_remaining(accounting_room_id, bot.bot_uid)
         if rem <= 0:
             continue
         wallet = await bot.fetch_wallet_status()
@@ -539,9 +597,7 @@ async def send_popularity_vote(room_id: int, request: Request):
         candidates.append((bot, cap, gold))
 
     if not candidates:
-        raise HTTPException(
-            400, "所有默认机器人本小时额度耗尽或电池不够",
-        )
+        raise HTTPException(400, "所有默认机器人本小时额度耗尽或电池不够")
 
     total_capacity = sum(c[1] for c in candidates)
     if count > total_capacity:
@@ -553,8 +609,6 @@ async def send_popularity_vote(room_id: int, request: Request):
 
     # 串行：剩余额度多的 bot 先送，省得反复换
     candidates.sort(key=lambda x: x[1], reverse=True)
-    target_real_room = target.real_room_id
-    target_streamer_uid = target.streamer_uid
     log.info(
         f"[人气票] room={target_real_room} 请求={count} gift_id={gift_id} "
         f"price={gift_price} 候选 bot={len(candidates)} 串行送"
@@ -578,7 +632,7 @@ async def send_popularity_vote(room_id: int, request: Request):
         )
         sent = int(result.get("sent", 0))
         if sent > 0:
-            _popularity_record(room_id, bot.bot_uid, sent)
+            _popularity_record(accounting_room_id, bot.bot_uid, sent)
             _wallet_cache.pop(bot.bot_uid, None)
             sent_total += sent
             used_bots.append({"uid": bot.bot_uid, "name": bot.bot_name, "sent": sent})
@@ -614,7 +668,6 @@ async def send_popularity_vote(room_id: int, request: Request):
 
     return {
         "ok": True,
-        "room_id": room_id,
         "requested": count,
         "sent": sent_total,
         "aborted_by_cooling": aborted_by_cooling,
@@ -623,8 +676,40 @@ async def send_popularity_vote(room_id: int, request: Request):
         "bots": used_bots,
         "failures": failures,
         "total_remaining_this_hour": sum(
-            _popularity_bot_remaining(room_id, b.bot_uid) for b in bots
+            _popularity_bot_remaining(accounting_room_id, b.bot_uid) for b in bots
         ),
+    }
+
+
+@router.post("/api/admin/rooms/{room_id}/popularity-vote", dependencies=admin_dep)
+async def send_popularity_vote(room_id: int, request: Request):
+    """房间卡片上的「人气票」按钮：托管房间走这条。"""
+    body = await request.json()
+    try:
+        count = int(body.get("count", 0))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "数量必须是整数")
+    if not manager.get(room_id):
+        raise HTTPException(404, "房间不存在")
+    real_room_id, streamer_uid, _, _ = await _resolve_room_info(room_id)
+    result = await _run_popularity_vote(room_id, real_room_id, streamer_uid, count)
+    return {"room_id": room_id, **result}
+
+
+@router.post("/api/admin/popularity/vote", dependencies=staff_dep)
+async def popularity_vote(request: Request):
+    """对任意 B 站直播间号送 N 张人气票。房间不必在 manager 里。"""
+    body = await request.json()
+    try:
+        room_id = int(body.get("room_id", 0))
+        count = int(body.get("count", 0))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "room_id / count 必须是整数")
+    real_room_id, streamer_uid, room_title, streamer_name = await _resolve_room_info(room_id)
+    result = await _run_popularity_vote(room_id, real_room_id, streamer_uid, count)
+    return {
+        "room_id": room_id, "real_room_id": real_room_id,
+        "room_title": room_title, "streamer_name": streamer_name, **result,
     }
 
 
