@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
+import { OverlayFatalBanner } from '../components/OverlayFatalBanner'
 
 interface WeeklyTasksData {
   count: number
@@ -33,6 +34,9 @@ export function OverlayWeeklyTasksPage() {
     cycleEndTime: 0,
   })
   const [error, setError] = useState<string>('')
+  // 致命错误（403 token 失效 / 410 房间到期 / 缺 token）：渲染 banner + 停轮询。
+  // 跟另两个 overlay 页同款 OverlayFatalBanner 组件，文案/样式统一。
+  const [fatal, setFatal] = useState<{ title: string; hint: string } | null>(null)
   // 房间未开启监听时藏掉整张卡，但保持 poll —— 用户重启监听后下一轮就能恢复。
   const [inactive, setInactive] = useState<boolean>(false)
 
@@ -50,14 +54,28 @@ export function OverlayWeeklyTasksPage() {
 
   useEffect(() => {
     if (!roomId) return
-    if (!token) { setError('缺少 token'); return }
+    if (!token) {
+      setFatal({ title: '缺少 overlay token', hint: '请检查 OBS 浏览器源 URL 是否完整' })
+      return
+    }
     let cancelled = false
     let iv = 0
     async function poll() {
       try {
         const r = await fetch(`/api/overlay/weekly-tasks/${roomId}?token=${encodeURIComponent(token)}`)
+        if (r.status === 403) {
+          // token 失效（多半是房主 rotate 过 overlay token，OBS 还在用旧的）。
+          // 停 poll，banner 提示主播去面板复制最新 URL。
+          setFatal({
+            title: 'Overlay token 已失效',
+            hint: '请到管理面板重新复制 URL，更新 OBS 浏览器源后刷新页面',
+          })
+          cancelled = true
+          clearInterval(iv)
+          return
+        }
         if (r.status === 410) {
-          setError('房间已到期')
+          setFatal({ title: '房间已到期', hint: '续费后刷新页面即可恢复' })
           cancelled = true
           clearInterval(iv)
           return
@@ -142,7 +160,8 @@ export function OverlayWeeklyTasksPage() {
         <WeeklyTaskCard count={data.count} milestones={data.milestones} />
       )}
 
-      {error && (
+      {fatal && <OverlayFatalBanner title={fatal.title} hint={fatal.hint} />}
+      {!fatal && error && (
         <div style={{ position: 'fixed', bottom: 4, right: 4, fontSize: 10, color: '#ef5350', opacity: 0.6 }}>
           {error}
         </div>
