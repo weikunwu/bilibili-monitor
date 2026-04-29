@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { PRESET_COMPONENT } from '../lib/effectPresets'
+import { OverlayFatalBanner } from '../components/OverlayFatalBanner'
 
 /** 进场&礼物特效 OBS 叠加页：轮询队列接口，拉到事件按顺序播一段视频。
  * 同一时间只播一个；播放中进来的新事件排队等前一个播完。
@@ -44,6 +45,9 @@ export function OverlayEffectsPage() {
   // sound_on 从后端 queue 响应拿，主播在面板里切换后下一次 poll 就生效。
   const [soundOn, setSoundOn] = useState(false)
   const [current, setCurrent] = useState<QueuedEvent | null>(null)
+  // 致命错误（403 token 失效 / 410 房间到期）：渲染 banner + 停轮询。
+  // 跟 OverlayGiftsPage 用同一个 OverlayFatalBanner 组件，保持文案/样式一致。
+  const [fatal, setFatal] = useState<{ title: string; hint: string } | null>(null)
   const queueRef = useRef<QueuedEvent[]>([])
   const pollRef = useRef<number>(0)
   const currentRef = useRef<QueuedEvent | null>(null)
@@ -86,12 +90,21 @@ export function OverlayEffectsPage() {
         if (r.status === 410) {
           // 房间到期，停轮询；URL 留着，续费后用户刷一下页面就能恢复
           console.warn(`[overlay] room=${roomId} 410 房间已到期，停止轮询`)
+          setFatal({ title: '房间已到期', hint: '续费后刷新页面即可恢复' })
           cancelled = true
           clearInterval(pollRef.current)
           return
         }
         if (r.status === 403) {
-          console.error(`[overlay] room=${roomId} 403 token 无效；检查 URL 上的 token 是否还有效`)
+          // token 失效（多半是房主 rotate 过 overlay token，OBS 还在用旧的）。
+          // 停 poll，banner 提示主播去面板复制最新 URL。
+          console.error(`[overlay] room=${roomId} 403 token 无效`)
+          setFatal({
+            title: 'Overlay token 已失效',
+            hint: '请到管理面板重新复制 URL，更新 OBS 浏览器源后刷新页面',
+          })
+          cancelled = true
+          clearInterval(pollRef.current)
           return
         }
         if (!r.ok) {
@@ -146,7 +159,13 @@ export function OverlayEffectsPage() {
     }
   }, [roomId, token])
 
-  if (!token) return <div style={{ color: '#f55', padding: 20 }}>缺少 token</div>
+  if (!token) {
+    return <OverlayFatalBanner title="缺少 overlay token" hint="请检查 OBS 浏览器源 URL 是否完整" />
+  }
+  // 致命错挂着但当前没视频在播：banner 单独显示
+  if (fatal && !current) {
+    return <OverlayFatalBanner title={fatal.title} hint={fatal.hint} />
+  }
   if (!current) return null
 
   const onDone = () => (window as unknown as { __entry_effect_done: () => void }).__entry_effect_done()
@@ -158,6 +177,7 @@ export function OverlayEffectsPage() {
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       pointerEvents: 'none',
     }}>
+      {fatal && <OverlayFatalBanner title={fatal.title} hint={fatal.hint} />}
       {current.kind === 'gift_vap' && current.mp4_url && current.json_url ? (
         <VapPlayer
           key={key}

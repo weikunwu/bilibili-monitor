@@ -3,6 +3,7 @@ import { useParams, useSearchParams } from 'react-router-dom'
 import type { GiftUser, LiveEvent } from '../types'
 import { generateGiftCard } from '../lib/giftCard'
 import { generateSuperChatCard } from '../lib/superchatCard'
+import { OverlayFatalBanner } from '../components/OverlayFatalBanner'
 
 type GiftOverlayItem = GiftUser & { event_id: number; type: 'gift' | 'guard' }
 type SuperChatOverlayItem = {
@@ -22,6 +23,10 @@ export function OverlayGiftsPage() {
   const token = searchParams.get('token') || ''
   const [users, setUsers] = useState<OverlayItem[]>([])
   const [error, setError] = useState<string>('')
+  // 致命错误（403 token 失效 / 410 房间到期）：渲染中央显眼提示 + 停轮询；
+  // 跟普通 error 区分，因为后者会被下一次成功 poll 清掉，致命错应该一直挂着
+  // 直到主播刷新页面。
+  const [fatal, setFatal] = useState<{ title: string; hint: string } | null>(null)
   // 主播在面板里调的循环滚动开关 + 速度百分比 0–100。poll 时带回，
   // 后端没返回就用默认（开启 + 40%）兜底。
   const [scrollEnabled, setScrollEnabled] = useState<boolean>(true)
@@ -42,15 +47,28 @@ export function OverlayGiftsPage() {
 
   useEffect(() => {
     if (!roomId) return
-    if (!token) { setError('缺少 token'); return }
+    if (!token) {
+      setFatal({ title: '缺少 overlay token', hint: '请检查 OBS 浏览器源 URL 是否完整' })
+      return
+    }
     let cancelled = false
     let iv = 0
     async function poll() {
       try {
         const r = await fetch(`/api/overlay/gifts/${roomId}?token=${encodeURIComponent(token)}`)
+        if (r.status === 403) {
+          // token 失效（多半是房主在面板里 rotate 过 overlay token，OBS 还在用旧的）。
+          // 继续 poll 没意义——同 token 再多打几次还是 403，徒增 server 端噪声。
+          setFatal({
+            title: 'Overlay token 已失效',
+            hint: '请到管理面板重新复制 URL，更新 OBS 浏览器源后刷新页面',
+          })
+          cancelled = true
+          clearInterval(iv)
+          return
+        }
         if (r.status === 410) {
-          // 房间到期，停轮询
-          setError('房间已到期')
+          setFatal({ title: '房间已到期', hint: '续费后刷新页面即可恢复' })
           cancelled = true
           clearInterval(iv)
           return
@@ -163,7 +181,8 @@ export function OverlayGiftsPage() {
           )
         ))}
       </div>
-      {error && (
+      {fatal && <OverlayFatalBanner title={fatal.title} hint={fatal.hint} />}
+      {!fatal && error && (
         <div style={{ position: 'fixed', bottom: 4, right: 4, fontSize: 10, color: '#ef5350', opacity: 0.6 }}>
           {error}
         </div>
@@ -171,6 +190,7 @@ export function OverlayGiftsPage() {
     </div>
   )
 }
+
 
 function GiftCardCanvas({
   user, first,
