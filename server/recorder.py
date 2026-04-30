@@ -659,7 +659,7 @@ def list_active_status() -> list[dict]:
             "last_data_age_sec": round(now - s._last_data_ts, 1) if s._last_data_ts else None,
             "empty_playlist": s._empty_playlist,
         })
-    out.sort(key=lambda r: (r["format"] != "fmp4", r["room_id"]))  # ts/未 resolve 排在前
+    out.sort(key=lambda r: (r["format"] != "fmp4", r["room_id"]))  # fmp4 排前，ts/未 resolve 垫后
     return out
 
 
