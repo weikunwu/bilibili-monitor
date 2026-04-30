@@ -1,8 +1,9 @@
 @import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@700;800&display=swap');
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f0f1a; color: #e0e0e0; height: 100vh; overflow: hidden; font-size: 15px; }
-#root { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+html { height: 100%; overflow: hidden; overscroll-behavior: none; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f0f1a; color: #e0e0e0; height: 100dvh; overflow: hidden; font-size: 15px; }
+#root { display: flex; flex-direction: column; height: 100dvh; overflow: hidden; }
 .page-scroll { display: flex; flex-direction: column; flex: 1; overflow-y: auto; }
 
 .header { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); padding: 16px 24px; display: flex; align-items: center; gap: 16px; border-bottom: 1px solid #2a2a4a; position: sticky; top: 0; z-index: 100; }
@@ -437,6 +438,16 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 
   .gift-table-wrap { padding: 0 8px 8px; }
   .gift-table-footer { flex-wrap: wrap; gap: 8px; padding: 8px; font-size: 13px; }
+  /* 手机端：把 rsuite Pagination 内部的 limit / 分隔条 / pager 摊平到 footer 这一层，
+     让 "共 N 条" 与 "X 条/页" 同行，pager 单独一行居中。 */
+  .gift-table-footer .rs-pagination-group { display: contents; }
+  .gift-table-footer .rs-pagination-group .rs-divider[data-orientation="vertical"] { display: none; }
+  .gift-table-footer .rs-pagination {
+    flex-basis: 100%;
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
 
   .events-container { padding: 4px 8px; }
   .event { padding: 6px 8px; gap: 6px; font-size: 14px; flex-wrap: wrap; }

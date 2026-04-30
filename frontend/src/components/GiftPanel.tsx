@@ -310,7 +310,7 @@ export function GiftPanel({
               next
               ellipsis
               boundaryLinks
-              maxButtons={1}
+              maxButtons={5}
               total={filtered.length}
               limit={pageSize}
               activePage={page}
@@ -437,7 +437,7 @@ export function GiftPanel({
               next
               ellipsis
               boundaryLinks
-              maxButtons={isMobile ? 1 : 5}
+              maxButtons={5}
               total={filtered.length}
               limit={pageSize}
               activePage={page}
