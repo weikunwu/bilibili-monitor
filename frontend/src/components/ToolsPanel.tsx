@@ -1058,6 +1058,22 @@ export function ToolsPanel({ roomId, category }: Props) {
                 />
               </div>
             )}
+            {cmd.id === 'blind_box_query' && (
+              <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Toggle
+                  size="sm"
+                  checked={cmd.config?.detailed !== false}
+                  onChange={async (next) => {
+                    setCommands((prev) => prev.map((c) => (
+                      c.id === cmd.id ? { ...c, config: { ...c.config, detailed: next } } : c
+                    )))
+                    if (!roomId) return
+                    try { await saveCommandConfig(roomId, cmd.id, { detailed: next }) } catch { /* ignore */ }
+                  }}
+                />
+                <span className="cmd-desc" style={{ margin: 0 }}>分别播报每种盲盒（关闭后只播报总数一条）</span>
+              </div>
+            )}
           </div>
         </div>
         )

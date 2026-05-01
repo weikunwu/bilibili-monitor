@@ -1657,10 +1657,12 @@ class BiliLiveClient:
                                                 is_command = True
                                                 if self.bot_uid:
                                                     is_streamer = (uid == self.streamer_uid)
+                                                    detailed = bool((blind_cmd.get("config") or {}).get("detailed", True))
                                                     asyncio.create_task(self.handle_blind_box_query(
                                                         None if is_streamer else uname,
                                                         period,
                                                         user_id=None if is_streamer else uid,
+                                                        detailed=detailed,
                                                     ))
 
                                         # 盲盒爆出查询："本月<礼物名>"/"今月<礼物名>"
@@ -2250,8 +2252,11 @@ class BiliLiveClient:
         delete_nickname(self.real_room_id, user_id)
         await self.send_danmu(f"{user_name}，已清除昵称")
 
-    async def handle_blind_box_query(self, user_name, period: str = "today", user_id: int = 0):
-        """Query blind box stats and reply via danmu. user_id falsy = all users (streamer)."""
+    async def handle_blind_box_query(self, user_name, period: str = "today", user_id: int = 0, detailed: bool = True):
+        """Query blind box stats and reply via danmu. user_id falsy = all users (streamer).
+
+        detailed=False → 仅播报总数一条；True → 总数后再逐种盲盒分别播报。
+        """
         utc_start, utc_end, range_label = beijing_time_range(period)
         conn = sqlite3.connect(str(DB_PATH))
         sql = (
@@ -2304,6 +2309,8 @@ class BiliLiveClient:
         msg = f"{prefix}{period_label}盲盒共{total_boxes}个，{fmt_profit(profit)}"
         await self.send_danmu(msg)
 
+        if not detailed:
+            return
         for name, b in boxes.items():
             await asyncio.sleep(2)
             await self.send_danmu(f"{name}{b['count']}个，{fmt_profit(b['value'] - b['cost'])}")
