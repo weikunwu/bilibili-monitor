@@ -1461,7 +1461,12 @@ class BiliLiveClient:
         log.info(f"连接弹幕服务器: {ws_url}")
 
         async with aiohttp.ClientSession(headers=self._make_cookie_header()) as session:
-            async with session.ws_connect(ws_url) as ws:
+            # ws_close 默认 10s：aiohttp 按 RFC 6455 在主动 close 后等服务端回 close
+            # frame，但 B 站弹幕服务器实测从不回。stop() 里 await ws.close() 每次都
+            # 死等满 10s 才强关，admin /stop 端点因此卡 10+ 秒。缩到 2s 即可——
+            # 正常 close handshake RTT < 1s，2s 留足余量；不回应的 peer 提前强断。
+            ws_timeout = aiohttp.ClientWSTimeout(ws_receive=None, ws_close=2.0)
+            async with session.ws_connect(ws_url, timeout=ws_timeout) as ws:
                 self._ws = ws
                 auth_body = json.dumps({
                     "uid": self.bot_uid, "roomid": self.real_room_id,
