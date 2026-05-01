@@ -3,24 +3,15 @@ import { CheckPicker, DateRangePicker, Tag, Divider, Whisper, Tooltip } from 'rs
 import type { DateRange } from 'rsuite/DateRangePicker'
 import { fetchBlindBoxSummary, type BlindBoxUser } from '../api/client'
 import { formatBattery, fmtUTC } from '../lib/formatters'
-
-function dayStart(d: Date) { return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0) }
-function dayEnd(d: Date) { return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59) }
-
-const BLIND_RANGES = [
-  { label: '今日', value: (): DateRange => { const n = new Date(); return [dayStart(n), dayEnd(n)] } },
-  { label: '昨日', value: (): DateRange => { const n = new Date(); const y = new Date(n.getFullYear(), n.getMonth(), n.getDate() - 1); return [dayStart(y), dayEnd(y)] } },
-  { label: '今月', value: (): DateRange => { const n = new Date(); return [dayStart(new Date(n.getFullYear(), n.getMonth(), 1)), dayEnd(n)] } },
-  { label: '上月', value: (): DateRange => { const n = new Date(); const first = new Date(n.getFullYear(), n.getMonth() - 1, 1); const last = new Date(n.getFullYear(), n.getMonth(), 0); return [dayStart(first), dayEnd(last)] } },
-]
+import { PREDEFINED_RANGES } from '../lib/dateRanges'
 
 interface Props {
   roomId: number
 }
 
 export function BlindBoxPanel({ roomId }: Props) {
-  // 默认"今月"（BLIND_RANGES 里 index 2）：和事件查询保持一致。
-  const [dateRange, setDateRange] = useState<DateRange | null>(() => BLIND_RANGES[2].value())
+  // 默认"本月"（PREDEFINED_RANGES 里 index 4）：和事件查询保持一致。
+  const [dateRange, setDateRange] = useState<DateRange | null>(() => PREDEFINED_RANGES[4].value())
   const [selectedUsers, setSelectedUsers] = useState<string[]>([])
   const [selectedBoxes, setSelectedBoxes] = useState<string[]>([])
   const [allUsers, setAllUsers] = useState<BlindBoxUser[]>([])
@@ -107,7 +98,7 @@ export function BlindBoxPanel({ roomId }: Props) {
           placeholder="选择时间范围"
           size="sm"
           appearance="subtle"
-          ranges={BLIND_RANGES}
+          ranges={PREDEFINED_RANGES}
           value={dateRange}
           loading={loading}
           placement="bottomEnd"
