@@ -73,7 +73,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
    toggle 撑过 200px 盖到下一个 picker。在 event-filter 里强制 toggle
    填满父容器，让外层 width 真正决定可视宽度（配合上面的 min-width:0
    让选中项 ellipsis）。 */
-.event-filter .rs-picker-toggle { width: 100%; }
+.event-filter .rs-picker-toggle, .room-list-filter .rs-picker-toggle { width: 100%; }
 
 /* rsuite Picker 下拉面板默认 z-index 较低，容易被 sticky header / Table
    等后续 DOM 覆盖。拔到 sticky header 之上。 */
@@ -337,6 +337,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 .rc-room-id { font-size: 13px; color: #666; }
 .rc-badge { font-size: 11px; padding: 2px 8px; border-radius: 4px; font-weight: 500; display: inline-flex; align-items: center; gap: 3px; }
 .rc-badge-live { background: #1a3a1a; color: #4caf50; border: 1px solid #2a5a2a; }
+.rc-badge-rebroadcast { background: #1a2a3a; color: #4dd0e1; border: 1px solid #2a3a4a; }
 
 .rc-body { display: flex; gap: 24px; margin-bottom: 16px; }
 .rc-streamer { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; }
