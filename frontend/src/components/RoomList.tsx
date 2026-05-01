@@ -293,8 +293,38 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
   const [unbinding, setUnbinding] = useState(false)
 
   // 直播状态单选（null = 不筛选）；主播多选（空数组 = 不筛选）。
-  const [statusFilter, setStatusFilter] = useState<number | null>(null)
-  const [streamerFilter, setStreamerFilter] = useState<number[]>([])
+  // 缓存到 sessionStorage：从房间页返回时保留筛选；关标签页清空。
+  const [statusFilter, setStatusFilter] = useState<number | null>(() => {
+    const v = sessionStorage.getItem('roomList.statusFilter')
+    return v === null || v === '' ? null : Number(v)
+  })
+  const [streamerFilter, setStreamerFilter] = useState<number[]>(() => {
+    const v = sessionStorage.getItem('roomList.streamerFilter')
+    if (!v) return []
+    try { return (JSON.parse(v) as number[]).filter((n) => typeof n === 'number') } catch { return [] }
+  })
+  useEffect(() => {
+    if (statusFilter === null) sessionStorage.removeItem('roomList.statusFilter')
+    else sessionStorage.setItem('roomList.statusFilter', String(statusFilter))
+  }, [statusFilter])
+  useEffect(() => {
+    if (streamerFilter.length === 0) sessionStorage.removeItem('roomList.streamerFilter')
+    else sessionStorage.setItem('roomList.streamerFilter', JSON.stringify(streamerFilter))
+  }, [streamerFilter])
+
+  // 滚动位置缓存：实际的 scroll 容器是 .room-list 自己（CSS 上有 overflow-y），
+  // 不是父级 .page-scroll；ref 必须挂在这里 onScroll 才会触发。
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const restoredRef = useRef(false)
+  useEffect(() => {
+    if (restoredRef.current) return
+    if (rooms.length === 0) return
+    const saved = sessionStorage.getItem('roomList.scrollTop')
+    if (saved && scrollRef.current) {
+      scrollRef.current.scrollTop = parseInt(saved, 10) || 0
+    }
+    restoredRef.current = true
+  }, [rooms.length])
   const streamerOptions = (() => {
     const seen = new Set<number>()
     const opts: { label: string; value: number }[] = []
@@ -340,7 +370,11 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
   }
 
   return (
-    <div className="room-list">
+    <div
+      className="room-list"
+      ref={scrollRef}
+      onScroll={(e) => sessionStorage.setItem('roomList.scrollTop', String((e.currentTarget as HTMLDivElement).scrollTop))}
+    >
       <div className="room-list-header">
         <h2>房间列表</h2>
         <div className="room-list-filter">
