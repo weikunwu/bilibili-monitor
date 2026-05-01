@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Input, InputGroup, Button, SelectPicker, Modal, Checkbox, Stack, Divider, Message } from 'rsuite'
+import { Input, InputGroup, Button, SelectPicker, Modal, Checkbox, Stack, Divider, Message, useToaster } from 'rsuite'
 import type { Room } from '../types'
 import {
   fetchUsers, createUser, deleteUser, assignUserRooms, updateUserRole, addRoom, removeRoom,
@@ -44,6 +44,7 @@ export function AdminPanel({ rooms, onRoomsChanged, role: currentRole }: Props) 
   const [tokenGenError, setTokenGenError] = useState('')
   const [allTokens, setAllTokens] = useState<RenewalToken[]>([])
   const [showUsedTokens, setShowUsedTokens] = useState(false)
+  const toaster = useToaster()
 
   const [defaultBots, setDefaultBots] = useState<DefaultBot[]>([])
   const [defaultBotsLoading, setDefaultBotsLoading] = useState(false)
@@ -318,7 +319,18 @@ export function AdminPanel({ rooms, onRoomsChanged, role: currentRole }: Props) 
   }
 
   async function copyToken(t: string) {
-    try { await navigator.clipboard.writeText(t) } catch { /* ignore */ }
+    try {
+      await navigator.clipboard.writeText(t)
+      toaster.push(
+        <Message type="success" showIcon closable>已复制续费码</Message>,
+        { placement: 'topCenter', duration: 2000 },
+      )
+    } catch (err) {
+      toaster.push(
+        <Message type="error" showIcon closable>复制失败：{(err as Error).message || String(err)}</Message>,
+        { placement: 'topCenter', duration: 3000 },
+      )
+    }
   }
 
   const unusedTokens = allTokens.filter((t) => !t.used_at)
