@@ -55,7 +55,7 @@ async def bot_logout(room_id: int = Query(...), _=Depends(require_room_access)):
         client.cookies = {}
         client.bot_uid = 0
     if manager.has(room_id):
-        manager.stop_room(room_id)
+        await manager.stop_room(room_id)
     return {"ok": True}
 
 

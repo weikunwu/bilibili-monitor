@@ -423,7 +423,7 @@ async def _periodic_expiration_check():
             now_utc = now.strftime("%Y-%m-%d %H:%M:%S")
             for rid in get_expired_active_rooms(now_utc):
                 log.info(f"房间 {rid} 到期，自动停止监听")
-                manager.stop_room(rid)
+                await manager.stop_room(rid)
             for rid, exp_str, sent in get_expired_rooms_for_reminder(now_utc):
                 try:
                     exp_dt = datetime.strptime(exp_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)

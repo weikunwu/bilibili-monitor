@@ -266,7 +266,7 @@ async def remove_room(room_id: int):
     if room_id not in existing:
         raise HTTPException(404, "房间不存在")
     if manager.has(room_id):
-        manager.remove_room(room_id)
+        await manager.remove_room(room_id)
     db_remove_room(room_id)
     return {"ok": True, "room_id": room_id}
 

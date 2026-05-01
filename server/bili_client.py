@@ -144,6 +144,10 @@ class BiliLiveClient:
         self.buvid3 = ""
         self.buvid4 = ""
         self._running = False
+        # 持 run() 的 task 句柄。manager.start_room 用 _task.done() 配合
+        # _running flag 双重检查，避免老 _running 还没翻 False 时新 start
+        # 再 spawn 一条 task 出来。
+        self._task: Optional[asyncio.Task] = None
         self._ws = None
         self._reconnect = False
         self._info_fetched = False
@@ -1347,6 +1351,9 @@ class BiliLiveClient:
         self._needs_relogin = False
 
     async def run(self):
+        # _running 由 manager.start_room 同步置位（堵 start race），这里
+        # 再写一次纯属冗余但无害；finally 必须翻回 False，否则 _run_loop
+        # 异常退出后房间会"僵在 running"，再点 start 因 flag 还 True 直接 bail。
         self._running = True
         flush_task = asyncio.create_task(self._flush_pending_guards())
         sched_task = asyncio.create_task(self._run_scheduled_danmu())
@@ -1354,6 +1361,8 @@ class BiliLiveClient:
         try:
             await self._run_loop()
         finally:
+            self._running = False
+            self._task = None
             flush_task.cancel()
             sched_task.cancel()
             lurker_task.cancel()
@@ -2342,19 +2351,27 @@ class BiliLiveClient:
         else:
             await self.send_danmu(f"{prefix}{scope}共{verb} {gift_name} {total} 个")
 
-    def stop(self):
+    async def stop(self):
         self._running = False
         # 仅翻 flag 不够：_connect_and_listen 的 `async for raw_msg in ws` 不看 _running，
         # WS 不关就会继续收包 → 每条包 handler 都可能 create_task(send_danmu)（欢迎/感谢/AI回复/昵称指令…），
         # 并且 run() 的 finally 也跑不到，定时弹幕/挂粉扫描也不会被 cancel。
         # 参考 request_reconnect() 的做法，直接关 WS 让整条链路解绑。
+        # 必须 await 关 WS + await 老 task 退出，调用方紧接着 start_room 才不会
+        # 撞上"老 task 还在收包，新 task 又开了 WS"的 stop+start race。
         ws = self._ws
         if ws is not None and not ws.closed:
             try:
-                asyncio.create_task(ws.close())
-            except RuntimeError:
-                # 调用侧不在事件循环里（理论不会发生，保险起见兜一下）
+                await ws.close()
+            except Exception:
                 pass
+        task = self._task
+        if task is not None and not task.done():
+            try:
+                await task
+            except Exception:
+                pass
+        self._task = None
         # 盲盒/礼物感谢 debounce flush：任务正在 sleep 等去重窗口结束，
         # 停止监听后也会到点照发，这里一并 cancel + 清桶。
         for buf in list(self._blind_bursts.values()):
@@ -2372,6 +2389,6 @@ class BiliLiveClient:
         # 会留下孤儿 recorder，每 30s 空拉 playurl 刷日志直到进程重启。
         if recorder.get_session(self.real_room_id) is not None:
             try:
-                asyncio.create_task(recorder.stop_for(self.real_room_id))
-            except RuntimeError:
+                await recorder.stop_for(self.real_room_id)
+            except Exception:
                 pass
