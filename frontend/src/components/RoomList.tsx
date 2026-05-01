@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { MdCircle, MdConfirmationNumber, MdLogout } from 'react-icons/md'
 import { SiAlipay } from 'react-icons/si'
-import { Button, ButtonToolbar, IconButton, Input, Modal, Stack, Tag, useToaster, Message } from 'rsuite'
+import { Button, ButtonToolbar, CheckPicker, IconButton, Input, Modal, SelectPicker, Stack, Tag, useToaster, Message } from 'rsuite'
 import PlayOutlineIcon from '@rsuite/icons/PlayOutline'
 import CloseOutlineIcon from '@rsuite/icons/CloseOutline'
 import ChangeListIcon from '@rsuite/icons/ChangeList'
@@ -99,6 +99,13 @@ function StreamerBlock({ room, fresh }: { room: Room; fresh: StreamerInfo | null
 
 // 爱发电账号实名/签约流程走完前先隐藏入口，改一行就能开。
 const AFDIAN_ENABLED = false
+
+// B 站 live_status：0=未开播 1=直播中 2=轮播中
+const LIVE_STATUS_OPTIONS = [
+  { label: '直播中', value: 1 },
+  { label: '未开播', value: 0 },
+  { label: '轮播中', value: 2 },
+]
 
 export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdmin }: Props) {
   const toaster = useToaster()
@@ -285,6 +292,27 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
   const [unbindTarget, setUnbindTarget] = useState<Room | null>(null)
   const [unbinding, setUnbinding] = useState(false)
 
+  // 直播状态单选（null = 不筛选）；主播多选（空数组 = 不筛选）。
+  const [statusFilter, setStatusFilter] = useState<number | null>(null)
+  const [streamerFilter, setStreamerFilter] = useState<number[]>([])
+  const streamerOptions = (() => {
+    const seen = new Set<number>()
+    const opts: { label: string; value: number }[] = []
+    for (const r of rooms) {
+      if (!r.streamer_uid || seen.has(r.streamer_uid)) continue
+      seen.add(r.streamer_uid)
+      const fresh = streamerInfo.get(r.room_id)
+      const name = fresh?.streamer_name || r.streamer_name || `UID ${r.streamer_uid}`
+      opts.push({ label: name, value: r.streamer_uid })
+    }
+    return opts
+  })()
+  const filteredRooms = rooms.filter((r) => {
+    if (statusFilter !== null && r.live_status !== statusFilter) return false
+    if (streamerFilter.length > 0 && !streamerFilter.includes(r.streamer_uid)) return false
+    return true
+  })
+
   const handleUnbindRoom = async () => {
     if (!unbindTarget) return
     setUnbinding(true)
@@ -313,11 +341,34 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
 
   return (
     <div className="room-list">
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, width: '100%', maxWidth: 800 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12, width: '100%', maxWidth: 800 }}>
         <h2 style={{ margin: 0 }}>房间列表</h2>
-        <Button appearance="primary" size="sm" onClick={openBind}>
-          绑定房间
-        </Button>
+        <div className="room-list-filter" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <SelectPicker
+            data={LIVE_STATUS_OPTIONS}
+            value={statusFilter}
+            onChange={setStatusFilter}
+            placeholder="直播状态"
+            size="sm"
+            searchable={false}
+            cleanable
+            style={{ width: 160, flexShrink: 0 }}
+          />
+          <CheckPicker
+            data={streamerOptions}
+            value={streamerFilter}
+            onChange={setStreamerFilter}
+            placeholder="筛选主播"
+            size="sm"
+            searchable
+            cleanable
+            countable
+            style={{ width: 160, flexShrink: 0 }}
+          />
+          <Button appearance="primary" size="sm" onClick={openBind}>
+            绑定房间
+          </Button>
+        </div>
       </div>
       <Modal open={bindOpen} onClose={() => setBindOpen(false)} size="xs">
         <Modal.Header>
@@ -474,7 +525,7 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
         </Modal.Footer>
       </Modal>
       <div className="room-cards">
-        {rooms.map((r) => (
+        {filteredRooms.map((r) => (
           <div
             key={r.room_id}
             className="room-card"
@@ -486,6 +537,7 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
                 <div className="rc-title-row">
                   <span className="rc-name">{r.room_title || `房间 ${r.room_id}`}</span>
                   {r.live_status === 1 && <span className="rc-badge rc-badge-live"><MdCircle size={8} /> 直播中</span>}
+                  {r.live_status === 2 && <span className="rc-badge rc-badge-rebroadcast"><MdCircle size={8} /> 轮播中</span>}
                 </div>
                 <span className="rc-room-id">房间 {r.room_id}</span>
               </div>
@@ -628,6 +680,7 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
           </div>
         ))}
         {rooms.length === 0 && <div className="empty">暂无可用房间</div>}
+        {rooms.length > 0 && filteredRooms.length === 0 && <div className="empty">没有符合筛选条件的房间</div>}
       </div>
     </div>
   )
