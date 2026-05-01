@@ -54,6 +54,14 @@ def beijing_time_range(period: str) -> tuple[str, str, str]:
         start = now_bj.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         end = now_bj.replace(hour=23, minute=59, second=59, microsecond=0) + timedelta(seconds=1)
         label = start.strftime("%Y-%m")
+    elif period == "this_year":
+        start = now_bj.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+        end = now_bj.replace(hour=23, minute=59, second=59, microsecond=0) + timedelta(seconds=1)
+        label = start.strftime("%Y")
+    elif period == "last_year":
+        start = now_bj.replace(year=now_bj.year - 1, month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+        end = start.replace(year=now_bj.year)
+        label = start.strftime("%Y")
     elif period == "last_month":
         first_this = now_bj.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         last_month_end = first_this

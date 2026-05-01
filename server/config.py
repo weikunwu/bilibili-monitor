@@ -130,8 +130,10 @@ except ValueError:
 
 GUARD_LEVELS = {1: "总督", 2: "提督", 3: "舰长"}
 
-PERIOD_LABELS = {"today": "今日", "yesterday": "昨日", "this_week": "本周", "this_month": "今月", "last_month": "上月"}
-DANMU_PERIOD_MAP = {"今日盲盒": "today", "昨日盲盒": "yesterday", "本周盲盒": "this_week", "今月盲盒": "this_month", "本月盲盒": "this_month", "上月盲盒": "last_month", "我的盲盒": "this_month"}
+PERIOD_LABELS = {"today": "今日", "yesterday": "昨日", "this_week": "本周", "this_month": "今月", "last_month": "上月", "this_year": "今年", "last_year": "去年"}
+DANMU_PERIOD_MAP = {"今日盲盒": "today", "昨日盲盒": "yesterday", "本周盲盒": "this_week", "今月盲盒": "this_month", "本月盲盒": "this_month", "上月盲盒": "last_month", "今年盲盒": "this_year", "去年盲盒": "last_year", "我的盲盒": "this_month"}
+# 时段+盲盒种类的查询用前缀（如"本月心动盲盒"），与 DANMU_PERIOD_MAP 同义但只到前缀。
+BLIND_PREFIX_PERIOD_MAP = {"今日": "today", "昨日": "yesterday", "本周": "this_week", "今月": "this_month", "本月": "this_month", "上月": "last_month", "今年": "this_year", "去年": "last_year"}
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
@@ -388,10 +390,11 @@ DEFAULT_COMMANDS = [
         "id": "blind_box_query",
         "name": "盲盒查询",
         "type": "user_danmu",
-        "description": '主播或观众发"我的盲盒 / 本月盲盒 / 今月盲盒 / 今日盲盒 / 昨日盲盒 / 本周盲盒 / 上月盲盒 / N月盲盒"，机器人回复对应时段的盲盒开启数和盈亏。主播查全员汇总，观众查自己。',
+        "description": '主播或观众发"我的盲盒 / 本月盲盒 / 今月盲盒 / 今日盲盒 / 昨日盲盒 / 本周盲盒 / 上月盲盒 / 今年盲盒 / 去年盲盒 / N月盲盒"，机器人回复对应时段的盲盒开启数和盈亏。主播查全员汇总，观众查自己。也支持按盲盒种类查询，如"今年心动盲盒 / 去年心动盲盒 / 本月心动盲盒 / 今日幸运盲盒 / 5月心动盲盒 / 我的心动盲盒"。',
         "default_enabled": True,
         "config": {
             # 开 → 总数后再逐种盲盒分别播报；关 → 只播报总数一条。
+            # 限定到具体盲盒种类时这条配置失效（分项与总数重复）。
             "detailed": True,
         },
     },

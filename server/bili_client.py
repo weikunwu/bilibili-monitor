@@ -18,7 +18,8 @@ from .config import (
     DANMU_CONF_API, DANMU_INFO_API, ROOM_INFO_API,
     MASTER_INFO_API, FINGER_SPI_API, NAV_API, SEND_GIFT_API, SEND_GOLD_API, SEND_MSG_API,
     LIKE_REPORT_API, WALLET_STATUS_API,
-    WS_OP_AUTH, WS_OP_HEARTBEAT, PERIOD_LABELS, DANMU_PERIOD_MAP, DB_PATH,
+    WS_OP_AUTH, WS_OP_HEARTBEAT, PERIOD_LABELS, DANMU_PERIOD_MAP,
+    BLIND_PREFIX_PERIOD_MAP, DB_PATH,
     RARE_BLIND_MIN_PRICE, log,
 )
 from .protocol import make_packet, parse_packets, handle_message, build_guard_event
@@ -1653,15 +1654,36 @@ class BiliLiveClient:
                                                     is_command = True
 
                                         # 盲盒查询：主播查全员 / 观众查自己，所有别名一致；受 blind_box_query 开关控制
+                                        # 不带种类 → 所有盲盒；带种类（XX盲盒）→ 仅该种盲盒
                                         blind_cmd = get_command(self.real_room_id, "blind_box_query")
                                         if blind_cmd and blind_cmd["enabled"]:
                                             period = None
+                                            blind_name_filter: str | None = None
                                             if content in DANMU_PERIOD_MAP:
                                                 period = DANMU_PERIOD_MAP[content]
                                             else:
                                                 mm = re.fullmatch(r"(\d{1,2})月盲盒", content)
                                                 if mm and 1 <= int(mm.group(1)) <= 12:
                                                     period = f"month:{int(mm.group(1))}"
+                                                else:
+                                                    # 时段+盲盒种类：今日/昨日/本周/今月/本月/上月/今年/去年 + (任意).+盲盒
+                                                    # 末尾允许字母/数字尾缀（如"幸运盲盒S"、未来"心动盲盒2"等）
+                                                    tm = re.fullmatch(r"(今日|昨日|本周|今月|本月|上月|今年|去年)(.+盲盒[A-Za-z0-9]*)", content)
+                                                    if tm:
+                                                        period = BLIND_PREFIX_PERIOD_MAP[tm.group(1)]
+                                                        blind_name_filter = tm.group(2)
+                                                    else:
+                                                        # N月+盲盒种类
+                                                        tm2 = re.fullmatch(r"(\d{1,2})月(.+盲盒[A-Za-z0-9]*)", content)
+                                                        if tm2 and 1 <= int(tm2.group(1)) <= 12:
+                                                            period = f"month:{int(tm2.group(1))}"
+                                                            blind_name_filter = tm2.group(2)
+                                                        else:
+                                                            # 我的+盲盒种类（默认本月，匹配"我的盲盒"语义）
+                                                            tm3 = re.fullmatch(r"我的(.+盲盒[A-Za-z0-9]*)", content)
+                                                            if tm3:
+                                                                period = "this_month"
+                                                                blind_name_filter = tm3.group(1)
                                             if period:
                                                 is_command = True
                                                 if self.bot_uid:
@@ -1672,6 +1694,7 @@ class BiliLiveClient:
                                                         period,
                                                         user_id=None if is_streamer else uid,
                                                         detailed=detailed,
+                                                        blind_name_filter=blind_name_filter,
                                                     ))
 
                                         # 盲盒爆出查询："本月<礼物名>"/"今月<礼物名>"
@@ -2261,10 +2284,12 @@ class BiliLiveClient:
         delete_nickname(self.real_room_id, user_id)
         await self.send_danmu(f"{user_name}，已清除昵称")
 
-    async def handle_blind_box_query(self, user_name, period: str = "today", user_id: int = 0, detailed: bool = True):
+    async def handle_blind_box_query(self, user_name, period: str = "today", user_id: int = 0, detailed: bool = True, blind_name_filter: str | None = None):
         """Query blind box stats and reply via danmu. user_id falsy = all users (streamer).
 
-        detailed=False → 仅播报总数一条；True → 总数后再逐种盲盒分别播报。
+        detailed=False 或 blind_name_filter 命中时 → 仅播报总数一条；
+        True → 总数后再逐种盲盒分别播报。
+        blind_name_filter 不为空 → 只统计该种盲盒（如"心动盲盒"/"幸运盲盒"）。
         """
         utc_start, utc_end, range_label = beijing_time_range(period)
         conn = sqlite3.connect(str(DB_PATH))
@@ -2277,6 +2302,9 @@ class BiliLiveClient:
         if user_id:
             sql += " AND user_id=?"
             params.append(user_id)
+        if blind_name_filter:
+            sql += " AND json_extract(extra_json, '$.blind_name') = ?"
+            params.append(blind_name_filter)
         rows = conn.execute(sql, params).fetchall()
         conn.close()
 
@@ -2285,8 +2313,9 @@ class BiliLiveClient:
         period_label = PERIOD_LABELS.get(period) or range_label
         display_name = (self._nickname_for(user_id) or user_name) if user_name else ""
         prefix = f"{display_name}，" if display_name else ""
+        scope_label = blind_name_filter or "盲盒"
         if not rows:
-            await self.send_danmu(f"{prefix}{period_label}暂无盲盒记录")
+            await self.send_danmu(f"{prefix}{period_label}暂无{scope_label}记录")
             return
 
         total_boxes = 0
@@ -2315,10 +2344,11 @@ class BiliLiveClient:
             return "不亏不赚" if p == 0 else f"赚{s}元" if p > 0 else f"亏{s}元"
 
         profit = total_value - total_cost
-        msg = f"{prefix}{period_label}盲盒共{total_boxes}个，{fmt_profit(profit)}"
+        msg = f"{prefix}{period_label}{scope_label}共{total_boxes}个，{fmt_profit(profit)}"
         await self.send_danmu(msg)
 
-        if not detailed:
+        # 已限定到单一种类时，detailed 分项与总数完全重复，跳过
+        if not detailed or blind_name_filter:
             return
         for name, b in boxes.items():
             await asyncio.sleep(2)
