@@ -390,7 +390,10 @@ DEFAULT_COMMANDS = [
         "type": "user_danmu",
         "description": '主播或观众发"我的盲盒 / 本月盲盒 / 今月盲盒 / 今日盲盒 / 昨日盲盒 / 本周盲盒 / 上月盲盒 / N月盲盒"，机器人回复对应时段的盲盒开启数和盈亏。主播查全员汇总，观众查自己。',
         "default_enabled": True,
-        "config": {},
+        "config": {
+            # 开 → 总数后再逐种盲盒分别播报；关 → 只播报总数一条。
+            "detailed": True,
+        },
     },
     {
         "id": "rare_blind_query",
