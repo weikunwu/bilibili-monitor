@@ -89,6 +89,14 @@ const SHARE_DEFAULT_TEMPLATE = SHARE_DEFAULT_TEMPLATES[0]
 const SUPERCHAT_DEFAULT_TEMPLATE = SUPERCHAT_DEFAULT_TEMPLATES[0]
 const LURKER_DEFAULT_TEMPLATE = '说点什么呀~'
 
+// 用户填写的弹幕模版字数上限。send_danmu 按 40 字分段（bili_client.py），
+// 这里留 10 字给 {name}/{streamer}/{guard} 等占位符展开，避免渲染后被拆成多条。
+const DANMU_TEMPLATE_MAX = 30
+const clampDanmu = (v: string) => v.slice(0, DANMU_TEMPLATE_MAX)
+// PK 模版用 \n 拆多条弹幕，按行各自夹断。
+const clampDanmuLines = (v: string) =>
+  v.split('\n').map((line) => line.slice(0, DANMU_TEMPLATE_MAX)).join('\n')
+
 function LurkerEditor({
   roomId, cmdId, initialTemplate, initialWaitSec, onSaved, onCommitEnabled, onRestoreEnabled,
 }: {
@@ -140,7 +148,13 @@ function LurkerEditor({
       <div style={{ fontSize: 12, color: '#888' }}>
         占位符：<code>{'{name}'}</code> 用户昵称，<code>{'{streamer}'}</code> 主播昵称
       </div>
-      <Input size="sm" value={tpl} onChange={setTpl} placeholder={LURKER_DEFAULT_TEMPLATE} />
+      <Input
+        size="sm"
+        value={tpl}
+        onChange={(v) => setTpl(clampDanmu(v))}
+        placeholder={LURKER_DEFAULT_TEMPLATE}
+        maxLength={DANMU_TEMPLATE_MAX}
+      />
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
         <Button
           appearance="subtle" size="sm" style={{ width: 88 }}
@@ -198,7 +212,7 @@ function PkBroadcastEditor({
         as="textarea"
         rows={3}
         value={tpl}
-        onChange={setTpl}
+        onChange={(v) => setTpl(clampDanmuLines(v))}
         placeholder={PK_DEFAULT_TEMPLATE}
       />
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
@@ -357,8 +371,9 @@ function ThanksGroup({
               <div key={idx} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                 <Input
                   size="sm" value={m}
-                  onChange={(v) => setItems(items.map((s, i) => (i === idx ? v : s)))}
+                  onChange={(v) => setItems(items.map((s, i) => (i === idx ? clampDanmu(v) : s)))}
                   placeholder={placeholder} style={{ flex: 1 }}
+                  maxLength={DANMU_TEMPLATE_MAX}
                 />
                 <IconButton
                   appearance="subtle" size="sm"
@@ -515,9 +530,10 @@ function ScheduledDanmuEditor({
           <Input
             size="sm"
             value={m}
-            onChange={(v) => updateMsg(idx, v)}
+            onChange={(v) => updateMsg(idx, clampDanmu(v))}
             placeholder={`弹幕 ${idx + 1}`}
             style={{ flex: 1 }}
+            maxLength={DANMU_TEMPLATE_MAX}
           />
           <IconButton
             appearance="subtle" size="sm"
@@ -618,10 +634,11 @@ function WelcomeEditor({
             <Input
               size="sm" value={m}
               onChange={(v) => {
-                const next = [...items]; next[idx] = v
+                const next = [...items]; next[idx] = clampDanmu(v)
                 setCfg({ ...cfg, [tplKey(k)]: next })
               }}
               placeholder={placeholder[0]} style={{ flex: 1 }}
+              maxLength={DANMU_TEMPLATE_MAX}
             />
             <IconButton
               appearance="subtle" size="sm"
