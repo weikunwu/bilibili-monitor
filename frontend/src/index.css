@@ -325,6 +325,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 /* ── Room list ── */
 .room-list { padding: 32px 24px; display: flex; flex-direction: column; align-items: center; overflow-y: auto; flex: 1; }
 .room-list h2 { color: #fb7299; font-size: 20px; margin-bottom: 20px; }
+.room-list-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; width: 100%; max-width: 800px; }
+.room-list-header h2 { margin: 0; }
+.room-list-filter { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.room-list-filter > .rs-picker { width: 160px; flex-shrink: 0; }
 .room-cards { display: flex; flex-direction: column; gap: 16px; max-width: 800px; width: 100%; }
 .room-card { background: #1a1a2e; border: 1px solid #2a2a4a; border-radius: 12px; padding: 20px; cursor: pointer; transition: all 0.2s; }
 .room-card:hover { border-color: #fb7299; box-shadow: 0 4px 12px rgba(251, 114, 153, 0.15); }
@@ -464,6 +468,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 
   .room-list { padding: 20px 12px; }
   .room-list h2 { font-size: 18px; }
+  /* 手机：标题独占一行；两个 picker 平分剩余空间，绑定按钮跟在同一行。 */
+  .room-list-header { flex-direction: column; align-items: stretch; gap: 8px; }
+  .room-list-filter { justify-content: flex-start; flex-wrap: nowrap; }
+  .room-list-filter > .rs-picker { width: auto; flex: 1 1 0; min-width: 0; }
   .room-card { padding: 16px; }
   .rc-body { flex-direction: column; gap: 12px; }
   .rc-name { font-size: 16px; }

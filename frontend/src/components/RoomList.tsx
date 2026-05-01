@@ -341,9 +341,9 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
 
   return (
     <div className="room-list">
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12, width: '100%', maxWidth: 800 }}>
-        <h2 style={{ margin: 0 }}>房间列表</h2>
-        <div className="room-list-filter" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+      <div className="room-list-header">
+        <h2>房间列表</h2>
+        <div className="room-list-filter">
           <SelectPicker
             data={LIVE_STATUS_OPTIONS}
             value={statusFilter}
@@ -352,7 +352,6 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
             size="sm"
             searchable={false}
             cleanable
-            style={{ width: 160, flexShrink: 0 }}
           />
           <CheckPicker
             data={streamerOptions}
@@ -363,7 +362,6 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
             searchable
             cleanable
             countable
-            style={{ width: 160, flexShrink: 0 }}
           />
           <Button appearance="primary" size="sm" onClick={openBind}>
             绑定房间
