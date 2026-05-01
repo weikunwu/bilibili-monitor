@@ -264,7 +264,7 @@ async def unbind_room_self(room_id: int, request: Request, _=Depends(require_roo
     # 房间绑定唯一（bind 时会拒绝已被其他账号占用的房间），解绑后没有非管理员
     # 用户再用它，直接停止监听；管理员若需要可在管理后台重新启动。
     if manager.has(room_id):
-        manager.stop_room(room_id)
+        await manager.stop_room(room_id)
     return {"ok": True, "room_id": room_id}
 
 
@@ -277,7 +277,7 @@ async def list_commands(room_id: int = Query(...), _=Depends(require_room_access
 async def stop_room(room_id: int, _=Depends(require_room_access)):
     if not manager.has(room_id):
         raise HTTPException(404, "房间不存在")
-    manager.stop_room(room_id)
+    await manager.stop_room(room_id)
     return {"ok": True, "room_id": room_id}
 
 

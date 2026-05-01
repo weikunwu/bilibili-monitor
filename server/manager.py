@@ -77,15 +77,20 @@ class RoomManager:
             self._clients[room_id] = client
 
         client = self._clients[room_id]
-        if client._running:
+        # 同步双重检查：_running 是 run() 体里写的，asyncio.create_task 排队
+        # 但还没执行 → 老的 run() body 还没跑到 self._running=True 之前，
+        # 并发的第二个 start_room 也会看到 False。靠 _task.done() 兜底。
+        if client._running or (client._task is not None and not client._task.done()):
             return
+        # 同步置位再 schedule，让真正的并发调用立刻在上面那行 bail。
+        client._running = True
         set_room_active(room_id, True)
-        asyncio.create_task(client.run())
+        client._task = asyncio.create_task(client.run())
 
-    def stop_room(self, room_id: int):
+    async def stop_room(self, room_id: int):
         client = self._clients.get(room_id)
         if client:
-            client.stop()
+            await client.stop()
         set_room_active(room_id, False)
 
     def add_room(self, room_id: int) -> BiliLiveClient:
@@ -95,10 +100,10 @@ class RoomManager:
         self._clients[room_id] = client
         return client
 
-    def remove_room(self, room_id: int):
+    async def remove_room(self, room_id: int):
         client = self._clients.pop(room_id, None)
         if client:
-            client.stop()
+            await client.stop()
         set_room_active(room_id, False)
 
     # ── 默认机器人池 ──
