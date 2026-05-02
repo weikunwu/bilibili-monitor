@@ -13,6 +13,7 @@ import {
 } from '../api/client'
 import { confirmDialog } from '../lib/confirm'
 import type { Room } from '../types'
+import wechatQrImg from '../assets/wechat-qr.jpg'
 
 // Per-tab cache of fresh streamer-info so 切来切去不重复打 B站。
 interface StreamerInfo { streamer_name: string; streamer_avatar: string; followers: number }
@@ -142,6 +143,7 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
   const [payOrder, setPayOrder] = useState<PaymentOrder | null>(null)
   const [payStatusText, setPayStatusText] = useState('')
   const [payStatusKind, setPayStatusKind] = useState<'info' | 'success' | 'error' | 'warning'>('info')
+  const [wechatQrOpen, setWechatQrOpen] = useState(false)
   const payTimerRef = useRef<number | null>(null)
   const payOrderRef = useRef<string>('')
 
@@ -157,6 +159,7 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
     setPaySelectedPlan('')
     setPayStatusText('')
     setPayStatusKind('info')
+    setWechatQrOpen(false)
   }
 
   async function openPay(r: Room) {
@@ -501,10 +504,28 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
             <>
               <Message type="info" style={{ marginBottom: 12 }}>
                 <div>添加客服微信还可以拿到优惠哦~</div>
-                <div>
-                  <SiWechat color="#07C160" style={{ verticalAlign: '-2px', marginRight: 4 }} />
-                  <b>BlackBubu55</b>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span>
+                    <SiWechat color="#07C160" style={{ verticalAlign: '-2px', marginRight: 4 }} />
+                    <b>BlackBubu55</b>
+                  </span>
+                  <Button
+                    size="xs"
+                    appearance="link"
+                    style={{ padding: 0 }}
+                    onClick={() => setWechatQrOpen((v) => !v)}
+                  >
+                    {wechatQrOpen ? '收起二维码' : '显示二维码'}
+                  </Button>
                 </div>
+                {wechatQrOpen && (
+                  <div style={{ marginTop: 8 }}>
+                    <img src={wechatQrImg} alt="客服微信二维码" width={160} height={160} />
+                    <div style={{ fontSize: 12, color: '#888', marginTop: 4 }}>
+                      手机微信扫一扫添加好友
+                    </div>
+                  </div>
+                )}
               </Message>
               <div className="plan-grid">
                 {payPlans.map((p) => {
