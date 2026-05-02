@@ -121,19 +121,19 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
 
   const [afdianTarget, setAfdianTarget] = useState<Room | null>(null)
 
-  // ── 扫码续费（支付宝）── 单一 modal 走两步：先选档位，再显示 QR + 轮询。
-  // payAlipayEnabled 在挂载时拉一次 /api/payments/plans 决定，控制"支付宝续费"
-  // 按钮是否渲染。env 缺 ALIPAY_PUBLIC_KEY → channels.alipay=false → 整颗按钮
+  // ── 扫码续费（Z-Pay → 支付宝）── 单一 modal 走两步：先选档位，再显示 QR + 轮询。
+  // payZpayEnabled 在挂载时拉一次 /api/payments/plans 决定，控制"支付宝续费"
+  // 按钮是否渲染。env 缺 ZPAY_KEY → channels.zpay=false → 整颗按钮
   // 不出现在房间卡上，用户看不到入口（不是 disabled 灰按钮）。
   const [payTarget, setPayTarget] = useState<Room | null>(null)
   const [payPlans, setPayPlans] = useState<RenewalPlan[]>([])
-  const [payAlipayEnabled, setPayAlipayEnabled] = useState(false)
+  const [payZpayEnabled, setPayZpayEnabled] = useState(false)
 
   useEffect(() => {
     fetchPaymentPlans()
       .then((info) => {
         setPayPlans(info.plans)
-        setPayAlipayEnabled(info.channels.alipay)
+        setPayZpayEnabled(info.channels.zpay)
       })
       .catch(() => { /* 拉失败默认 disabled，按钮不出现 */ })
   }, [])
@@ -169,9 +169,9 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
     try {
       const info = await fetchPaymentPlans()
       setPayPlans(info.plans)
-      setPayAlipayEnabled(info.channels.alipay)
+      setPayZpayEnabled(info.channels.zpay)
       if (info.plans.length > 0) setPaySelectedPlan(info.plans[0].id)
-      if (!info.channels.alipay) {
+      if (!info.channels.zpay) {
         setPayStatusText('当前未配置在线支付通道')
         setPayStatusKind('error')
       }
@@ -181,7 +181,7 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
     }
   }
 
-  async function handleCreatePayOrder(channel: 'alipay', planId: string) {
+  async function handleCreatePayOrder(channel: 'zpay', planId: string) {
     if (!payTarget || !planId) return
     setPaySubmitting(true)
     setPayStatusText('正在创建订单...')
@@ -520,11 +520,11 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
                       appearance="primary"
                       color={recommended ? 'green' : 'blue'}
                       size="sm"
-                      disabled={!payAlipayEnabled || (paySubmitting && !isLoading)}
+                      disabled={!payZpayEnabled || (paySubmitting && !isLoading)}
                       loading={isLoading}
                       onClick={() => {
                         setPaySelectedPlan(p.id)
-                        handleCreatePayOrder('alipay', p.id)
+                        handleCreatePayOrder('zpay', p.id)
                       }}
                     >立即购买</Button>
                   </div>
@@ -657,7 +657,7 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
                     startIcon={<MdConfirmationNumber />}
                     onClick={(e) => { e.stopPropagation(); openRedeem(r) }}
                   >续费机器人</Button>
-                  {payAlipayEnabled && (
+                  {payZpayEnabled && (
                     <Button
                       size="sm" color="orange" appearance="ghost" style={{ width: 132 }}
                       startIcon={<SiAlipay />}

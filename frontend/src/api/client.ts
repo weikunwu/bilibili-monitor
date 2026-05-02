@@ -497,26 +497,26 @@ export interface RenewalPlan {
 
 export interface PaymentPlansInfo {
   plans: RenewalPlan[]
-  channels: { alipay: boolean }
+  channels: { zpay: boolean }
 }
 
 export async function fetchPaymentPlans(): Promise<PaymentPlansInfo> {
   const res = await fetch('/api/payments/plans')
-  if (!res.ok) return { plans: [], channels: { alipay: false } }
+  if (!res.ok) return { plans: [], channels: { zpay: false } }
   return res.json()
 }
 
 export interface PaymentOrder {
   out_trade_no: string
   code_url: string
-  channel: 'alipay'
+  channel: 'zpay'
   expire: number
   yuan: number
   months: number
 }
 
 export async function createPaymentOrder(
-  roomId: number, planId: string, channel: 'alipay',
+  roomId: number, planId: string, channel: 'zpay',
 ): Promise<PaymentOrder> {
   const res = await fetch(`/api/rooms/${roomId}/payments/order`, {
     method: 'POST',

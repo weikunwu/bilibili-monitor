@@ -1,4 +1,4 @@
-"""扫码续费房间：用户在前端选档位 + 渠道（目前仅支付宝当面付）→ 后端调
+"""扫码续费房间：用户在前端选档位 + 渠道（目前仅 Z-Pay → 支付宝）→ 后端调
 provider 下单拿 code_url → 前端把 code_url 渲染成二维码让用户扫付。
 
 幂等链路：
@@ -31,7 +31,7 @@ from ..db import (
     apply_payment_order, create_payment_order, get_payment_order,
     get_room_expires_at, reverse_payment_order, mark_payment_order_rejected,
 )
-from ..payments import alipay
+from ..payments import zpay
 
 
 router = APIRouter()
@@ -42,7 +42,7 @@ def _gen_out_trade_no() -> str:
 
 
 # 下单接口的用户级限流：每用户最近 60s 不超过 5 次成功下单尝试。
-# 防有人快速点 / 脚本灌爆我们 DB + 把支付宝 APPID 日 QPS 耗光。
+# 防有人快速点 / 脚本灌爆我们 DB + 把 zpay 商户号 QPS 耗光。
 # 算法：每 user 一个 timestamp deque，新请求来时清掉 60s 前的，再看长度。
 _ORDER_RATE_WINDOW_SEC = 60
 _ORDER_RATE_MAX = 60
@@ -74,7 +74,7 @@ async def get_plans():
     return {
         "plans": _public_plans(),
         "channels": {
-            "alipay": config.ALIPAY_ENABLED,
+            "zpay": config.ZPAY_ENABLED,
         },
     }
 
@@ -83,19 +83,20 @@ async def get_plans():
 async def create_order(
     room_id: int, request: Request, _=Depends(require_room_access),
 ):
-    """body: {plan_id: str, channel: 'alipay'}
+    """body: {plan_id: str, channel: 'zpay'}
     返回 {out_trade_no, code_url, expire, channel}。code_url 是
-    https://qr.alipay.com/... 前端直接渲染成 QR 即可。"""
+    https://z-pay.cn/submit.php?... 前端直接渲染成 QR;
+    扫码者浏览器打开后由 zpay 跳支付宝收银台。"""
     body = await request.json()
     plan_id = str(body.get("plan_id", "")).strip()
     channel = str(body.get("channel", "")).strip()
     plan = RENEWAL_PLANS_BY_ID.get(plan_id)
     if not plan:
         raise HTTPException(400, "无效的档位")
-    if channel != "alipay":
-        raise HTTPException(400, "channel 必须是 alipay")
-    if not config.ALIPAY_ENABLED:
-        raise HTTPException(503, "支付宝支付未配置")
+    if channel != "zpay":
+        raise HTTPException(400, "channel 必须是 zpay")
+    if not config.ZPAY_ENABLED:
+        raise HTTPException(503, "Z-Pay 未配置")
 
     user_id = getattr(request.state, "user_id", None)
     if user_id:
@@ -105,7 +106,7 @@ async def create_order(
     notify_url = f"{config.PAYMENT_NOTIFY_BASE}/api/payments/notify/{channel}"
 
     try:
-        code_url = await alipay.create_order(
+        code_url = await zpay.create_order(
             out_trade_no, plan["yuan"], subject, notify_url,
         )
     except RuntimeError as e:
@@ -158,8 +159,8 @@ async def get_order_status(out_trade_no: str, request: Request):
     # pending：主动查 provider，避免 notify 慢/丢
     provider = order["provider"]
     try:
-        if provider == "alipay":
-            remote_status, ext = await alipay.query_order(out_trade_no)
+        if provider == "zpay":
+            remote_status, ext = await zpay.query_order(out_trade_no)
         else:
             remote_status, ext = "unknown", ""
     except Exception as e:
@@ -182,32 +183,32 @@ async def get_order_status(out_trade_no: str, request: Request):
 
 
 # ─── 异步通知 webhook（auth.py 白名单）──
-# 公网可达；支付宝 form-encoded POST。
+# 公网可达；zpay form-encoded POST。
 
-@router.post("/api/payments/notify/alipay")
-async def notify_alipay(request: Request):
+@router.post("/api/payments/notify/zpay")
+async def notify_zpay(request: Request):
     form = dict(await request.form())
-    event, out_trade_no, trade_no, amount = alipay.verify_notify(form)
+    event, out_trade_no, trade_no, amount = zpay.verify_notify(form)
     if event == "invalid":
-        # 验签失败 / app_id 不对 → 让支付宝重推（也能在日志看到攻击迹象）
+        # 验签失败 / pid 不对 → 让 zpay 重推（也能在日志看到攻击迹象）
         return Response(content="failure", media_type="text/plain", status_code=400)
     if event == "ignore" or not out_trade_no:
-        # WAIT_BUYER_PAY 等中间态：验签过但无需动作；回 success 让支付宝停推
+        # 中间态：验签过但无需动作；回 success 让 zpay 停推
         return Response(content="success", media_type="text/plain")
 
     raw = json.dumps(form, ensure_ascii=False)
 
     if event == "paid":
-        # 金额校验：支付宝传回的 total_amount 必须跟本地订单 yuan 严格相等。
+        # 金额校验：zpay 传回的 money 必须跟本地订单 yuan 严格相等。
         # 这是防御纵深 —— 即使签名层被绕过，攻击者也没法用 1 元订单续年卡。
         order = get_payment_order(out_trade_no)
         if not order:
-            log.warning(f"[payments] alipay notify 找不到本地订单 out_trade_no={out_trade_no}")
+            log.warning(f"[payments] zpay notify 找不到本地订单 out_trade_no={out_trade_no}")
             return Response(content="success", media_type="text/plain")
         expected = f"{int(order['yuan']):.2f}"
         if amount and amount != expected:
             log.warning(
-                f"[payments] alipay notify 金额不符 out_trade_no={out_trade_no} "
+                f"[payments] zpay notify 金额不符 out_trade_no={out_trade_no} "
                 f"got={amount} expected={expected} → 标记 rejected"
             )
             # 落库 rejected 防 polling/reconcile 路径绕过校验把它应用上
@@ -215,22 +216,20 @@ async def notify_alipay(request: Request):
             return Response(content="failure", media_type="text/plain", status_code=400)
         ok, info = apply_payment_order(out_trade_no, external_trade_no=trade_no, raw_json=raw)
         if ok:
-            log.info(f"[payments] alipay notify 应用成功 out_trade_no={out_trade_no} → {info}")
+            log.info(f"[payments] zpay notify 应用成功 out_trade_no={out_trade_no} → {info}")
         else:
-            log.info(f"[payments] alipay notify 未应用 out_trade_no={out_trade_no}: {info}")
+            log.info(f"[payments] zpay notify 未应用 out_trade_no={out_trade_no}: {info}")
         return Response(content="success", media_type="text/plain")
 
     if event == "refunded":
         ok, info = reverse_payment_order(out_trade_no, raw_json=raw)
         if ok:
             log.warning(
-                f"[payments] alipay 退款回滚 out_trade_no={out_trade_no} "
-                f"refund_fee={amount} → expires_at={info}"
+                f"[payments] zpay 退款回滚 out_trade_no={out_trade_no} "
+                f"refund_money={amount} → expires_at={info}"
             )
         else:
-            log.info(f"[payments] alipay 退款未应用 out_trade_no={out_trade_no}: {info}")
+            log.info(f"[payments] zpay 退款未应用 out_trade_no={out_trade_no}: {info}")
         return Response(content="success", media_type="text/plain")
 
     return Response(content="success", media_type="text/plain")
-
-

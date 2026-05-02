@@ -373,7 +373,7 @@ def init_db():
         )
     """)
     # 用户自助扫码续费订单。out_trade_no 是我们自己生成的本地订单号（主键），
-    # provider+external_trade_no 是支付宝/微信侧的订单号，供查单 + 防重放。
+    # provider+external_trade_no 是 zpay 侧的订单号，供查单 + 防重放。
     # status: pending/paid/expired/canceled。paid 即已应用到 rooms.expires_at。
     conn.execute("""
         CREATE TABLE IF NOT EXISTS payment_orders (
