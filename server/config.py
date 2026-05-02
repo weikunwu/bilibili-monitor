@@ -60,12 +60,12 @@ AFDIAN_QUERY_ORDER_API = "https://afdian.com/api/open/query-order"
 # 改档位定价就改这张表；id 是稳定 key，前端拿到 id 提交到后端再反查 months/yuan，
 # 不让前端直接传金额避免被绕过。
 RENEWAL_PLANS: list[dict] = [
-    # TODO(临时): zpay 接入验证用,跑通后删掉这一行
-    {"id": "test",      "months": 1,  "yuan": 1,   "label": "测试 · 1 元"},
     {"id": "month",     "months": 1,  "yuan": 25,  "label": "月卡 · 1 个月"},
     {"id": "season",    "months": 3,  "yuan": 72,  "label": "季卡 · 3 个月"},
     {"id": "half_year", "months": 6,  "yuan": 135, "label": "半年卡 · 6 个月"},
     {"id": "year",      "months": 12, "yuan": 240, "label": "年卡 · 12 个月"},
+    # TODO(临时): zpay 接入验证用,跑通后删掉这一行
+    {"id": "test",      "months": 1,  "yuan": 1,   "label": "测试 · 1 元"},
 ]
 RENEWAL_PLANS_BY_ID = {p["id"]: p for p in RENEWAL_PLANS}
 
