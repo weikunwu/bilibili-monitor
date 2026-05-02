@@ -60,19 +60,29 @@ def _check_order_rate(user_id: int) -> None:
     dq.append(now)
 
 
-def _public_plans() -> list[dict]:
+# 仅 admin/staff 可见可付的档位 id;前端不下发,后端下单也拦
+_STAFF_ONLY_PLAN_IDS = {"test"}
+
+
+def _is_staff(request: Request) -> bool:
+    return getattr(request.state, "user_role", None) in ("admin", "staff")
+
+
+def _public_plans(request: Request) -> list[dict]:
+    show_staff = _is_staff(request)
     return [
         {"id": p["id"], "months": p["months"], "yuan": p["yuan"], "label": p["label"]}
         for p in RENEWAL_PLANS
+        if show_staff or p["id"] not in _STAFF_ONLY_PLAN_IDS
     ]
 
 
 @router.get("/api/payments/plans")
-async def get_plans():
+async def get_plans(request: Request):
     """前端打开 modal 时拉一次：可选档位 + 哪些渠道开了。
     渠道没配置就不显示，避免用户点了之后才报 500。"""
     return {
-        "plans": _public_plans(),
+        "plans": _public_plans(request),
         "channels": {
             "zpay": config.ZPAY_ENABLED,
         },
@@ -93,6 +103,9 @@ async def create_order(
     plan = RENEWAL_PLANS_BY_ID.get(plan_id)
     if not plan:
         raise HTTPException(400, "无效的档位")
+    # 仅员工可下单的档位(如测试单),普通用户拼 plan_id 调过来直接 403
+    if plan_id in _STAFF_ONLY_PLAN_IDS and not _is_staff(request):
+        raise HTTPException(403, "无权使用该档位")
     if channel != "zpay":
         raise HTTPException(400, "channel 必须是 zpay")
     if not config.ZPAY_ENABLED:
