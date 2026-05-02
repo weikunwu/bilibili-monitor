@@ -219,6 +219,11 @@ function SuperChatCardCanvas({
   item, first,
 }: { item: SuperChatOverlayItem; first: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  // poll 每 5s 都会生成新的 item 对象引用，必须按内容签名重绘，否则
+  // 每次 poll 都触发 canvas 重画 → 头像/背景异步加载期间一闪一闪
+  const sig = JSON.stringify({
+    n: item.user_name, c: item.content, e: item.extra,
+  })
 
   useEffect(() => {
     if (!canvasRef.current) return
@@ -232,7 +237,8 @@ function SuperChatCardCanvas({
       extra: item.extra,
     } as LiveEvent
     generateSuperChatCard(canvasRef.current, pseudoEvent).catch(() => {})
-  }, [item])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sig])
 
   return (
     <canvas
