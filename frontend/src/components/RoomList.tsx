@@ -359,6 +359,15 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
 
   const handleToggle = async (e: React.MouseEvent, room: Room) => {
     e.stopPropagation()
+    if (room.active) {
+      const ok = await confirmDialog({
+        title: '确认停止房间',
+        message: '停止监听后，该房间的礼物、弹幕、醒目留言等所有数据收集都会停止。确定要停止吗？',
+        okText: '确定停止',
+        color: 'yellow',
+      })
+      if (!ok) return
+    }
     const action = room.active ? 'stop' : 'start'
     const res = await fetch(`/api/rooms/${room.room_id}/${action}`, { method: 'POST' })
     if (!res.ok) {
@@ -585,6 +594,17 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
                 )}
               </div>
             </div>
+
+            {!r.active && (
+              <Message
+                type="warning"
+                showIcon
+                style={{ marginBottom: 12 }}
+                header="监听未启动"
+              >
+                当前房间未在监听，礼物、弹幕、醒目留言等数据均不会被收集。点击下方"启动监听"开始。
+              </Message>
+            )}
 
             {/* Streamer info + area/announcement */}
             <div className="rc-body">
