@@ -64,6 +64,12 @@ def _san_name(s: str) -> str:
     return "".join(c for c in s if c.isalnum() or c in "-_")[:32]
 
 
+# recorder 现在写出的 base_name 固定是 "{YYYYMMDD_HHMMSS}_{hex8}"（纯 ASCII），
+# 所以这里只接受 [A-Za-z0-9_-]。_composited.mp4 是用同样的 stem 拼出来，也都
+# 在这范围内。
+_NAME_RE = re.compile(r"[A-Za-z0-9_-]+")
+
+
 @router.get("/api/rooms/{room_id}/clips")
 async def list_clips(room_id: int, _=Depends(require_room_access)):
     d = _room_dir(room_id)
@@ -134,8 +140,7 @@ async def match_clip(
 async def get_clip_file(room_id: int, name: str, ext: str, _=Depends(require_room_access)):
     if ext not in ("mp4", "json"):
         raise HTTPException(400, "bad ext")
-    # Guard against traversal via name
-    if not re.fullmatch(r"[A-Za-z0-9_\u4e00-\u9fff-]+", name):
+    if not _NAME_RE.fullmatch(name):
         raise HTTPException(400, "bad name")
     p = _room_dir(room_id) / f"{name}.{ext}"
     if not p.exists():
@@ -150,7 +155,7 @@ async def get_clip_file(room_id: int, name: str, ext: str, _=Depends(require_roo
 async def compose_and_serve(room_id: int, name: str, _=Depends(require_room_access)):
     """Composite VAP overlays onto the base mp4 and stream it. Cached on
     first request as <name>_composited.mp4."""
-    if not re.fullmatch(r"[A-Za-z0-9_\u4e00-\u9fff-]+", name):
+    if not _NAME_RE.fullmatch(name):
         raise HTTPException(400, "bad name")
     d = _room_dir(room_id)
     base_mp4 = d / f"{name}.mp4"

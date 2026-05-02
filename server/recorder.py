@@ -9,6 +9,7 @@ remuxes the lot to a standalone .mp4 on disk via ffmpeg.
 import asyncio
 import json
 import os
+import secrets
 import tempfile
 import time
 from collections import deque
@@ -261,12 +262,12 @@ class RecorderSession:
 
             out_dir = CLIP_ROOT / str(self.room_id)
             out_dir.mkdir(parents=True, exist_ok=True)
-            ts_name = time.strftime("%Y%m%d_%H%M%S", time.localtime(p.first_wall))
-            primary_label = p.triggers[0].label or "gift"
-            safe_label = "".join(c for c in primary_label if c.isalnum() or c in "-_")[:32]
-            if len(p.triggers) > 1:
-                safe_label += f"_x{len(p.triggers)}"
-            base_name = f"{ts_name}_{safe_label}"
+            # 文件名只放 timestamp + 短随机 hex —— B 站用户名 / 礼物名 label 里
+            # 各种 unicode（日文假名、CJK 扩展区、emoji）过 c.isalnum() 都会留下，
+            # 但路由层取回时正则 / 编码很难都覆盖到，前端一拿就 400。完整 label /
+            # num 信息都已经写进 sidecar 的 overlays，磁盘文件名不需要再带。
+            time_str = time.strftime("%Y%m%d_%H%M%S", time.localtime(p.first_wall))
+            base_name = f"{time_str}_{secrets.token_hex(4)}"
             base_path = out_dir / f"{base_name}.mp4"
 
             # Concatenate segment files on disk (low-memory; one 64KB chunk at
