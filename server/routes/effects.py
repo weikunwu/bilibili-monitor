@@ -36,6 +36,7 @@ from ..db import (
     list_gift_effects, get_gift_effect_for_gift, upsert_gift_effect, delete_gift_effect,
     verify_overlay_token, is_room_expired,
 )
+from ..manager import manager
 
 router = APIRouter()
 
@@ -85,6 +86,15 @@ def _ext_of(name: str) -> str:
 
 
 _PRESET_KEYS = {"plane_banner", "heart_float", "firework", "sparkle"}
+
+
+def _ensure_uid_not_streamer(room_id: int, uid: int) -> None:
+    """主播自己进场被触发侧 _maybe_trigger_entry_effect 直接过滤掉，绑了等于
+    白占 ENTRY_EFFECT_MAX_UIDS_PER_ROOM 名额还误导主播以为坏了。在绑定入口
+    拦掉。client 没起 / streamer_uid 还没拉到（值为 0）时放行，避免误伤。"""
+    client = manager.get(room_id)
+    if client and client.streamer_uid and uid == client.streamer_uid:
+        raise HTTPException(400, "无法给主播自己绑定进场特效（主播进场不会触发）")
 
 
 def try_trigger_entry_effect(room_id: int, uid: int) -> bool:
@@ -250,6 +260,7 @@ async def upload_effect(
 ):
     if uid <= 0:
         raise HTTPException(400, "uid 无效")
+    _ensure_uid_not_streamer(room_id, uid)
     ext = _ext_of(file.filename or "")
     if ext not in ENTRY_EFFECT_ALLOWED_EXT:
         raise HTTPException(400, f"只支持 {'/'.join(sorted(ENTRY_EFFECT_ALLOWED_EXT))}")
@@ -299,6 +310,7 @@ async def upload_preset_effect(
     preset_key = (body.get("preset_key") or "").strip()
     if uid <= 0:
         raise HTTPException(400, "uid 无效")
+    _ensure_uid_not_streamer(room_id, uid)
     if preset_key not in _PRESET_KEYS:
         raise HTTPException(400, "预设不存在")
 

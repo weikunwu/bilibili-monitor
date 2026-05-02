@@ -489,7 +489,7 @@ function EffectModal({
       toaster.push(<Message type="success" showIcon closable>保存成功</Message>, { duration: 2000 })
       onSaved()
     } catch (err) {
-      setError((err as Error).message)
+      toaster.push(<Message type="error" showIcon closable>{(err as Error).message}</Message>, { duration: 3000 })
     } finally {
       setSaving(false)
     }
