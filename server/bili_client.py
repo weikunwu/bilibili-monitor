@@ -1311,12 +1311,20 @@ class BiliLiveClient:
             system_prompt = f"{base_prompt}\n\n补充要求（来自主播）：{extra}"
         else:
             system_prompt = base_prompt
-        user_msg = (
-            f"直播间观众「{display_name}」刚刚发了这条弹幕：\n"
-            f"「{content}」\n"
-            f"请你以「{bot_name or '小助手'}」的身份，用一句简体中文（10–25字）正面回应这条弹幕。"
-            f"只输出这一句回复，不要其他内容。"
-        )
+        if mentioned:
+            user_msg = (
+                f"直播间观众「{display_name}」直接 @ 了你（叫了你的名字「{bot_name}」），发了这条弹幕：\n"
+                f"「{content}」\n"
+                f"用户主动喊你，必须回复，**禁止输出 [SKIP]**。即便弹幕看不太懂，也用一句通用安全回复接住。"
+                f"用一句简体中文（10–25字）正面回应。只输出这一句回复，不要其他内容。"
+            )
+        else:
+            user_msg = (
+                f"直播间观众「{display_name}」刚刚发了这条弹幕：\n"
+                f"「{content}」\n"
+                f"请你以「{bot_name or '小助手'}」的身份，用一句简体中文（10–25字）正面回应这条弹幕。"
+                f"只输出这一句回复，不要其他内容。"
+            )
         payload = {
             "model": model,
             "messages": [
@@ -1356,8 +1364,12 @@ class BiliLiveClient:
         reply_text = reply_text.replace("\n", " ").replace("\r", " ").strip()
         reply_text = reply_text.strip('"\u201c\u201d\'「」')
         # prompt 让模型在不该回复时输出 [SKIP]；命中就直接退出，不发弹幕。
+        # 但若用户直接 @ 了机器人（mentioned），不能装看不见 → 用通用安全回复兜底。
         if reply_text.strip().upper() in ("[SKIP]", "SKIP"):
-            return
+            if not mentioned:
+                return
+            # 注意不能以 @ 开头，否则会被下方 @ 前缀剥离逻辑吃掉。
+            reply_text = "宝在呢~叫我啥事"
         if reply_text.startswith("@"):
             # 去掉模型手动加的 @xxx 前缀，避免重复 @。
             reply_text = re.sub(r"^@\S+\s*", "", reply_text)
