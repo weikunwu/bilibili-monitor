@@ -34,7 +34,7 @@ from .db import (
     get_default_bot_buvid3, save_default_bot_buvid3,
     get_default_bot_buvid4, save_default_bot_buvid4,
 )
-from .routes.effects import trigger_gift_vap, try_trigger_entry_effect
+from .effect_trigger import trigger_gift_vap, try_trigger_entry_effect
 from .time_utils import beijing_time_range
 from .crypto import load_cookies
 
