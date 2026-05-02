@@ -24,6 +24,7 @@ from .routes.effects import purge_orphan_effect_files
 from . import turnstile, notify
 from .manager import manager
 from . import recorder, effect_catalog, gift_catalog
+from .payments import zpay
 from .routes import events, rooms, bot, admin, clips, overlay, afdian, effects, payments
 
 app = FastAPI(title="狗狗机器人")
@@ -448,21 +449,20 @@ async def _periodic_expiration_check():
 
 async def _periodic_payment_reconcile():
     """每 5 分钟扫一次 pending 付款订单做对账：
-      • 仍 pending 且创建后 ≤ 24h → 调 alipay.query_order 兜底（防 notify 丢/我们停过服）
+      • 仍 pending 且创建后 ≤ 24h → 调 zpay.query_order 兜底（防 notify 丢/我们停过服）
         查到已支付 → apply_payment_order 续期房间
       • 仍 pending 且创建后 > 24h → 标记 expired，避免表越堆越大
     场景：用户扫码付完立刻关浏览器 + 我们 notify 没收到（fly 重启正好那一刻、
-    支付宝重试间隔 > 我们前端轮询超时），不靠这个 task 房间永远不会续期。"""
-    from .payments import alipay
+    zpay 重试间隔 > 我们前端轮询超时），不靠这个 task 房间永远不会续期。"""
     while True:
         try:
             pending = list_pending_payment_orders(within_hours=24)
             for o in pending:
-                if o["provider"] != "alipay":
+                if o["provider"] != "zpay":
                     continue
                 otn = o["out_trade_no"]
                 try:
-                    status, ext = await alipay.query_order(otn)
+                    status, ext = await zpay.query_order(otn)
                 except Exception as e:
                     log.warning(f"[payment-reconcile] query 异常 {otn}: {e}")
                     continue

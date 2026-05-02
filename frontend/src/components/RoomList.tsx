@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { MdCircle, MdConfirmationNumber, MdLogout } from 'react-icons/md'
-import { SiAlipay } from 'react-icons/si'
+import { SiAlipay, SiWechat } from 'react-icons/si'
 import { Button, ButtonToolbar, CheckPicker, IconButton, Input, Modal, SelectPicker, Stack, Tag, useToaster, Message } from 'rsuite'
 import PlayOutlineIcon from '@rsuite/icons/PlayOutline'
 import CloseOutlineIcon from '@rsuite/icons/CloseOutline'
@@ -121,19 +121,19 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
 
   const [afdianTarget, setAfdianTarget] = useState<Room | null>(null)
 
-  // ── 扫码续费（支付宝）── 单一 modal 走两步：先选档位，再显示 QR + 轮询。
-  // payAlipayEnabled 在挂载时拉一次 /api/payments/plans 决定，控制"支付宝续费"
-  // 按钮是否渲染。env 缺 ALIPAY_PUBLIC_KEY → channels.alipay=false → 整颗按钮
+  // ── 扫码续费（Z-Pay → 支付宝）── 单一 modal 走两步：先选档位，再显示 QR + 轮询。
+  // payZpayEnabled 在挂载时拉一次 /api/payments/plans 决定，控制"支付宝续费"
+  // 按钮是否渲染。env 缺 ZPAY_KEY → channels.zpay=false → 整颗按钮
   // 不出现在房间卡上，用户看不到入口（不是 disabled 灰按钮）。
   const [payTarget, setPayTarget] = useState<Room | null>(null)
   const [payPlans, setPayPlans] = useState<RenewalPlan[]>([])
-  const [payAlipayEnabled, setPayAlipayEnabled] = useState(false)
+  const [payZpayEnabled, setPayZpayEnabled] = useState(false)
 
   useEffect(() => {
     fetchPaymentPlans()
       .then((info) => {
         setPayPlans(info.plans)
-        setPayAlipayEnabled(info.channels.alipay)
+        setPayZpayEnabled(info.channels.zpay)
       })
       .catch(() => { /* 拉失败默认 disabled，按钮不出现 */ })
   }, [])
@@ -169,9 +169,9 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
     try {
       const info = await fetchPaymentPlans()
       setPayPlans(info.plans)
-      setPayAlipayEnabled(info.channels.alipay)
+      setPayZpayEnabled(info.channels.zpay)
       if (info.plans.length > 0) setPaySelectedPlan(info.plans[0].id)
-      if (!info.channels.alipay) {
+      if (!info.channels.zpay) {
         setPayStatusText('当前未配置在线支付通道')
         setPayStatusKind('error')
       }
@@ -181,7 +181,7 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
     }
   }
 
-  async function handleCreatePayOrder(channel: 'alipay', planId: string) {
+  async function handleCreatePayOrder(channel: 'zpay', planId: string) {
     if (!payTarget || !planId) return
     setPaySubmitting(true)
     setPayStatusText('正在创建订单...')
@@ -190,7 +190,7 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
       const order = await createPaymentOrder(payTarget.room_id, planId, channel)
       setPayOrder(order)
       payOrderRef.current = order.out_trade_no
-      setPayStatusText('请用支付宝扫上方二维码完成付款，本窗口会自动检测')
+      setPayStatusText('请用「支付宝」扫上方二维码完成付款，本窗口会自动检测')
       setPayStatusKind('info')
       // 轮询：3s 一次直到 paid / expired，或者订单 expire 到点。
       const startedAt = Date.now()
@@ -498,39 +498,48 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
             房间 <b>{payTarget?.streamer_name || payTarget?.room_id}</b>
           </div>
           {!payOrder && (
-            <div className="plan-grid">
-              {payPlans.map((p) => {
-                // 季卡（3 个月）作为推荐档位
-                const recommended = p.id === 'season'
-                const days = p.months * 30
-                const perMonth = (p.yuan / p.months).toFixed(1)
-                const isLoading = paySubmitting && paySelectedPlan === p.id
-                return (
-                  <div
-                    key={p.id}
-                    className={recommended ? 'plan-card recommended' : 'plan-card'}
-                  >
-                    {recommended && <span className="plan-card-recommended-tag">推荐</span>}
-                    <div className="plan-card-days">{days}天</div>
-                    <div className="plan-card-price">
-                      <span className="plan-card-price-symbol">¥</span>{p.yuan}
+            <>
+              <Message type="info" style={{ marginBottom: 12 }}>
+                <div>添加客服微信还可以拿到优惠哦~</div>
+                <div>
+                  <SiWechat color="#07C160" style={{ verticalAlign: '-2px', marginRight: 4 }} />
+                  <b>BlackBubu55</b>
+                </div>
+              </Message>
+              <div className="plan-grid">
+                {payPlans.map((p) => {
+                  // 季卡（3 个月）作为推荐档位
+                  const recommended = p.id === 'season'
+                  const days = p.months * 30
+                  const perMonth = (p.yuan / p.months).toFixed(1)
+                  const isLoading = paySubmitting && paySelectedPlan === p.id
+                  return (
+                    <div
+                      key={p.id}
+                      className={recommended ? 'plan-card recommended' : 'plan-card'}
+                    >
+                      {recommended && <span className="plan-card-recommended-tag">推荐</span>}
+                      <div className="plan-card-days">{days}天</div>
+                      <div className="plan-card-price">
+                        <span className="plan-card-price-symbol">¥</span>{p.yuan}
+                      </div>
+                      <div className="plan-card-permonth">约 {perMonth} 元/30天</div>
+                      <Button
+                        appearance="primary"
+                        color={recommended ? 'green' : 'blue'}
+                        size="sm"
+                        disabled={!payZpayEnabled || (paySubmitting && !isLoading)}
+                        loading={isLoading}
+                        onClick={() => {
+                          setPaySelectedPlan(p.id)
+                          handleCreatePayOrder('zpay', p.id)
+                        }}
+                      >立即购买</Button>
                     </div>
-                    <div className="plan-card-permonth">约 {perMonth} 元/30天</div>
-                    <Button
-                      appearance="primary"
-                      color={recommended ? 'green' : 'blue'}
-                      size="sm"
-                      disabled={!payAlipayEnabled || (paySubmitting && !isLoading)}
-                      loading={isLoading}
-                      onClick={() => {
-                        setPaySelectedPlan(p.id)
-                        handleCreatePayOrder('alipay', p.id)
-                      }}
-                    >立即购买</Button>
-                  </div>
-                )
-              })}
-            </div>
+                  )
+                })}
+              </div>
+            </>
           )}
           {payOrder && (
             <Stack direction="column" spacing={10} alignItems="center">
@@ -539,9 +548,7 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
                 width={220} height={220}
                 src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(payOrder.code_url)}`}
               />
-              <div style={{ fontSize: 12, color: '#888' }}>
-                支付宝 · ¥{payOrder.yuan} · {payOrder.months} 个月
-              </div>
+              <div>支付宝 · ¥{payOrder.yuan} · {payOrder.months} 个月</div>
             </Stack>
           )}
           {payStatusText && (
@@ -657,7 +664,7 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
                     startIcon={<MdConfirmationNumber />}
                     onClick={(e) => { e.stopPropagation(); openRedeem(r) }}
                   >续费机器人</Button>
-                  {payAlipayEnabled && (
+                  {payZpayEnabled && (
                     <Button
                       size="sm" color="orange" appearance="ghost" style={{ width: 132 }}
                       startIcon={<SiAlipay />}

@@ -56,23 +56,24 @@ AFDIAN_PLANS: dict[str, int] = {
 }
 AFDIAN_QUERY_ORDER_API = "https://afdian.com/api/open/query-order"
 
-# ── 用户自助扫码续费（支付宝当面付）──
+# ── 用户自助扫码续费（Z-Pay / 彩虹易支付，底层走支付宝）──
 # 改档位定价就改这张表；id 是稳定 key，前端拿到 id 提交到后端再反查 months/yuan，
 # 不让前端直接传金额避免被绕过。
 RENEWAL_PLANS: list[dict] = [
-    {"id": "month",     "months": 1,  "yuan": 21,  "label": "月卡 · 1 个月"},
-    {"id": "season",    "months": 3,  "yuan": 58,  "label": "季卡 · 3 个月"},
-    {"id": "half_year", "months": 6,  "yuan": 111, "label": "半年卡 · 6 个月"},
-    {"id": "year",      "months": 12, "yuan": 211, "label": "年卡 · 12 个月"},
+    # TODO(临时): zpay 接入验证用,跑通后删掉这一行
+    {"id": "test",      "months": 1,  "yuan": 1,   "label": "测试 · 1 元"},
+    {"id": "month",     "months": 1,  "yuan": 25,  "label": "月卡 · 1 个月"},
+    {"id": "season",    "months": 3,  "yuan": 72,  "label": "季卡 · 3 个月"},
+    {"id": "half_year", "months": 6,  "yuan": 135, "label": "半年卡 · 6 个月"},
+    {"id": "year",      "months": 12, "yuan": 240, "label": "年卡 · 12 个月"},
 ]
 RENEWAL_PLANS_BY_ID = {p["id"]: p for p in RENEWAL_PLANS}
 
 # 支付通道总开关：env 没填齐就关掉，前端直接看不见入口。
-ALIPAY_APP_ID = os.environ.get("ALIPAY_APP_ID", "")
-ALIPAY_APP_PRIVATE_KEY = os.environ.get("ALIPAY_APP_PRIVATE_KEY", "")
-ALIPAY_PUBLIC_KEY = os.environ.get("ALIPAY_PUBLIC_KEY", "")
-ALIPAY_GATEWAY = os.environ.get("ALIPAY_GATEWAY", "https://openapi.alipay.com/gateway.do")
-ALIPAY_ENABLED = bool(ALIPAY_APP_ID and ALIPAY_APP_PRIVATE_KEY and ALIPAY_PUBLIC_KEY)
+ZPAY_PID = os.environ.get("ZPAY_PID", "")
+ZPAY_KEY = os.environ.get("ZPAY_KEY", "")
+ZPAY_GATEWAY = os.environ.get("ZPAY_GATEWAY", "https://z-pay.cn")
+ZPAY_ENABLED = bool(ZPAY_PID and ZPAY_KEY)
 
 # 异步通知回调基址。生产用，线下不接 notify（前端走主动 query 兜底已经覆盖了）。
 PAYMENT_NOTIFY_BASE = "https://blackbubu.us"

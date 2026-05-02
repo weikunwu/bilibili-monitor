@@ -25,4 +25,4 @@ trap cleanup EXIT INT TERM
 
 # 2) 前端前台跑（Ctrl-C 落到这里 → 触发 trap → 杀后端）
 cd frontend
-VITE_PROXY_TARGET=http://localhost:8080 exec npm run dev
+VITE_PROXY_TARGET=http://localhost:8080 npm run dev
