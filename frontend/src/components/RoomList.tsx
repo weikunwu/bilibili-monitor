@@ -505,9 +505,21 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
               <Message type="info" style={{ marginBottom: 12 }}>
                 <div>添加客服微信还可以拿到优惠哦~</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  <span>
+                  <span
+                    role="button"
+                    title="点击复制微信号"
+                    style={{ cursor: 'pointer' }}
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText('BlackBubu55')
+                        toaster.push(<Message type="success" showIcon closable>微信号已复制</Message>, { duration: 2000 })
+                      } catch {
+                        toaster.push(<Message type="error" showIcon closable>复制失败，请手动选中</Message>, { duration: 2500 })
+                      }
+                    }}
+                  >
                     <SiWechat color="#07C160" style={{ verticalAlign: '-2px', marginRight: 4 }} />
-                    <b>BlackBubu55</b>
+                    <b style={{ textDecoration: 'underline', textDecorationStyle: 'dotted', textUnderlineOffset: 3 }}>BlackBubu55</b>
                   </span>
                   <Button
                     size="xs"
@@ -519,9 +531,9 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
                   </Button>
                 </div>
                 {wechatQrOpen && (
-                  <div style={{ marginTop: 8 }}>
+                  <div style={{ marginTop: 8, textAlign: 'center' }}>
                     <img src={wechatQrImg} alt="客服微信二维码" width={160} height={160} />
-                    <div style={{ fontSize: 12, color: '#888', marginTop: 4 }}>
+                    <div style={{ fontSize: 12, marginTop: 4 }}>
                       手机微信扫一扫添加好友
                     </div>
                   </div>
