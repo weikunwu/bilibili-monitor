@@ -59,13 +59,18 @@ def _ext_of(name: str) -> str:
 _PRESET_KEYS = {"plane_banner", "heart_float", "firework", "sparkle"}
 
 
-def _ensure_uid_not_streamer(room_id: int, uid: int) -> None:
-    """主播自己进场被触发侧 _maybe_trigger_entry_effect 直接过滤掉，绑了等于
-    白占 ENTRY_EFFECT_MAX_UIDS_PER_ROOM 名额还误导主播以为坏了。在绑定入口
-    拦掉。client 没起 / streamer_uid 还没拉到（值为 0）时放行，避免误伤。"""
+def _ensure_uid_not_self_or_bot(room_id: int, uid: int) -> None:
+    """主播 / 本房间机器人自己进场被触发侧 _maybe_trigger_entry_effect 直接
+    过滤掉，绑了等于白占 ENTRY_EFFECT_MAX_UIDS_PER_ROOM 名额还误导主播以为
+    坏了。在绑定入口拦掉。client 没起 / streamer_uid / bot_uid 还没拉到
+    （值为 0）时放行，避免误伤。"""
     client = manager.get(room_id)
-    if client and client.streamer_uid and uid == client.streamer_uid:
+    if not client:
+        return
+    if client.streamer_uid and uid == client.streamer_uid:
         raise HTTPException(400, "无法给主播自己绑定进场特效（主播进场不会触发）")
+    if client.bot_uid and uid == client.bot_uid:
+        raise HTTPException(400, "无法给本房间机器人绑定进场特效（机器人进场不会触发）")
 
 
 def _purge_orphans_in(root: Path, list_records) -> int:
@@ -146,7 +151,7 @@ async def upload_effect(
 ):
     if uid <= 0:
         raise HTTPException(400, "uid 无效")
-    _ensure_uid_not_streamer(room_id, uid)
+    _ensure_uid_not_self_or_bot(room_id, uid)
     ext = _ext_of(file.filename or "")
     if ext not in ENTRY_EFFECT_ALLOWED_EXT:
         raise HTTPException(400, f"只支持 {'/'.join(sorted(ENTRY_EFFECT_ALLOWED_EXT))}")
@@ -196,7 +201,7 @@ async def upload_preset_effect(
     preset_key = (body.get("preset_key") or "").strip()
     if uid <= 0:
         raise HTTPException(400, "uid 无效")
-    _ensure_uid_not_streamer(room_id, uid)
+    _ensure_uid_not_self_or_bot(room_id, uid)
     if preset_key not in _PRESET_KEYS:
         raise HTTPException(400, "预设不存在")
 
