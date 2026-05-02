@@ -12,6 +12,7 @@ import {
   type RenewalPlan, type PaymentOrder,
 } from '../api/client'
 import { confirmDialog } from '../lib/confirm'
+import { useIsMobile } from '../hooks/useIsMobile'
 import type { Room } from '../types'
 
 // Per-tab cache of fresh streamer-info so 切来切去不重复打 B站。
@@ -109,6 +110,7 @@ const LIVE_STATUS_OPTIONS = [
 
 export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdmin }: Props) {
   const toaster = useToaster()
+  const isMobile = useIsMobile()
   const [bindOpen, setBindOpen] = useState(false)
   const [newRoomId, setNewRoomId] = useState('')
   const [bindError, setBindError] = useState('')
@@ -291,6 +293,7 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
 
   const [unbindTarget, setUnbindTarget] = useState<Room | null>(null)
   const [unbinding, setUnbinding] = useState(false)
+  const [togglingRoomId, setTogglingRoomId] = useState<number | null>(null)
 
   // 直播状态单选（null = 不筛选）；主播多选（空数组 = 不筛选）。
   // 缓存到 sessionStorage：从房间页返回时保留筛选；关标签页清空。
@@ -369,13 +372,18 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
       if (!ok) return
     }
     const action = room.active ? 'stop' : 'start'
-    const res = await fetch(`/api/rooms/${room.room_id}/${action}`, { method: 'POST' })
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}))
-      toaster.push(<Message type="error" showIcon closable>{data.detail || '操作失败'}</Message>, { duration: 3000 })
-      return
+    setTogglingRoomId(room.room_id)
+    try {
+      const res = await fetch(`/api/rooms/${room.room_id}/${action}`, { method: 'POST' })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        toaster.push(<Message type="error" showIcon closable>{data.detail || '操作失败'}</Message>, { duration: 3000 })
+        return
+      }
+      onRoomsChanged?.()
+    } finally {
+      setTogglingRoomId(null)
     }
-    onRoomsChanged?.()
   }
 
   return (
@@ -510,6 +518,7 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
                 {payPlans.map((p) => {
                   // 季卡（3 个月）作为推荐档位
                   const recommended = p.id === 'season'
+                  const isTest = p.id === 'test'
                   const days = p.months * 30
                   const perMonth = (p.yuan / p.months).toFixed(1)
                   const isLoading = paySubmitting && paySelectedPlan === p.id
@@ -519,6 +528,7 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
                       className={recommended ? 'plan-card recommended' : 'plan-card'}
                     >
                       {recommended && <span className="plan-card-recommended-tag">推荐</span>}
+                      {isTest && <span className="plan-card-test-tag">测试专用</span>}
                       <div className="plan-card-days">{days}天</div>
                       <div className="plan-card-price">
                         <span className="plan-card-price-symbol">¥</span>{p.yuan}
@@ -549,6 +559,22 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
                 src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(payOrder.code_url)}`}
               />
               <div>支付宝 · ¥{payOrder.yuan} · {payOrder.months} 个月</div>
+              {isMobile && (
+                <>
+                  <Button
+                    as="a"
+                    href={payOrder.code_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    appearance="primary"
+                    color="blue"
+                    startIcon={<SiAlipay />}
+                  >立即用支付宝打开</Button>
+                  <div style={{ fontSize: 12, color: '#888', textAlign: 'center', lineHeight: 1.5 }}>
+                    点上方按钮会自动唤起支付宝 App；微信内打开按钮失效，请复制到外部浏览器。
+                  </div>
+                </>
+              )}
             </Stack>
           )}
           {payStatusText && (
@@ -651,11 +677,11 @@ export function RoomList({ rooms, onSelectRoom, onRoomsChanged, onBindBot, isAdm
               <div className="rc-footer-actions">
                 <ButtonToolbar>
                   {r.active ? (
-                    <Button size="sm" color="red" appearance="ghost" startIcon={<CloseOutlineIcon />} style={{ width: 132 }} onClick={(e) => { e.stopPropagation(); handleToggle(e, r) }}>
+                    <Button size="sm" color="red" appearance="ghost" startIcon={<CloseOutlineIcon />} style={{ width: 132 }} loading={togglingRoomId === r.room_id} onClick={(e) => { e.stopPropagation(); handleToggle(e, r) }}>
                       停止监听
                     </Button>
                   ) : (
-                    <Button size="sm" color="green" appearance="ghost" startIcon={<PlayOutlineIcon />} style={{ width: 132 }} onClick={(e) => { e.stopPropagation(); handleToggle(e, r) }}>
+                    <Button size="sm" color="green" appearance="ghost" startIcon={<PlayOutlineIcon />} style={{ width: 132 }} loading={togglingRoomId === r.room_id} onClick={(e) => { e.stopPropagation(); handleToggle(e, r) }}>
                       启动监听
                     </Button>
                   )}
