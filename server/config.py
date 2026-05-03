@@ -75,8 +75,10 @@ ZPAY_KEY = os.environ.get("ZPAY_KEY", "")
 ZPAY_GATEWAY = os.environ.get("ZPAY_GATEWAY", "https://z-pay.cn")
 ZPAY_ENABLED = bool(ZPAY_PID and ZPAY_KEY)
 
-# 异步通知回调基址。生产用，线下不接 notify（前端走主动 query 兜底已经覆盖了）。
-PAYMENT_NOTIFY_BASE = "https://blackbubu.us"
+# 异步通知回调基址。env 缺省时用生产域名作 fallback 是历史遗留,本地起服务
+# 一定要 export 成 ngrok / cloudflare tunnel 公网地址,否则 zpay 测试单的 notify
+# 会推到生产去污染日志/串单 (低概率,签名仍要对得上)。
+PAYMENT_NOTIFY_BASE = os.environ.get("PAYMENT_NOTIFY_BASE", "https://blackbubu.us")
 # 前端轮询查单的最长间隔（秒）。订单 expire 默认 600s 由前端控制超时。
 PAYMENT_ORDER_TTL_SEC = 600
 

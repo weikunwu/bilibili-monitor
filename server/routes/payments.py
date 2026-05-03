@@ -60,6 +60,17 @@ def _check_order_rate(user_id: int) -> None:
     dq.append(now)
 
 
+def purge_stale_rate_limits() -> None:
+    """app.py 定时任务调用。窗口外的 user_id key 删掉防 dict 无限增长。"""
+    now = time.time()
+    stale = [
+        uid for uid, dq in _order_attempts.items()
+        if not dq or now - dq[-1] > _ORDER_RATE_WINDOW_SEC
+    ]
+    for uid in stale:
+        _order_attempts.pop(uid, None)
+
+
 # 仅 admin/staff 可见可付的档位 id;前端不下发,后端下单也拦
 _STAFF_ONLY_PLAN_IDS = {"test"}
 
@@ -219,7 +230,7 @@ async def notify_zpay(request: Request):
             log.warning(f"[payments] zpay notify 找不到本地订单 out_trade_no={out_trade_no}")
             return Response(content="success", media_type="text/plain")
         expected = f"{int(order['yuan']):.2f}"
-        if amount and amount != expected:
+        if amount != expected:
             log.warning(
                 f"[payments] zpay notify 金额不符 out_trade_no={out_trade_no} "
                 f"got={amount} expected={expected} → 标记 rejected"
