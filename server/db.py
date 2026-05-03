@@ -162,6 +162,12 @@ def verify_overlay_token(room_id: int, token: str) -> bool:
 
 def init_db():
     conn = sqlite3.connect(str(DB_PATH))
+    # WAL 是数据库文件级开关 (一次性设好,所有连接生效)。默认 rollback journal
+    # 下 writer 完全互斥,notify webhook + reconcile + 用户写设置 + 礼物入库
+    # 同秒并发就容易撞 'database is locked'。WAL 后 reader 不阻塞 writer。
+    # busy_timeout 是 per-connection 没在这里设 (78 个 connect 散在各文件);
+    # WAL 已经能拿 80% 收益,真出现 lock 再补 _connect helper 把 timeout 塞进去。
+    conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("""
         CREATE TABLE IF NOT EXISTS events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -395,6 +401,13 @@ def init_db():
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_payment_orders_room_status "
         "ON payment_orders(room_id, status, created_at)"
+    )
+    # 防止同一笔 zpay 交易号 (external_trade_no) 被重放到不同 out_trade_no 上
+    # 应用两次。partial unique 排除空字符串 (pending 单还没 trade_no)。
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_payment_external_trade "
+        "ON payment_orders(provider, external_trade_no) "
+        "WHERE external_trade_no != ''"
     )
     # 进场特效：每个 (room_id, uid) 一条记录。
     # 两种来源二选一：

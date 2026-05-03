@@ -19,6 +19,7 @@ from .db import (
 )
 from .auth import AuthMiddleware, get_session_user, get_user_allowed_rooms, handle_login, handle_logout, handle_change_password, handle_send_register_code, handle_register, handle_send_reset_code, handle_reset_password, purge_stale_rate_limits as purge_auth_rate_limits
 from .routes.rooms import purge_stale_rate_limits as purge_room_rate_limits
+from .routes.payments import purge_stale_rate_limits as purge_payment_rate_limits
 from .effect_trigger import purge_stale_cooldowns as purge_entry_effect_cooldowns
 from .routes.effects import purge_orphan_effect_files
 from . import turnstile, notify
@@ -379,6 +380,7 @@ async def _periodic_memory_cleanup():
         try:
             purge_auth_rate_limits()
             purge_room_rate_limits()
+            purge_payment_rate_limits()
             purge_entry_effect_cooldowns()
             total = 0
             for client in list(manager.all_clients().values()):
