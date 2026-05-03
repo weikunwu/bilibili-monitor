@@ -115,7 +115,7 @@ async def create_order(
     if user_id:
         _check_order_rate(user_id)
     out_trade_no = _gen_out_trade_no()
-    subject = f"BlackBubu 房间 {room_id} 续费 · {plan['label']}"
+    subject = f"狗狗机器人 房间 {room_id} 续费 · {plan['label']}"
     notify_url = f"{config.PAYMENT_NOTIFY_BASE}/api/payments/notify/{channel}"
 
     try:
