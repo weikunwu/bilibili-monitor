@@ -147,60 +147,38 @@ async def create_order(
 
 @router.get("/api/payments/order/{out_trade_no}/status")
 async def get_order_status(out_trade_no: str, request: Request):
-    """前端轮询用。逻辑：
-      1. 看本地 DB 状态：paid 直接返回（省一次外网查单）
-      2. pending 时主动查 provider 兜底，如果发现已支付就 apply（万一 notify 还没到）
+    """前端轮询用，纯看本地 DB 状态。
+    pending 转 paid 由 notify webhook（亚秒级）+ reconcile 任务（≤5min）兜底,
+    本接口不再主动调 provider —— modal 每 3s 一次 × 多用户在线，会把 zpay
+    商户号 QPS 打满，且兜底场景已被 reconcile 覆盖。
     返回 {status, expires_at?}。expires_at 仅 paid 时返回（前端刷新房间列表用）。"""
     order = get_payment_order(out_trade_no)
     if not order:
         raise HTTPException(404, "订单不存在")
-    # 用户必须有这个房间的权限。route 上没有 room_id path 参数，这里手动校验。
     allowed = getattr(request.state, "allowed_rooms", None)
     if allowed is not None and order["room_id"] not in allowed:
         raise HTTPException(403, "无权限访问该房间")
 
     status = order["status"]
     if status == "paid":
-        exp = get_room_expires_at(order["room_id"])
-        return {"status": "paid", "expires_at": exp}
+        return {"status": "paid", "expires_at": get_room_expires_at(order["room_id"])}
     if status == "rejected":
-        # notify 阶段拒绝了（金额不符等），让前端引导用户走客服
         return {"status": "rejected"}
     if status in ("expired", "refunded"):
-        return {"status": "expired"}
-
-    # pending：主动查 provider，避免 notify 慢/丢
-    provider = order["provider"]
-    try:
-        if provider == "zpay":
-            remote_status, ext = await zpay.query_order(out_trade_no)
-        else:
-            remote_status, ext = "unknown", ""
-    except Exception as e:
-        log.warning(f"[payments] query 异常 out_trade_no={out_trade_no}: {e}")
-        return {"status": "pending"}
-
-    if remote_status == "paid":
-        ok, info = apply_payment_order(out_trade_no, external_trade_no=ext, raw_json="")
-        if ok:
-            log.info(
-                f"[payments] 轮询确认支付 out_trade_no={out_trade_no} "
-                f"room={order['room_id']} → expires_at={info}"
-            )
-            return {"status": "paid", "expires_at": info}
-        if info == "already_paid":
-            return {"status": "paid", "expires_at": get_room_expires_at(order["room_id"])}
-    if remote_status == "closed":
         return {"status": "expired"}
     return {"status": "pending"}
 
 
 # ─── 异步通知 webhook（auth.py 白名单）──
-# 公网可达；zpay form-encoded POST。
+# 公网可达；zpay 默认走 GET（query string），也兼容 POST form-encoded。
+# 只声明 POST 会让 GET 通知吃 405、订单只能靠 reconcile 兜底。
 
-@router.post("/api/payments/notify/zpay")
+@router.api_route("/api/payments/notify/zpay", methods=["GET", "POST"])
 async def notify_zpay(request: Request):
-    form = dict(await request.form())
+    if request.method == "GET":
+        form = dict(request.query_params)
+    else:
+        form = dict(await request.form())
     event, out_trade_no, trade_no, amount = zpay.verify_notify(form)
     if event == "invalid":
         # 验签失败 / pid 不对 → 让 zpay 重推（也能在日志看到攻击迹象）
